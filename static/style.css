@@ -1026,3 +1026,41 @@ status trends preserved */
 .chart-svg .limit-line { stroke:#59dfbd; stroke-width:1.5; stroke-dasharray:6 5; }
 .chart-svg .limit-label { fill:#70e8c9; font-size:11px; font-weight:700; }
 @media(max-width:700px){.chart-grid{grid-template-columns:minmax(0,1fr)}.chart-canvas{min-height:180px}}
+
+
+/* Modern AquaCore settings */
+.settings-heading .dim{margin:5px 0 6px}
+.settings-card{padding:25px}
+.settings-section-head{display:flex;align-items:center;gap:15px;margin-bottom:23px}
+.settings-section-head h2{margin:0 0 5px;font-size:21px}
+.settings-section-head p{margin:0;font-size:13px}
+.settings-section-icon,.settings-device-icon{display:grid;place-items:center;flex:none;color:#67e7d2;background:#173c47;border:1px solid #285967;border-radius:13px;width:48px;height:48px}
+.settings-section-icon .mdi{font-size:26px}
+.settings-device-icon{width:39px;height:39px;border-radius:10px}
+.settings-device-icon .mdi{font-size:23px}
+.settings-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.settings-field{display:flex;flex-direction:column;gap:7px;min-width:0;padding:17px;background:#142d40;border:1px solid #264556;border-radius:13px}
+.settings-field-title{display:flex;align-items:center;gap:9px;font-size:15px;color:#e8f3fc;font-weight:750}
+.settings-field-title .mdi{color:#65e4d2;font-size:22px;line-height:1}
+.settings-field-description{color:#95b3c4;font-size:12px;font-weight:400;min-height:16px}
+.settings-input-wrap{position:relative;display:block;margin-top:4px}
+.settings-input-wrap input{margin:0;width:100%;padding:13px 60px 13px 14px;font-size:18px;font-weight:700}
+.settings-unit{position:absolute;right:14px;top:50%;transform:translateY(-50%);color:#98b9c8;font-size:12px;pointer-events:none}
+.settings-history{margin-top:14px;border-top:1px solid #294656;padding-top:14px}
+.settings-history .settings-field{max-width:calc(50% - 7px)}
+.settings-schedule-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.settings-schedule{min-width:0;padding:17px;background:#142d40;border:1px solid #264556;border-radius:13px}
+.settings-schedule-title{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.settings-schedule-title h3{margin:0;font-size:16px}
+.settings-schedule .pair{gap:12px}
+.settings-schedule label{font-size:12px;color:#a9c8d6}
+.time-label{display:flex;align-items:center;gap:6px}
+.time-label .mdi{font-size:17px;color:#6be4d0}
+.settings-schedule input{font-size:15px;color-scheme:dark}
+.settings-actions{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;padding-bottom:12px;color:#99b9c8;font-size:12px}
+.settings-actions .mdi{font-size:18px;vertical-align:middle}
+.settings-actions .save{margin:0;display:flex;align-items:center;gap:9px}
+.settings-actions .save .mdi{font-size:20px}
+.settings-field:focus-within,.settings-schedule:focus-within{border-color:#4bdcc5}
+@media(max-width:850px){.settings-fields,.settings-schedule-grid{grid-template-columns:1fr}.settings-history .settings-field{max-width:none}}
+@media(max-width:700px){.settings-card{padding:16px}.settings-section-head{gap:11px}.settings-section-head h2{font-size:19px}.settings-section-icon{height:42px;width:42px}.settings-actions{align-items:stretch}.settings-actions .save{width:100%;justify-content:center}}
