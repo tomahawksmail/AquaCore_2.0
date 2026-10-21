@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+{% block title %}Sign in · AquaCore{% endblock %}
+{% block content %}
+<section class="login-screen" aria-label="AquaCore sign in">
+  <div class="login-form-wrap">
+    <div class="eyebrow">AQUARIUM AUTOMATION</div>
+    <h1>Welcome back.</h1>
+    <p>Sign in to monitor and manage your aquarium.</p>
+    <form method="post" class="login-form">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <label for="login-user">Username
+        <input id="login-user" name="user" autocomplete="username" required autofocus>
+      </label>
+      <label for="login-password">Password
+        <input id="login-password" name="password" type="password" autocomplete="current-password" required>
+      </label>
+      <button class="primary" type="submit"><i class="mdi mdi-login" aria-hidden="true"></i> Sign in</button>
+    </form>
+  </div>
+</section>
+{% endblock %}

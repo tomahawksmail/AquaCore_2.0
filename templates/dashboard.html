@@ -1,0 +1,87 @@
+{% extends 'base.html' %}{% block title %}Overview · AquaCore{% endblock %}{% block content %}<div class="heading"><div><div class="eyebrow">LIVE MONITORING</div><h1>Aquarium overview</h1><p>Latest saved measurements and controller output flags.</p></div></div><section class="metrics">
+  {% for field,label,unit in metrics %}
+  {% set current = latest[field] if latest and latest[field] is not none else none %}
+  {% set prior = previous[field] if previous and previous[field] is not none else none %}
+  {% set delta = (current - prior) if current is not none and prior is not none else none %}
+  <article class="card metric" id="card-{{ field }}">
+    <div class="metric-name"><i class="mdi {{ {'temp':'mdi-thermometer','ph':'mdi-water-outline','tds':'mdi-water-check-outline'}.get(field, 'mdi-chart-line') }}" aria-hidden="true"></i> {{ label }}</div>
+    <strong id="m-{{ field }}">{{ '%.1f'|format(current) if current is not none else '—' }} <small>{{ unit }}</small></strong>
+    <span id="trend-{{ field }}" class="trend {{ 'up' if delta is not none and delta > 0 else ('down' if delta is not none and delta < 0 else 'flat') }}">
+      {% if delta is none %}<i class="mdi mdi-minus-circle-outline"></i> No previous reading
+      {% elif delta > 0 %}<i class="mdi mdi-trending-up"></i> +{{ '%.1f'|format(delta) }} {{ unit }} vs previous
+      {% elif delta < 0 %}<i class="mdi mdi-trending-down"></i> {{ '%.1f'|format(delta) }} {{ unit }} vs previous
+      {% else %}<i class="mdi mdi-trending-neutral"></i> No change{% endif %}
+    </span>
+  </article>
+  {% endfor %}
+</section><section class="equipment-sections" aria-label="Equipment controls">
+  {% set equipment = devices[:4] %}
+  {% set lights = devices[4:] %}
+  {% for heading, icon, entries in [('Equipment', 'mdi-cog-outline', equipment), ('Lighting', 'mdi-lightbulb-group-outline', lights)] %}
+  <section class="card controls-card">
+    <div class="section-title controls-heading"><div><div class="eyebrow">SCHEDULE & MANUAL OVERRIDES</div><h2><i class="mdi {{ icon }}" aria-hidden="true"></i> {{ heading }}</h2></div></div>
+    <div class="control-list">
+      {% for field, label, on, off in entries %}
+      {% set active = statuses.get(field) == 'checked' %}
+      <div class="control-row" data-control="{{ field }}">
+        <div class="control-description"><strong>{{ label }}</strong><span class="control-state" id="state-{{ field }}">{{ ('Manual until ' ~ manual[field].strftime('%H:%M')) if field in manual else ('Thermostat · ' if field == 'heater_status' else 'Scheduled · ') ~ ('ON' if active else 'OFF') }}</span></div>
+        <label class="ios-switch" aria-label="{{ label }} manual on/off">
+          <input type="checkbox" data-field="{{ field }}" {% if active %}checked{% endif %} {% if session.get('role')|int != 1 or field == 'heater_status' %}disabled{% endif %}>
+          <span class="switch-track" aria-hidden="true"></span>
+        </label>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endfor %}
+</section>
+<p class="control-disclaimer"><i class="mdi mdi-alert-circle-outline" aria-hidden="true"></i> Switches temporarily override scheduled requests until the next ON/OFF event. Heater remains thermostat-controlled. Software flags are not verified relay feedback or safety interlocks.</p>
+<script>window.AQUACORE_CSRF = {{ csrf_token()|tojson }};</script>
+<script defer src="{{ url_for('static', filename='controls.js') }}"></script><section class="card history-card" aria-label="Measurement history">
+  <div class="section-title chart-title">
+    <div><div class="eyebrow">HISTORICAL DATA</div><h2>Water quality trends</h2><p class="dim">Average readings over time from MariaDB</p></div>
+    <div class="history-range" role="group" aria-label="Chart period">
+      <button type="button" class="range-btn selected" data-period="24h">24h</button>
+      <button type="button" class="range-btn" data-period="7d">7d</button>
+      <button type="button" class="range-btn" data-period="30d">30d</button>
+      <button type="button" class="range-btn" data-period="90d">90d</button>
+    </div>
+  </div>
+  <div id="chart-message" role="status" class="dim">Loading measurements…</div>
+  <div class="chart-grid" id="chart-grid" hidden>
+    <div class="chart-panel"><div class="chart-panel-head"><h3>Temperature</h3><span>°C</span></div><div class="chart-canvas" data-field="temp"></div></div>
+    <div class="chart-panel"><div class="chart-panel-head"><h3>pH level</h3><span>pH</span></div><div class="chart-canvas" data-field="ph"></div></div>
+    <div class="chart-panel"><div class="chart-panel-head"><h3>TDS</h3><span>ppm</span></div><div class="chart-canvas" data-field="tds"></div></div>
+  </div>
+  <p class="dim chart-footnote">Missing sensor values are shown as gaps. Charts show time-bucket averages; actual readings remain in the table below.</p>
+</section>
+<script defer src="{{ url_for('static', filename='charts.js') }}"></script>
+<section class="card"><h2>Latest readings</h2><div class="scroll"><table><thead><tr><th>Time</th><th>Temp °C</th><th>pH</th><th>TDS ppm</th></tr></thead><tbody>{% for r in points|reverse %}<tr><td>{{r.Datetime}}</td><td>{{r.temp if r.temp is not none else '—'}}</td><td>{{r.ph if r.ph is not none else '—'}}</td><td>{{r.tds if r.tds is not none else '—'}}</td></tr>{% endfor %}</tbody></table></div></section><script>
+async function refreshMetrics() {
+  try {
+    const response = await fetch('/api/readings', {cache:'no-store'});
+    if (!response.ok) return;
+    const data = await response.json();
+    for (const key of ['temp','ph','tds']) {
+      const value = data[key];
+      const unit = key === 'temp' ? '°C' : (key === 'tds' ? 'ppm' : '');
+      const el = document.getElementById('m-' + key);
+      const trend = document.getElementById('trend-' + key);
+      if (value == null) { el.firstChild.textContent = '— '; continue; }
+      el.firstChild.textContent = Number(value).toFixed(1) + ' ';
+      const previous = data.previous?.[key];
+      let cls='flat', icon='mdi-minus-circle-outline', label='No previous reading';
+      if (previous != null) {
+        const diff = Number(value) - Number(previous);
+        if (Math.abs(diff) < 0.00001) { icon='mdi-trending-neutral'; label='No change'; }
+        else if (diff > 0) { cls='up'; icon='mdi-trending-up'; label='+'+diff.toFixed(1)+' '+unit+' vs previous'; }
+        else { cls='down'; icon='mdi-trending-down'; label=diff.toFixed(1)+' '+unit+' vs previous'; }
+      }
+      trend.className='trend '+cls;
+      trend.innerHTML='<i class="mdi '+icon+'" aria-hidden="true"></i> ';
+      trend.append(document.createTextNode(label));
+    }
+  } catch (e) { console.warn('Readings refresh failed', e); }
+}
+setInterval(refreshMetrics,15000);
+</script>{% endblock %}

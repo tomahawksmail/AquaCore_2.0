@@ -1,0 +1,1 @@
+{% extends 'base.html' %}{% block content %}<div class="eyebrow">AUDIT TRAIL</div><h1>Recent activity</h1><section class="card scroll"><table><thead><tr><th>Time</th><th>User</th><th>Event</th></tr></thead><tbody>{% for r in rows %}<tr><td>{{r.Datetime}}</td><td>{{r.User}}</td><td>{{r.Event}}</td></tr>{% endfor %}</tbody></table></section>{% endblock %}

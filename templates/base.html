@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#081321">
+  <title>{% block title %}AquaCore{% endblock %}</title>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon.png') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/logo.png') }}">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="{{ 'is-login-page' if request.endpoint == 'login' or request.path == '/login' else '' }}">
+  {% if request.path == '/login' %}
+    <main class="login-page-main">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for cat,msg in messages %}<div class="notice {{ cat }} login-notice">{{ msg }}</div>{% endfor %}
+      {% endwith %}
+      {% block content %}{% endblock %}
+    </main>
+  {% else %}
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="logo" href="{{ url_for('home') }}">
+        <img src="{{ url_for('static', filename='img/logo.png') }}" alt="AquaCore logo" class="brand-image">
+        <span>AquaCore <small>Aquarium control panel</small></span>
+      </a>
+      <nav aria-label="Main navigation">
+        <a href="/aquarium" class="{{ 'current' if request.path == '/aquarium' else '' }}"><i class="mdi mdi-view-dashboard-outline" aria-hidden="true"></i> Overview</a>
+        <a href="/options" class="{{ 'current' if request.path == '/options' else '' }}"><i class="mdi mdi-tune-variant" aria-hidden="true"></i> Settings</a>
+        <a href="/core_dashboard" class="{{ 'current' if request.path == '/core_dashboard' else '' }}"><i class="mdi mdi-chip" aria-hidden="true"></i> System</a>
+        <a href="/loging" class="{{ 'current' if request.path == '/loging' else '' }}"><i class="mdi mdi-history" aria-hidden="true"></i> Activity</a>
+      </nav>
+      <div class="sidebar-account">
+        <div class="sidebar-account-name"><i class="mdi mdi-account-circle-outline" aria-hidden="true"></i><span>{{ session.get('user', 'Guest') }}</span></div>
+        <form action="/logout" method="post"><input type="hidden" name="csrf" value="{{ csrf_token() }}"><button type="submit" class="outline small"><i class="mdi mdi-logout" aria-hidden="true"></i> Sign out</button></form>
+      </div>
+    </aside>
+    <main class="main">
+      <header class="top">
+        <a class="mobile-logo" href="/aquarium"><img src="{{ url_for('static', filename='img/logo.png') }}" alt="" class="brand-image"> AquaCore</a>
+        <div class="mobile-account"><span class="mdi mdi-account-circle-outline" aria-hidden="true"></span> {{ session.get('user', 'Guest') }}
+          <form action="/logout" method="post"><input type="hidden" name="csrf" value="{{ csrf_token() }}"><button class="outline small" type="submit" aria-label="Sign out"><i class="mdi mdi-logout"></i></button></form>
+        </div>
+      </header>
+      <div class="content">
+        {% with messages = get_flashed_messages(with_categories=true) %}{% for cat,msg in messages %}<div class="notice {{ cat }}">{{ msg }}</div>{% endfor %}{% endwith %}
+        {{ self.content() }}
+      </div>
+    </main>
+  </div>
+  <nav class="bottom-nav" aria-label="Mobile navigation">
+    <a href="/aquarium" class="{{ 'current' if request.path == '/aquarium' else '' }}"><i class="mdi mdi-view-dashboard-outline" aria-hidden="true"></i><span>Overview</span></a>
+    <a href="/options" class="{{ 'current' if request.path == '/options' else '' }}"><i class="mdi mdi-tune-variant" aria-hidden="true"></i><span>Settings</span></a>
+    <a href="/core_dashboard" class="{{ 'current' if request.path == '/core_dashboard' else '' }}"><i class="mdi mdi-chip" aria-hidden="true"></i><span>System</span></a>
+    <a href="/loging" class="{{ 'current' if request.path == '/loging' else '' }}"><i class="mdi mdi-history" aria-hidden="true"></i><span>Activity</span></a>
+  </nav>
+  {% endif %}
+</body>
+</html>
