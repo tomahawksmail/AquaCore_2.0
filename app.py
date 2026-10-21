@@ -197,8 +197,13 @@ def history():
          GROUP BY FLOOR(UNIX_TIMESTAMP(`Datetime`) / %s)
          ORDER BY time ASC
     """, (seconds, seconds, days, seconds))
+    # Use the existing options row as the source of acceptable ranges.
+    settings = query('SELECT min_temp, max_temp, min_ph, max_ph, tds FROM options LIMIT 1', one=True) or {}
+    limits = {key: (float(settings[key]) if settings.get(key) is not None else None)
+              for key in ('min_temp', 'max_temp', 'min_ph', 'max_ph', 'tds')}
     response = jsonify({
         'period': period,
+        'limits': limits,
         'points': [{'time': r['time'].isoformat() if r['time'] else None,
                     'temp': float(r['temp']) if r['temp'] is not None else None,
                     'ph': float(r['ph']) if r['ph'] is not None else None,

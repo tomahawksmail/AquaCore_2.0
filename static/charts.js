@@ -21,7 +21,7 @@
     return period === '24h' ? d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) :
       d.toLocaleDateString([], {month:'short',day:'numeric'});
   }
-  function draw(field, points, period) {
+  function draw(field, points, period, limits = {}) {
     const target = document.querySelector(`[data-field="${field}"]`);
     target.replaceChildren();
     const rows = points.filter(p => p.time);
@@ -38,9 +38,36 @@
     let low=Math.min(...values), high=Math.max(...values);
     const pad=Math.max((high-low)*0.13, field==='ph'?0.08:field==='temp'?0.3:5);
     low-=pad;high+=pad;
+    const minLimit = field === 'temp' ? limits.min_temp : field === 'ph' ? limits.min_ph : null;
+    const maxLimit = field === 'temp' ? limits.max_temp : field === 'ph' ? limits.max_ph : limits.tds;
+    const hasMin = typeof minLimit === 'number' && Number.isFinite(minLimit);
+    const hasMax = typeof maxLimit === 'number' && Number.isFinite(maxLimit);
+    // Invalid configurations are not presented as safe ranges.
+    const validRange = hasMin && hasMax && minLimit < maxLimit;
+    const validCap = field === 'tds' && hasMax && maxLimit >= 0;
+    if (validRange || validCap) {
+      if (validRange) low = Math.min(low, minLimit - pad * .3);
+      high = Math.max(high, maxLimit + pad * .3);
+      if (validCap) low = Math.min(low, maxLimit - pad * 1.5);
+    }
     const x=t => L+(t-t0)/(t1-t0)*(W-L-R);
     const y=v => T+(high-v)/(high-low)*(H-T-B);
     const svg=el('svg',{viewBox:`0 0 ${W} ${H}`,class:'chart-svg',role:'img', 'aria-label':`${field} history chart; ${valid.length} available intervals`},target);
+    // Draw reference band behind grid lines and sensor data.
+    if (validRange) {
+      el('rect', {x:L, y:y(maxLimit), width:W-L-R, height:y(minLimit)-y(maxLimit), class:'acceptable-zone'}, svg);
+    } else if (validCap) {
+      el('rect', {x:L, y:y(maxLimit), width:W-L-R, height:y(low)-y(maxLimit), class:'acceptable-zone'}, svg);
+    }
+    function limitLine(value, caption) {
+      const py=y(value);
+      el('line',{x1:L,y1:py,x2:W-R,y2:py,class:'limit-line'},svg);
+      el('text',{x:W-R-5,y:Math.max(T+12,py-5),'text-anchor':'end',class:'limit-label'},svg,caption);
+    }
+    if (validRange) {
+      limitLine(minLimit, 'MIN ' + minLimit);
+      limitLine(maxLimit, 'MAX ' + maxLimit);
+    } else if (validCap) limitLine(maxLimit, 'MAX ' + maxLimit + ' ppm');
     for(let i=0;i<=3;i++){
       const val=low+(high-low)*i/3, py=y(val);
       el('line',{x1:L,y1:py,x2:W-R,y2:py,class:'chart-gridline'},svg);
@@ -90,7 +117,7 @@
       const data=await response.json();
       if(current!==period)return;
       if(!data.points.length){message.textContent='No saved measurements for this period.';return;}
-      for(const field of ['temp','ph','tds'])draw(field,data.points,period);
+      for(const field of ['temp','ph','tds'])draw(field,data.points,period,data.limits || {});
       message.hidden=true;grid.hidden=false;
     }catch(e){message.textContent='History unavailable: '+e.message;}
   }
