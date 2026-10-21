@@ -1,30 +1,95 @@
-{% extends 'base.html' %}{% block title %}Settings · AquaCore{% endblock %}{% block content %}
-<div class="heading">
-    <div>
-        <h1>Settings & schedules</h1>
-    </div>
+{% extends 'base.html' %}
+{% block title %}Settings · AquaCore{% endblock %}
+{% block content %}
+<div class="heading settings-heading">
+  <div>
+    <div class="eyebrow">AQUARIUM CONFIGURATION</div>
+    <h1>Settings & schedules</h1>
+    <p class="dim">Water quality targets and daily automation times.</p>
+  </div>
 </div>
-<form method="post"><input type="hidden" name="csrf" value="{{csrf_token()}}">
-    <section class="card"><h2>Water parameters</h2>
-        <div class="form-grid">{% for field,(cast,low,high) in settings.items() %}<label>{{field.replace('_','
-            ')|title}}<input type="number" step="{{'1' if field=='history' else '0.1'}}" min="{{low}}" max="{{high}}"
-                             name="{{field}}" value="{{options[field] if options[field] is not none else ''}}"></label>{%
-            endfor %}
+{% set fields = [
+  ('min_temp', 'Minimum temperature', 'mdi-thermometer-low', '°C', 'Lower acceptable water temperature'),
+  ('max_temp', 'Maximum temperature', 'mdi-thermometer-high', '°C', 'Upper acceptable water temperature'),
+  ('min_ph', 'Minimum pH', 'mdi-water-minus-outline', 'pH', 'Lower acceptable acidity limit'),
+  ('max_ph', 'Maximum pH', 'mdi-water-plus-outline', 'pH', 'Upper acceptable acidity limit'),
+  ('tds', 'Maximum TDS', 'mdi-water-check-outline', 'ppm', 'Upper acceptable dissolved-solids limit')
+] %}
+{% set icons = {
+ 'co2_status':'mdi-molecule-co2', 'o2_status':'mdi-molecule',
+ 'UV_status':'mdi-lightbulb-fluorescent-tube-outline',
+ 'MasterL_status':'mdi-lightbulb-on-outline', 'RedL_status':'mdi-led-on',
+ 'BlueL_status':'mdi-led-on', 'MoonL_status':'mdi-weather-night',
+ 'Projector_status':'mdi-projector'
+} %}
+<form method="post" class="settings-form">
+  <input type="hidden" name="csrf" value="{{csrf_token()}}">
+  <section class="card settings-card">
+    <div class="settings-section-head">
+      <span class="settings-section-icon"><i class="mdi mdi-water-outline" aria-hidden="true"></i></span>
+      <div><h2>Water quality</h2><p>Set the safe monitoring ranges shown on your charts.</p></div>
+    </div>
+    <div class="settings-fields">
+      {% for key, title, icon, unit, description in fields %}
+      {% set cast, low, high = settings[key] %}
+      <label class="settings-field" for="setting-{{key}}">
+        <span class="settings-field-title"><i class="mdi {{icon}}" aria-hidden="true"></i>{{title}}</span>
+        <span class="settings-field-description">{{description}}</span>
+        <span class="settings-input-wrap">
+          <input id="setting-{{key}}" type="number" name="{{key}}" step="0.1"
+                 min="{{low}}" max="{{high}}"
+                 value="{{options[key] if options[key] is not none else ''}}">
+          <span class="settings-unit">{{unit}}</span>
+        </span>
+      </label>
+      {% endfor %}
+    </div>
+    <div class="settings-history">
+      <label class="settings-field" for="setting-history">
+        <span class="settings-field-title"><i class="mdi mdi-history" aria-hidden="true"></i>History retention</span>
+        <span class="settings-field-description">Configured history value (existing AquaCore setting).</span>
+        {% set cast, low, high = settings['history'] %}
+        <span class="settings-input-wrap">
+          <input id="setting-history" type="number" step="1" name="history"
+                 min="{{low}}" max="{{high}}" value="{{options.history if options.history is not none else ''}}">
+          <span class="settings-unit">value</span>
+        </span>
+      </label>
+    </div>
+  </section>
+  <section class="card settings-card">
+    <div class="settings-section-head">
+      <span class="settings-section-icon"><i class="mdi mdi-calendar-clock-outline" aria-hidden="true"></i></span>
+      <div><h2>Equipment schedules</h2><p>Daily ON/OFF times in the Orange Pi's local timezone.</p></div>
+    </div>
+    <div class="settings-schedule-grid">
+    {% for field, label, on, off in devices %}
+      {% if on and off %}
+      <div class="settings-schedule">
+        <div class="settings-schedule-title">
+          <span class="settings-device-icon"><i class="mdi {{icons.get(field, 'mdi-power-plug-outline')}}" aria-hidden="true"></i></span>
+          <h3>{{ label }}</h3>
         </div>
-    </section>
-    <section class="card"><h2>Equipment schedules</h2>
-        <div class="form-grid">{% for field,label,on,off in devices %}{% if on %}
-            <div class="schedule"><h3>{{label}}</h3>
-                <div class="pair"><label>On<input type="time" name="{{on}}"
-                                                  value="{{options[on]|string|truncate(5,True,'') if options[on] is not none else ''}}"></label><label>Off<input
-                        type="time" name="{{off}}"
-                        value="{{options[off]|string|truncate(5,True,'') if options[off] is not none else ''}}"></label>
-                </div>
-            </div>
-            {% endif %}{% endfor %}
+        <div class="pair">
+          <label for="time-{{on}}"><span class="time-label"><i class="mdi mdi-weather-sunset-up" aria-hidden="true"></i> Turn on</span>
+            <input id="time-{{on}}" type="time" name="{{on}}"
+                   value="{{options[on]|string|truncate(5,True,'') if options[on] is not none else ''}}">
+          </label>
+          <label for="time-{{off}}"><span class="time-label"><i class="mdi mdi-weather-sunset-down" aria-hidden="true"></i> Turn off</span>
+            <input id="time-{{off}}" type="time" name="{{off}}"
+                   value="{{options[off]|string|truncate(5,True,'') if options[off] is not none else ''}}">
+          </label>
         </div>
-    </section>
-    {% if session.get('role')==1 %}
-    <button class="primary save">Save settings</button>
-    {% else %}{% endif %}
-</form>{% endblock %}
+      </div>
+      {% endif %}
+    {% endfor %}
+    </div>
+  </section>
+  {% if session.get('role') == 1 %}
+    <div class="settings-actions">
+      <span><i class="mdi mdi-information-outline" aria-hidden="true"></i> Manual overrides remain active until the next scheduled change.</span>
+      <button class="primary save" type="submit"><i class="mdi mdi-content-save-outline" aria-hidden="true"></i> Save settings</button>
+    </div>
+  {% endif %}
+</form>
+{% endblock %}
