@@ -22,16 +22,15 @@ DEVICES = [
  ('co2_status','CO₂','co2_on','co2_off'),
  ('o2_status','Oxygen','o2_on','o2_off'),
  ('UV_status','UV sterilizer','UV_on','UV_off'),
- ('heater_status','Heater',None,None),
  ('MasterL_status','Main light','Master_light_on','Master_light_off'),
  ('RedL_status','Red light','RedL_on','RedL_off'),
  ('BlueL_status','Blue light','BlueL_on','BlueL_off'),
  ('MoonL_status','Moonlight','MoonL_on','MoonL_off'),
  ('Projector_status','Projector','ProjectorL_on','ProjectorL_off'),
 ]
-SETTINGS = {'history':(int,1,720), 'min_temp':(float,0,50), 'max_temp':(float,0,50),
+SETTINGS = {'min_temp':(float,0,50), 'max_temp':(float,0,50),
  'min_ph':(float,0,14), 'max_ph':(float,0,14), 'tds':(float,0,10000),
- 'heater_temp':(float,0,50)}
+ 'history':(int,1,720)}
 TIME_FIELDS = [f for _,_,a,b in DEVICES for f in (a,b) if f]
 
 def db():
@@ -120,7 +119,7 @@ def equipment_status():
     overrides=query('SELECT device, until_at FROM manual_overrides WHERE until_at > NOW()')
     manual={r['device']:r['until_at'].isoformat(sep=' ') for r in overrides}
     data={key: {'enabled':row.get(key)=='checked',
-                'mode':'Manual' if key in manual else ('Thermostat' if key=='heater_status' else 'Schedule'),
+                'mode':'Manual' if key in manual else 'Schedule',
                 'until':manual.get(key)} for key in CONTROL_FIELDS}
     response=jsonify(data); response.headers['Cache-Control']='no-store'
     return response
@@ -133,8 +132,6 @@ def set_equipment(field):
     payload=request.get_json(silent=True)
     if not isinstance(payload,dict) or type(payload.get('enabled')) is not bool:
         abort(400,description='Expected JSON: {"enabled": true/false}')
-    if field == 'heater_status':
-        abort(409,description='Heater is thermostat-controlled, not clock-scheduled. Manual override disabled for safety.')
     desired='checked' if payload['enabled'] else 'unchecked'
     with db() as con:
         try:

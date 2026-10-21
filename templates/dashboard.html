@@ -27,8 +27,8 @@
     {% endfor %}
 </section>
 <section class="equipment-sections" aria-label="Equipment controls">
-    {% set equipment = devices[:4] %}
-    {% set lights = devices[4:] %}
+    {% set equipment = devices[:3] %}
+    {% set lights = devices[3:] %}
     {% for heading, icon, entries in [('Equipment', 'mdi-cog-outline', equipment), ('Lighting',
     'mdi-lightbulb-group-outline', lights)] %}
     <section class="card controls-card">
@@ -42,11 +42,11 @@
             {% set active = statuses.get(field) == 'checked' %}
             <div class="control-row" data-control="{{ field }}">
                 <div class="control-description"><strong>{{ label }}</strong><span class="control-state"
-                                                                                   id="state-{{ field }}">{{ ('Manual until ' ~ manual[field].strftime('%H:%M')) if field in manual else ('Thermostat · ' if field == 'heater_status' else 'Scheduled · ') ~ ('ON' if active else 'OFF') }}</span>
+                                                                                   id="state-{{ field }}">{{ ('Manual until ' ~ manual[field].strftime('%H:%M')) if field in manual else 'Scheduled · ' ~ ('ON' if active else 'OFF') }}</span>
                 </div>
                 <label class="ios-switch" aria-label="{{ label }} manual on/off">
                     <input type="checkbox" data-field="{{ field }}" {% if active %}checked{% endif %} {% if session.get('role')|int
-                    != 1 or field == 'heater_status' %}disabled{% endif %}>
+                    != 1 %}disabled{% endif %}>
                     <span class="switch-track" aria-hidden="true"></span>
                 </label>
             </div>
@@ -56,7 +56,7 @@
     {% endfor %}
 </section>
 <p class="control-disclaimer"><i class="mdi mdi-alert-circle-outline" aria-hidden="true"></i> Switches temporarily
-    override scheduled requests until the next ON/OFF event. Heater remains thermostat-controlled. Software flags are
+    override scheduled requests until the next ON/OFF event. Software flags are
     not verified relay feedback or safety interlocks.</p>
 <script>window.AQUACORE_CSRF = {{ csrf_token()|tojson }};</script>
 <script defer src="{{ url_for('static', filename='controls.js') }}"></script>

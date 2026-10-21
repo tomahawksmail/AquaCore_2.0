@@ -3,7 +3,7 @@ function showState(field, data) {
   const el=document.getElementById('state-'+field);
   if(!el) return;
   const label=data.mode==='Manual' ? 'Manual until '+(data.until?.slice(11,16)||'?') :
-    (data.mode==='Thermostat' ? 'Thermostat' : 'Scheduled')+' · '+(data.enabled?'ON':'OFF');
+    'Scheduled · '+(data.enabled?'ON':'OFF');
   el.textContent=label;
 }
 document.querySelectorAll('input[data-field]').forEach(input=>{
@@ -19,7 +19,7 @@ document.querySelectorAll('input[data-field]').forEach(input=>{
       if(!r.ok){let msg='HTTP '+r.status;try{const err=await r.json();msg=err.error||err.description||msg;}catch{}throw new Error(msg)}
       const d=await r.json();input.checked=d.enabled;showState(field,d);
     }catch(err){input.checked=!desired;label.textContent='Not saved: '+err.message;console.error(err)}
-    finally{row.dataset.pending='false';if(field!=='heater_status' && input.dataset.readonly!=='true')input.disabled=false}
+    finally{row.dataset.pending='false';if(input.dataset.readonly!=='true')input.disabled=false}
   });
 });
 async function refreshEquipment(){
