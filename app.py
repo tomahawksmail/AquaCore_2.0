@@ -256,8 +256,22 @@ def logs():
 @app.get('/core_dashboard')
 @logged_in
 def core():
-    latest=query('SELECT * FROM psutil ORDER BY Id DESC LIMIT 1',one=True)
+    latest=query('SELECT Id,RAM_percent,cpu_thermal_cur,disk_usage_percent,RAM_available FROM psutil ORDER BY Id DESC LIMIT 1',one=True)
     return render_template('core.html',row=latest)
+
+@app.get('/api/system/history')
+@logged_in
+def system_history():
+    """Recent system measurements in chronological sample order (bounded to 120)."""
+    rows=query('SELECT Id,RAM_percent,cpu_thermal_cur,disk_usage_percent,RAM_available '
+               'FROM psutil ORDER BY Id DESC LIMIT 120')
+    result=[]
+    for row in reversed(rows):
+        result.append({key: (float(row[key]) if row.get(key) is not None else None)
+                       for key in ('RAM_percent','cpu_thermal_cur','disk_usage_percent','RAM_available')})
+    response=jsonify({'points':result})
+    response.headers['Cache-Control']='no-store'
+    return response
 
 @app.cli.command('set-password')
 def set_password():
