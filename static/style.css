@@ -1064,3 +1064,20 @@ status trends preserved */
 .settings-field:focus-within,.settings-schedule:focus-within{border-color:#4bdcc5}
 @media(max-width:850px){.settings-fields,.settings-schedule-grid{grid-template-columns:1fr}.settings-history .settings-field{max-width:none}}
 @media(max-width:700px){.settings-card{padding:16px}.settings-section-head{gap:11px}.settings-section-head h2{font-size:19px}.settings-section-icon{height:42px;width:42px}.settings-actions{align-items:stretch}.settings-actions .save{width:100%;justify-content:center}}
+/* Settings: schedule and manual switch in one row */
+.device-group{margin-top:22px}
+.device-group-heading{display:flex;align-items:center;gap:9px;color:#dbedf6;font-size:17px;margin:0 0 12px}
+.device-group-heading .mdi{color:#5eead4;font-size:23px}
+.device-rows{display:grid;gap:10px}
+.device-settings-row{display:grid;grid-template-columns:minmax(160px,1.5fr) minmax(130px,1fr) minmax(130px,1fr) 95px;gap:16px;align-items:center;min-height:84px}
+.device-settings-name{display:flex;align-items:center;gap:12px;min-width:0}
+.device-settings-name>div{display:grid;gap:5px;min-width:0}
+.device-settings-name strong{font-size:15px}
+.device-time{min-width:0;font-size:12px;color:#96b9c9}
+.device-time span,.device-manual>span{display:block;margin-bottom:5px}
+.device-time input{margin:0;padding:10px 11px;color-scheme:dark;font-size:14px}
+.device-manual{text-align:center;justify-self:center;color:#96b9c9;font-size:12px}
+.device-manual .ios-switch{margin:auto}
+@media(max-width:950px){.device-settings-row{grid-template-columns:minmax(140px,1fr) minmax(115px,1fr) minmax(115px,1fr) 80px;gap:10px;padding:12px}}
+@media(max-width:700px){.device-settings-row{grid-template-columns:1fr 1fr auto;gap:12px}.device-settings-name{grid-column:1/-1}.device-manual{grid-column:3;grid-row:2}.device-time{min-width:0}.device-time input{width:100%}}
+@media(max-width:380px){.device-settings-row{grid-template-columns:1fr 1fr}.device-manual{grid-column:1/-1;grid-row:auto;justify-self:start;display:flex;align-items:center;gap:12px}.device-manual>span{margin:0}}
