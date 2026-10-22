@@ -4,12 +4,12 @@
         <h1>LIVE MONITORING</h1>
     </div>
 </div>
-<section class="metrics">
+<section class="metrics live-spark-grid">
     {% for field,label,unit in metrics %}
     {% set current = latest[field] if latest and latest[field] is not none else none %}
     {% set prior = previous[field] if previous and previous[field] is not none else none %}
     {% set delta = (current - prior) if current is not none and prior is not none else none %}
-    <article class="card metric" id="card-{{ field }}">
+    <article class="card metric live-spark-card" id="card-{{ field }}">
         <div class="metric-name"><i
                 class="mdi {{ {'temp':'mdi-thermometer','ph':'mdi-water-outline','tds':'mdi-water-check-outline'}.get(field, 'mdi-chart-line') }}"
                 aria-hidden="true"></i> {{ label }}
@@ -23,6 +23,7 @@
       {% elif delta < 0 %}<i class="mdi mdi-trending-down"></i> {{ '%.1f'|format(delta) }} {{ unit }} vs previous
       {% else %}<i class="mdi mdi-trending-neutral"></i> No change{% endif %}
     </span>
+        <div class="live-spark-chart" data-live-field="{{field}}" aria-label="{{label}} recent trend"></div>
     </article>
     {% endfor %}
 </section>
@@ -58,6 +59,7 @@
         Missing sensor values appear as gaps; charts use time-bucket averages.</p>
 </section>
 <script defer src="{{ url_for('static', filename='charts.js') }}"></script>
+<script defer src="{{ url_for('static', filename='live-spark.js', v='20261022-live-spark') }}"></script>
 <script>
     async function refreshMetrics() {
       try {
