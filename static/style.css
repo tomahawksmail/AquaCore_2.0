@@ -1174,3 +1174,9 @@ status trends preserved */
 .history-card .chart-title>div:first-child{min-width:0}
 .history-card .history-range{margin-left:auto;width:auto;flex:0 0 auto;justify-content:flex-end}
 @media(max-width:700px){.history-card .chart-title{align-items:flex-start}.history-card .history-range{margin-left:auto;width:auto;justify-content:flex-end}}
+
+/* Deployed Git revision at bottom of sidebar */
+.sidebar-version{margin-top:auto;padding:0 9px 13px;display:flex;align-items:center;gap:7px;color:#7799ac;font-size:11px;white-space:nowrap}
+.sidebar-version .mdi{color:#56cfb8;font-size:16px}
+.sidebar-version code{margin-left:auto;color:#a5c8d8;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11px}
+.sidebar-version+.sidebar-account{margin-top:0}
