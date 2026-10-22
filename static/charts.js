@@ -18,7 +18,7 @@
     if (!iso) return '';
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return String(iso).slice(0, 16);
-    return period === '24h' ? d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) :
+    return period === '24h' ? d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',hour12:false}) :
       d.toLocaleDateString([], {month:'short',day:'numeric'});
   }
   function draw(field, points, period, limits = {}) {
