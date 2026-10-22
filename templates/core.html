@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}System · AquaCore{% endblock %}
 {% block content %}
-<div class="heading system-heading"><div><div class="eyebrow">DEVICE HEALTH</div><h1>System metrics</h1></div></div>
+<div class="heading system-heading"><div><h1>System metrics</h1></div></div>
 {% set items = [('RAM_percent','RAM usage','mdi-memory','%',1),('cpu_thermal_cur','CPU temperature','mdi-thermometer','°C',1),('disk_usage_percent','Disk usage','mdi-harddisk','%',1),('RAM_available','Available RAM','mdi-memory','MB',0)] %}
 <section class="system-strip-grid" aria-label="Current system metrics and trends">
 {% for field,label,icon,unit,precision in items %}
