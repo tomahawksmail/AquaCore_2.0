@@ -16,7 +16,7 @@
       const line='M '+points.map(fixed).join(' L ');
       const first=points[0],last=points[points.length-1];
       const area=line+' L '+last[0].toFixed(2)+' '+B+' L '+first[0].toFixed(2)+' '+B+' Z';
-      return '<path d="'+area+'" fill="'+color+'" opacity=".13"/><path d="'+line+'" fill="none" stroke="'+color+'" stroke-width="2.6" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round"/>';
+      return '<path d="'+area+'" fill="'+color+'" opacity=".13"/><path d="'+line+'" fill="none" stroke="'+color+'" stroke-width="1.1" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round"/>';
     }).join('');
     el.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" aria-hidden="true">'+svg+'</svg>';
   }
