@@ -8,7 +8,7 @@
   <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon.png') }}">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/logo.png') }}">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='20261022-history-right') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='20261022-last-commit') }}">
 </head>
 <body class="{{ 'is-login-page' if request.endpoint == 'login' or request.path == '/login' else '' }}">
   {% if request.path == '/login' %}
@@ -31,6 +31,7 @@
         <a href="/core_dashboard" class="{{ 'current' if request.path == '/core_dashboard' else '' }}"><i class="mdi mdi-chip" aria-hidden="true"></i> System</a>
         <a href="/loging" class="{{ 'current' if request.path == '/loging' else '' }}"><i class="mdi mdi-history" aria-hidden="true"></i> Activity</a>
       </nav>
+      <div class="sidebar-version"><i class="mdi mdi-source-commit" aria-hidden="true"></i><span>Last commit</span><code>{{ deployed_commit }}</code></div>
       <div class="sidebar-account">
         <div class="sidebar-account-name"><i class="mdi mdi-account-circle-outline" aria-hidden="true"></i><span>{{ session.get('user', 'Guest') }}</span></div>
         <form action="/logout" method="post"><input type="hidden" name="csrf" value="{{ csrf_token() }}"><button type="submit" class="outline small"><i class="mdi mdi-logout" aria-hidden="true"></i> Sign out</button></form>
