@@ -30,7 +30,7 @@
       const empty = document.createElement('p'); empty.className = 'dim';
       empty.textContent = 'No measurements in this period.'; target.appendChild(empty); return;
     }
-    const W=560,H=222,L=49,R=14,T=16,B=34;
+    const W=Math.max(560,Math.round(target.getBoundingClientRect().width||560)),H=222,L=49,R=14,T=16,B=34;
     const times=rows.map(p=>new Date(p.time).getTime());
     let t0=Math.min(...times), t1=Math.max(...times);
     if(t0===t1){t0-=3600000;t1+=3600000;}
