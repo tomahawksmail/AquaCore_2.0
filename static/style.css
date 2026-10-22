@@ -1180,3 +1180,7 @@ status trends preserved */
 .sidebar-version .mdi{color:#56cfb8;font-size:16px}
 .sidebar-version code{margin-left:auto;color:#a5c8d8;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11px}
 .sidebar-version+.sidebar-account{margin-top:0}
+
+/* Compact time-axis labels and interval count on historical charts */
+.history-card .chart-svg text{font-size:8px}
+.history-card .chart-tooltip{font-size:10px;min-height:14px;margin-top:0}
