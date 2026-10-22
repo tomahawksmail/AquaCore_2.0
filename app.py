@@ -1,6 +1,7 @@
 """AquaCore classic-schema compatible web UI. Hardware logic remains external."""
 import os
 import secrets
+import subprocess
 from datetime import datetime, timedelta
 from functools import wraps
 
@@ -11,8 +12,20 @@ from dotenv import load_dotenv
 from scheduler import next_transition, scheduled_state, SCHEDULE_MAP
 
 load_dotenv()
+def local_commit():
+    """Show the deployed checkout's commit, not GitHub's newest remote commit."""
+    try:
+        return subprocess.check_output(
+            ['git', 'rev-parse', '--short=7', 'HEAD'],
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+            stderr=subprocess.DEVNULL, timeout=2, text=True
+        ).strip()
+    except (OSError, subprocess.SubprocessError):
+        return os.getenv('AQUACORE_COMMIT', 'Unavailable')
+
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY') or secrets.token_hex(32)
+app.jinja_env.globals['deployed_commit'] = local_commit()
 app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax', MAX_CONTENT_LENGTH=16384)
 if os.environ.get('COOKIE_SECURE', 'false').lower() == 'true':
     app.config['SESSION_COOKIE_SECURE'] = True
