@@ -8,7 +8,7 @@
   <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon.png') }}">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/logo.png') }}">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='20261022-system-grid') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='20261022-sidebar-logo') }}">
 </head>
 <body class="{{ 'is-login-page' if request.endpoint == 'login' or request.path == '/login' else '' }}">
   {% if request.path == '/login' %}
@@ -21,9 +21,9 @@
   {% else %}
   <div class="shell">
     <aside class="sidebar">
-      <a class="logo" href="{{ url_for('home') }}">
-        <img src="{{ url_for('static', filename='img/logo.png') }}" alt="AquaCore logo" class="brand-image">
+      <a class="logo sidebar-brand" href="{{ url_for('home') }}">
         <span>AquaCore <small>Aquarium control panel</small></span>
+        <img src="{{ url_for('static', filename='img/logo.png') }}" alt="AquaCore logo" class="brand-image">
       </a>
       <nav aria-label="Main navigation">
         <a href="/aquarium" class="{{ 'current' if request.path == '/aquarium' else '' }}"><i class="mdi mdi-view-dashboard-outline" aria-hidden="true"></i> Dashboard</a>
