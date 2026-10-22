@@ -241,7 +241,11 @@ def options():
             mutate(sql,tuple(changes.values()))
             flash('Settings saved. Existing hardware automation will read these values.', 'success')
         return redirect(url_for('options'))
-    return render_template('options.html', options=current,devices=DEVICES,settings=SETTINGS)
+    statuses=query('SELECT * FROM `status` LIMIT 1',one=True) or {}
+    overrides=query('SELECT device,until_at FROM manual_overrides WHERE until_at > NOW()')
+    manual={r['device']:r['until_at'] for r in overrides}
+    return render_template('options.html', options=current,devices=DEVICES,settings=SETTINGS,
+                           statuses=statuses,manual=manual)
 
 @app.get('/loging')
 @logged_in
