@@ -26,40 +26,6 @@
     </article>
     {% endfor %}
 </section>
-<section class="equipment-sections" aria-label="Equipment controls">
-    {% set equipment = devices[:3] %}
-    {% set lights = devices[3:] %}
-    {% for heading, icon, entries in [('Equipment', 'mdi-cog-outline', equipment), ('Lighting',
-    'mdi-lightbulb-group-outline', lights)] %}
-    <section class="card controls-card">
-        <div class="section-title controls-heading">
-            <div>
-                <div class="eyebrow">SCHEDULE & MANUAL OVERRIDES</div>
-                <h2><i class="mdi {{ icon }}" aria-hidden="true"></i> {{ heading }}</h2></div>
-        </div>
-        <div class="control-list">
-            {% for field, label, on, off in entries %}
-            {% set active = statuses.get(field) == 'checked' %}
-            <div class="control-row" data-control="{{ field }}">
-                <div class="control-description"><strong>{{ label }}</strong><span class="control-state"
-                                                                                   id="state-{{ field }}">{{ ('Manual until ' ~ manual[field].strftime('%H:%M')) if field in manual else 'Scheduled · ' ~ ('ON' if active else 'OFF') }}</span>
-                </div>
-                <label class="ios-switch" aria-label="{{ label }} manual on/off">
-                    <input type="checkbox" data-field="{{ field }}" {% if active %}checked{% endif %} {% if session.get('role')|int
-                    != 1 %}disabled{% endif %}>
-                    <span class="switch-track" aria-hidden="true"></span>
-                </label>
-            </div>
-            {% endfor %}
-        </div>
-    </section>
-    {% endfor %}
-</section>
-<p class="control-disclaimer"><i class="mdi mdi-alert-circle-outline" aria-hidden="true"></i> Switches temporarily
-    override scheduled requests until the next ON/OFF event. Software flags are
-    not verified relay feedback or safety interlocks.</p>
-<script>window.AQUACORE_CSRF = {{ csrf_token()|tojson }};</script>
-<script defer src="{{ url_for('static', filename='controls.js') }}"></script>
 <section class="card history-card" aria-label="Measurement history">
     <div class="section-title chart-title">
         <div>
