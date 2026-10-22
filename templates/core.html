@@ -1,1 +1,37 @@
-{% extends 'base.html' %}{% block content %}<div class="eyebrow">DEVICE HEALTH</div><h1>System metrics</h1><p>Most recent measurements from the original <code>psutil</code> table.</p><section class="metrics">{% for field,name in [('RAM_percent','RAM usage'),('cpu_thermal_cur','CPU °C'),('disk_usage_percent','Disk usage'),('RAM_available','RAM available MB')] %}<article class="card metric"><div class="metric-name">{{name}}</div><strong>{{row[field] if row and row[field] is not none else '—'}}</strong></article>{% endfor %}</section>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}System · AquaCore{% endblock %}
+{% block content %}
+<div class="heading system-heading">
+  <div>
+    <div class="eyebrow">DEVICE HEALTH</div>
+    <h1>System metrics</h1>
+    <p class="dim">Current Orange Pi readings and trends from MariaDB.</p>
+  </div>
+  <span class="system-live"><i class="mdi mdi-chart-timeline-variant" aria-hidden="true"></i> Recent samples</span>
+</div>
+{% set items = [
+  ('RAM_percent','RAM usage','mdi-memory','%',1),
+  ('cpu_thermal_cur','CPU temperature','mdi-thermometer','°C',1),
+  ('disk_usage_percent','Disk usage','mdi-harddisk','%',1),
+  ('RAM_available','Available RAM','mdi-memory','MB',0)
+] %}
+<div class="system-chart-grid">
+{% for field,label,icon,unit,precision in items %}
+  <section class="card system-metric-card">
+    <div class="system-panel-head">
+      <span class="system-panel-icon"><i class="mdi {{icon}}" aria-hidden="true"></i></span>
+      <h2>{{label}}</h2>
+    </div>
+    <div class="system-value" id="system-value-{{field}}">
+      {% if row and row[field] is not none %}{{('%.1f' if precision else '%.0f')|format(row[field]|float)}}{% else %}—{% endif %}
+      <span>{{unit}}</span>
+    </div>
+    <div class="system-chart" data-system-field="{{field}}" role="img" aria-label="Recent {{label}} history">
+      <span class="dim">Loading history…</span>
+    </div>
+    <div class="system-chart-caption">Most recent 120 stored samples</div>
+  </section>
+{% endfor %}
+</div>
+<script defer src="{{url_for('static',filename='system.js')}}"></script>
+{% endblock %}
