@@ -1168,3 +1168,9 @@ status trends preserved */
 .history-card #chart-grid .chart-canvas svg{display:block;width:100%;max-width:none;height:auto}
 .history-card #chart-grid .chart-svg .line{stroke-width:1.2}
 @media(max-width:700px){.history-card #chart-grid{gap:12px}.history-card #chart-grid > .chart-panel{padding:12px}}
+
+/* History period selector: align to the upper right */
+.history-card .chart-title{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;width:100%;margin-bottom:15px}
+.history-card .chart-title>div:first-child{min-width:0}
+.history-card .history-range{margin-left:auto;width:auto;flex:0 0 auto;justify-content:flex-end}
+@media(max-width:700px){.history-card .chart-title{align-items:flex-start}.history-card .history-range{margin-left:auto;width:auto;justify-content:flex-end}}
