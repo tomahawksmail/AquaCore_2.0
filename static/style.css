@@ -1125,3 +1125,14 @@ status trends preserved */
   }
   .sidebar nav {margin-top:26px;}
 }
+
+/* Full-width system metric tiles with low-profile sparklines */
+.system-strip-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:18px;width:100%}
+.system-strip-card{position:relative;overflow:hidden;background:#112337;border:1px solid #234456;border-radius:17px;min-height:250px;padding:25px 28px 0;display:flex;flex-direction:column;align-items:center;text-align:center}
+.system-strip-label{display:flex;align-items:center;justify-content:center;gap:10px;color:#9ebcce;font-size:16px;letter-spacing:.07em;font-weight:750;text-transform:uppercase}
+.system-strip-label .mdi{font-size:24px;color:#69e1ce}
+.system-strip-value{font-size:clamp(55px,6vw,85px);font-weight:800;line-height:1.1;letter-spacing:-.055em;color:#e6effe;font-variant-numeric:tabular-nums;margin:15px 0 9px}
+.system-strip-value small{font-size:clamp(17px,1.6vw,23px);letter-spacing:0;color:#91bbd0;font-weight:600;margin-left:9px}
+.system-strip-chart{width:calc(100% + 56px);margin:auto -28px 0;min-height:105px;height:105px;overflow:hidden}
+.system-strip-chart svg{width:100%;height:100%;display:block}
+@media(max-width:700px){.system-strip-card{min-height:220px;padding:20px 16px 0}.system-strip-value{font-size:clamp(48px,12vw,72px)}.system-strip-chart{width:calc(100% + 32px);margin-left:-16px;margin-right:-16px;height:85px;min-height:85px}}
