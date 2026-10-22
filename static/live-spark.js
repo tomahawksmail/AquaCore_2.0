@@ -16,7 +16,7 @@
    for(const part of segments){
       const line='M '+part.map(f).join(' L ');
       const first=part[0],last=part[part.length-1];
-      content+='<path d="'+line+' L '+last[0].toFixed(2)+' '+B+' L '+first[0].toFixed(2)+' '+B+' Z" fill="'+color+'" opacity=".14"/><path d="'+line+'" fill="none" stroke="'+color+'" stroke-width="2.5" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round"/>';
+      content+='<path d="'+line+' L '+last[0].toFixed(2)+' '+B+' L '+first[0].toFixed(2)+' '+B+' Z" fill="'+color+'" opacity=".14"/><path d="'+line+'" fill="none" stroke="'+color+'" stroke-width="1.1" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round"/>';
    }
    target.innerHTML='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" aria-hidden="true">'+content+'</svg>';
  }
