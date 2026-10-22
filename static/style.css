@@ -1158,3 +1158,13 @@ status trends preserved */
 .metrics.live-spark-grid .live-spark-chart{width:calc(100% + 24px);margin-left:-12px;margin-right:-12px}
 @media(max-width:900px){.metrics.live-spark-grid{gap:8px}.metrics.live-spark-grid .live-spark-card{padding:14px 7px 0}.metrics.live-spark-grid .live-spark-card > strong{font-size:clamp(28px,4vw,45px)}.metrics.live-spark-grid .live-spark-chart{width:calc(100% + 14px);margin-left:-7px;margin-right:-7px}}
 @media(max-width:650px){.metrics.live-spark-grid{grid-template-columns:1fr}.metrics.live-spark-grid .live-spark-card{min-height:205px;padding:16px 12px 0}.metrics.live-spark-grid .live-spark-card > strong{font-size:clamp(48px,11vw,72px)}.metrics.live-spark-grid .live-spark-chart{width:calc(100% + 24px);margin-left:-12px;margin-right:-12px}}
+
+/* History charts: use entire width of the monitoring section */
+.history-card{display:block;width:100%;min-width:0}
+.history-card #chart-grid{display:grid;grid-template-columns:minmax(0,1fr);width:100%;gap:18px;align-items:stretch;justify-items:stretch}
+.history-card #chart-grid[hidden]{display:none}
+.history-card #chart-grid > .chart-panel{display:block;width:100%;max-width:none;min-width:0;justify-self:stretch;box-sizing:border-box;padding:20px}
+.history-card #chart-grid .chart-canvas{display:block;width:100%;min-width:0;max-width:none;min-height:0}
+.history-card #chart-grid .chart-canvas svg{display:block;width:100%;max-width:none;height:auto}
+.history-card #chart-grid .chart-svg .line{stroke-width:1.2}
+@media(max-width:700px){.history-card #chart-grid{gap:12px}.history-card #chart-grid > .chart-panel{padding:12px}}
