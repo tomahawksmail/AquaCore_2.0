@@ -57,7 +57,7 @@
     <p class="dim chart-footnote">Shaded teal zones show configured acceptable limits. Dashed lines mark the boundaries.
         Missing sensor values appear as gaps; charts use time-bucket averages.</p>
 </section>
-<script defer src="{{ url_for('static', filename='charts.js') }}"></script>
+<script defer src="{{ url_for('static', filename='charts.js', v='20261022-small-axis') }}"></script>
 <script defer src="{{ url_for('static', filename='live-spark.js', v='20261022-thin-spark') }}"></script>
 <script>
     async function refreshMetrics() {
