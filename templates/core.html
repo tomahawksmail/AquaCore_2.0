@@ -38,6 +38,34 @@
     <div class="system-core-chart system-temperature-chart" id="cpu-temp-chart" aria-label="Recent CPU temperature readings"></div>
   </article>
 </section>
+<section class="system-cpu-grid system-temperature-grid" aria-label="DDR temperature current value and history">
+  <article class="system-cpu-panel">
+    <div class="system-cpu-heading"><i class="mdi mdi-thermometer" aria-hidden="true"></i> DDR Temperature</div>
+    <div class="system-cpu-value" id="ddr-temp-value">{% if row and row.ddr_thermal_cur is not none %}{{row.ddr_thermal_cur}}{% else %}—{% endif %}<small>°C</small></div>
+  </article>
+  <article class="system-cpu-panel">
+    <div class="system-cpu-heading"><i class="mdi mdi-chart-line" aria-hidden="true"></i> DDR Temperature History</div>
+    <div class="system-core-chart system-temperature-chart" id="ddr-temp-chart" aria-label="Recent DDR temperature readings"></div>
+  </article>
+</section>
+<section class="system-network-grid" aria-label="Network traffic and error counters">
+{% set network_items = [
+  ('net_bytes_sent','net_bytes_recv','Network traffic','mdi-swap-horizontal','bytes'),
+  ('net_packets_sent','net_packets_recv','Packets','mdi-arrow-left-right','packets'),
+  ('net_errin','net_errout','Errors','mdi-alert-circle-outline','errors'),
+  ('net_dropin','net_dropout','Dropped','mdi-close-circle-outline','drops')
+] %}
+{% for sent,received,label,icon,unit in network_items %}
+<article class="system-network-card">
+  <div class="system-cpu-heading"><i class="mdi {{icon}}" aria-hidden="true"></i> {{label}}</div>
+  <div class="system-network-pair">
+    <div><span class="system-network-direction"><i class="mdi mdi-arrow-up"></i> Sent / Out</span><strong id="network-{{sent}}">{{row[sent] if row and row[sent] is not none else '—'}}</strong></div>
+    <div><span class="system-network-direction"><i class="mdi mdi-arrow-down"></i> Received / In</span><strong id="network-{{received}}">{{row[received] if row and row[received] is not none else '—'}}</strong></div>
+  </div>
+  <span class="system-network-unit">Cumulative {{unit}} counters</span>
+</article>
+{% endfor %}
+</section>
 <section class="system-strip-grid" aria-label="Current system metrics and trends">
 {% for field,label,icon,unit,precision in items %}
   <article class="system-strip-card">
@@ -47,5 +75,5 @@
   </article>
 {% endfor %}
 </section>
-<script defer src="{{url_for('static',filename='system.js',v='20261023-axis-markers-v2')}}"></script>
+<script defer src="{{url_for('static',filename='system.js',v='20261023-ddr-net-v1')}}"></script>
 {% endblock %}
