@@ -8,7 +8,7 @@
   <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon.png') }}">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/logo.png') }}">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='20261023-tds-range') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='20261023-status3s') }}">
 </head>
 <body class="{{ 'is-login-page' if request.endpoint == 'login' or request.path == '/login' else '' }}">
   {% if request.path == '/login' %}
@@ -31,7 +31,7 @@
         <a href="/core_dashboard" class="{{ 'current' if request.path == '/core_dashboard' else '' }}"><i class="mdi mdi-chip" aria-hidden="true"></i> System</a>
         <a href="/loging" class="{{ 'current' if request.path == '/loging' else '' }}"><i class="mdi mdi-history" aria-hidden="true"></i> Activity</a>
       </nav>
-      {% if request.path == '/options' %}<div class="sidebar-save-status settings-autosave-info" aria-live="polite" id="settings-save-status"><i class="mdi mdi-cloud-check-outline" aria-hidden="true"></i><span>Changes save automatically</span></div>{% endif %}
+      {% if request.path == '/options' %}<div class="sidebar-save-status settings-autosave-info" aria-live="polite" id="settings-save-status" data-state="idle" role="status"></div>{% endif %}
       <div class="sidebar-version"><i class="mdi mdi-source-commit" aria-hidden="true"></i><span>Last commit</span><code>{{ deployed_commit }}</code></div>
       <div class="sidebar-account">
         <div class="sidebar-account-name"><i class="mdi mdi-account-circle-outline" aria-hidden="true"></i><span>{{ session.get('user', 'Guest') }}</span></div>
