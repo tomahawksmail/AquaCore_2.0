@@ -1237,3 +1237,7 @@ status trends preserved */
 .sidebar-save-status.settings-autosave-info[data-state="saving"]{color:#9bc7e3}
 .sidebar-save-status+.sidebar-version{margin-top:auto}
 @media(max-width:700px){.sidebar-save-status.settings-autosave-info{display:none}}
+
+/* Keep save notification and commit info together at sidebar bottom */
+.sidebar-save-status.settings-autosave-info{margin-top:auto}
+.sidebar-save-status+.sidebar-version{margin-top:0}
