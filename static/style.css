@@ -1184,3 +1184,10 @@ status trends preserved */
 /* Compact time-axis labels and interval count on historical charts */
 .history-card .chart-svg text{font-size:8px}
 .history-card .chart-tooltip{font-size:10px;min-height:14px;margin-top:0}
+
+/* Inline save confirmation for field-by-field settings autosave */
+.settings-autosave-info{display:flex;align-items:center;gap:8px;color:#9bb8ca;font-size:13px;margin:0 0 20px 2px;min-height:25px}
+.settings-autosave-info .mdi{font-size:18px;color:#5eead4}
+.settings-autosave-info[data-state="saved"]{color:#69e5c6}
+.settings-autosave-info[data-state="saving"]{color:#9bc7e3}
+.settings-autosave-info[data-state="error"]{color:#ffab9f}
