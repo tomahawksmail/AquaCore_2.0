@@ -1318,3 +1318,6 @@ status trends preserved */
 .system-disk-grid{margin-top:0}
 .system-disk-grid .system-network-card{min-height:162px}
 .system-disk-grid .system-network-pair strong{font-size:clamp(17px,1.6vw,27px);overflow-wrap:anywhere}
+
+.system-disk-grid .system-disk-values{grid-template-columns:repeat(2,minmax(0,1fr));row-gap:13px}
+.system-disk-grid .system-network-direction{font-size:11px}
