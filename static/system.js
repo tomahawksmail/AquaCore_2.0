@@ -124,7 +124,7 @@
         el.textContent=latest==null?'—':new Intl.NumberFormat('en-US',{notation:'compact',maximumFractionDigits:1}).format(Number(latest));
         if(latest!=null)el.title=Number(latest).toLocaleString('en-US');
       }
-      const diskFields=['disk_read_count','disk_write_count','disk_read_bytes','disk_write_bytes','disk_read_time','disk_write_time','disk_busy_time','disk_usage_total','disk_usage_used','disk_usage_free'];
+      const diskFields=['disk_read_count','disk_write_count','disk_read_bytes','disk_write_bytes','disk_read_time','disk_write_time','disk_busy_time','disk_usage_total','disk_usage_used','disk_usage_free','disk_usage_percent'];
       for(const field of diskFields){
         const el=document.getElementById('disk-'+field);
         if(!el)continue;
@@ -134,7 +134,8 @@
         const isBytes=field.includes('bytes')||field.startsWith('disk_usage_');
         const sizes=['B','KB','MB','GB','TB'];
         let display;
-        if(isBytes){
+        if(field==='disk_usage_percent')display=n.toFixed(0)+'%';
+        else if(isBytes){
           let scaled=n,index=0;
           while(scaled>=1024&&index<sizes.length-1){scaled/=1024;index++;}
           display=scaled.toFixed(scaled>=100?0:scaled>=10?1:2)+' '+sizes[index];
