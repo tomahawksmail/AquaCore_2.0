@@ -38,8 +38,6 @@ DEVICES = [
  ('MasterL_status','Main light','Master_light_on','Master_light_off'),
  ('Backlight_status','Backlight','Backlight_on','Backlight_off'),
  ('PlantL_status','Plant light','PlantL_on','PlantL_off'),
- ('MoonL_status','Moonlight','MoonL_on','MoonL_off'),
- ('Projector_status','Projector','ProjectorL_on','ProjectorL_off'),
 ]
 SETTINGS = {'min_temp':(float,0,50), 'max_temp':(float,0,50),
  'min_ph':(float,0,14), 'max_ph':(float,0,14), 'tds':(float,0,10000),
