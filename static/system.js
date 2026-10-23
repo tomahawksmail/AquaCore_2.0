@@ -109,6 +109,21 @@
       }
       const tempChart=document.getElementById('cpu-temp-chart');
       if(tempChart)draw(tempChart,points.map(p=>p.cpu_thermal_cur),'#f7ad75');
+      const ddrValue=document.getElementById('ddr-temp-value');
+      if(ddrValue){
+        const latest=points.map(p=>p.ddr_thermal_cur).filter(v=>v!=null&&Number.isFinite(Number(v))).at(-1);
+        ddrValue.textContent=latest==null?'—':String(Math.round(latest));
+        const unit=document.createElement('small');unit.textContent='°C';ddrValue.append(unit);
+      }
+      const ddrChart=document.getElementById('ddr-temp-chart');
+      if(ddrChart)draw(ddrChart,points.map(p=>p.ddr_thermal_cur),'#ce93d8');
+      for(const field of ['net_bytes_sent','net_bytes_recv','net_packets_sent','net_packets_recv','net_errin','net_errout','net_dropin','net_dropout']){
+        const el=document.getElementById('network-'+field);
+        if(!el)continue;
+        const latest=points.map(p=>p[field]).filter(v=>v!=null&&Number.isFinite(Number(v))).at(-1);
+        el.textContent=latest==null?'—':new Intl.NumberFormat('en-US',{notation:'compact',maximumFractionDigits:1}).format(Number(latest));
+        if(latest!=null)el.title=Number(latest).toLocaleString('en-US');
+      }
       const cores=document.getElementById('cpu-cores-chart');
       if(cores){coreChart(cores,points);
         for(let n=0;n<4;n++){const val=points.map(p=>p['cpus_percent_'+n]).filter(v=>v!=null&&Number.isFinite(Number(v))).at(-1);const out=document.getElementById('core-value-'+n);if(out)out.textContent=(val==null?'—':Number(val).toFixed(0))+'%';}
