@@ -38,13 +38,13 @@
     let low=Math.min(...values), high=Math.max(...values);
     const pad=Math.max((high-low)*0.13, field==='ph'?0.08:field==='temp'?0.3:5);
     low-=pad;high+=pad;
-    const minLimit = field === 'temp' ? limits.min_temp : field === 'ph' ? limits.min_ph : null;
-    const maxLimit = field === 'temp' ? limits.max_temp : field === 'ph' ? limits.max_ph : limits.tds;
+    const minLimit = field === 'temp' ? limits.min_temp : field === 'ph' ? limits.min_ph : limits.min_tds;
+    const maxLimit = field === 'temp' ? limits.max_temp : field === 'ph' ? limits.max_ph : limits.max_tds;
     const hasMin = typeof minLimit === 'number' && Number.isFinite(minLimit);
     const hasMax = typeof maxLimit === 'number' && Number.isFinite(maxLimit);
     // Invalid configurations are not presented as safe ranges.
     const validRange = hasMin && hasMax && minLimit < maxLimit;
-    const validCap = field === 'tds' && hasMax && maxLimit >= 0;
+    const validCap = field === 'tds' && !hasMin && hasMax && maxLimit >= 0;
     if (validRange || validCap) {
       if (validRange) low = Math.min(low, minLimit - pad * .3);
       high = Math.max(high, maxLimit + pad * .3);
