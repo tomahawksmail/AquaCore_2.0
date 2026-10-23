@@ -1,6 +1,6 @@
 "use strict";
 (() => {
-  const config={RAM_percent:['%',1,'#57dccc'],cpu_thermal_cur:['°C',1,'#f7ad75'],disk_usage_percent:['%',1,'#90a9ff'],RAM_available:['MB',0,'#76cdfa']};
+  const config={RAM_percent:['%',1,'#57dccc'],disk_usage_percent:['%',1,'#90a9ff'],RAM_available:['MB',0,'#76cdfa']};
   function draw(el,raw,color){
     const data=raw.map(v=>v==null||!Number.isFinite(Number(v))?null:Number(v));
     const valid=data.filter(v=>v!==null);
@@ -102,14 +102,13 @@
       const points=body.points||[];
       const freq=document.getElementById('cpu-freq-chart');
       const freqValue=document.getElementById('cpu-freq-value');
-      if(freq){draw(freq,points.map(p=>p.scpufreq_cur),'#57dccc');
+      if(freqValue){
         const latest=points.map(p=>p.scpufreq_cur).filter(v=>v!=null&&Number.isFinite(Number(v))).at(-1);
         if(freqValue){freqValue.textContent=latest==null?'—':String(Math.round(latest));const unit=document.createElement('small');unit.textContent='MHz';freqValue.append(unit);}
       }
       const ramTotalChart=document.getElementById('ram-total-chart');
       const ramTotalValue=document.getElementById('ram-total-value');
-      if(ramTotalChart){
-        draw(ramTotalChart,points.map(p=>p.RAM_total),'#57dccc');
+      if(ramTotalValue){
         const latest=points.map(p=>p.RAM_total).filter(v=>v!=null&&Number.isFinite(Number(v))).at(-1);
         if(ramTotalValue){ramTotalValue.textContent=latest==null?'—':String(Math.round(latest));const unit=document.createElement('small');unit.textContent='MB';ramTotalValue.append(unit);}
       }
@@ -121,6 +120,8 @@
         cpuTemp.textContent=temp==null?'—':Number(temp).toFixed(0);
         const unit=document.createElement('small');unit.textContent='°C';cpuTemp.append(unit);
       }
+      const tempChart=document.getElementById('cpu-temp-chart');
+      if(tempChart)draw(tempChart,points.map(p=>p.cpu_thermal_cur),'#f7ad75');
       const cores=document.getElementById('cpu-cores-chart');
       if(cores){coreChart(cores,points);
         for(let n=0;n<4;n++){const val=points.map(p=>p['cpus_percent_'+n]).filter(v=>v!=null&&Number.isFinite(Number(v))).at(-1);const out=document.getElementById('core-value-'+n);if(out)out.textContent=(val==null?'—':Number(val).toFixed(0))+'%';}
