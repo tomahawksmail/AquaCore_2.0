@@ -11,8 +11,8 @@ SCHEDULE_MAP = {
     'o2_status': ('o2_on', 'o2_off'),
     'UV_status': ('UV_on', 'UV_off'),
     'MasterL_status': ('Master_light_on', 'Master_light_off'),
-    'RedL_status': ('RedL_on', 'RedL_off'),
-    'BlueL_status': ('BlueL_on', 'BlueL_off'),
+    'Backlight_status': ('Backlight_on', 'Backlight_off'),
+    'PlantL_status': ('PlantL_on', 'PlantL_off'),
     'MoonL_status': ('MoonL_on', 'MoonL_off'),
     'Projector_status': ('ProjectorL_on', 'ProjectorL_off')
 }
