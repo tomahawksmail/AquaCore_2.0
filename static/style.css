@@ -1219,3 +1219,21 @@ status trends preserved */
 .settings-form .settings-fields>.settings-history-inline .settings-field{width:100%;max-width:100%;height:100%;margin:0}
 @media(max-width:1200px){.settings-form .settings-fields>.settings-history-inline{grid-column:2;grid-row:3}}
 @media(max-width:700px){.settings-form .settings-fields>.settings-history-inline{grid-column:1;grid-row:auto}}
+
+/* Save feedback matches the compact Last commit row; no panel background. */
+.sidebar-save-status.settings-autosave-info{
+  display:flex;align-items:center;gap:7px;
+  margin:0 9px 5px;padding:0;min-height:0;
+  color:#7799ac;font-size:11px;
+  background:transparent;border:0;border-radius:0;
+  opacity:0;visibility:hidden;max-height:0;overflow:hidden;
+  transition:opacity .22s ease,visibility .22s ease,max-height .22s ease;
+}
+.sidebar-save-status.settings-autosave-info.is-visible{
+  opacity:1;visibility:visible;max-height:55px;min-height:20px;padding:2px 0 6px;
+}
+.sidebar-save-status.settings-autosave-info[data-state="saved"]{color:#69e5c6}
+.sidebar-save-status.settings-autosave-info[data-state="error"]{color:#ffab9f}
+.sidebar-save-status.settings-autosave-info[data-state="saving"]{color:#9bc7e3}
+.sidebar-save-status+.sidebar-version{margin-top:auto}
+@media(max-width:700px){.sidebar-save-status.settings-autosave-info{display:none}}
