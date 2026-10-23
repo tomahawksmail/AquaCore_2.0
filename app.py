@@ -40,7 +40,7 @@ DEVICES = [
  ('PlantL_status','Plant light','PlantL_on','PlantL_off'),
 ]
 SETTINGS = {'min_temp':(float,0,50), 'max_temp':(float,0,50),
- 'min_ph':(float,0,14), 'max_ph':(float,0,14), 'tds':(float,0,10000),
+ 'min_ph':(float,0,14), 'max_ph':(float,0,14), 'min_tds':(float,0,10000), 'max_tds':(float,0,10000),
  'history':(int,1,720)}
 TIME_FIELDS = [f for _,_,a,b in DEVICES for f in (a,b) if f]
 
@@ -206,9 +206,9 @@ def history():
          ORDER BY time ASC
     """, (seconds, seconds, days, seconds))
     # Use the existing options row as the source of acceptable ranges.
-    settings = query('SELECT min_temp, max_temp, min_ph, max_ph, tds FROM options LIMIT 1', one=True) or {}
+    settings = query('SELECT min_temp, max_temp, min_ph, max_ph, min_tds, max_tds FROM options LIMIT 1', one=True) or {}
     limits = {key: (float(settings[key]) if settings.get(key) is not None else None)
-              for key in ('min_temp', 'max_temp', 'min_ph', 'max_ph', 'tds')}
+              for key in ('min_temp', 'max_temp', 'min_ph', 'max_ph', 'min_tds', 'max_tds')}
     response = jsonify({
         'period': period,
         'limits': limits,
@@ -242,12 +242,13 @@ def save_option_field():
             parsed=cast(raw)
             if not __import__('math').isfinite(parsed) or not low<=parsed<=high:
                 raise ValueError('Outside permitted range')
-            if field in ('min_temp','max_temp','min_ph','max_ph'):
-                existing=query('SELECT min_temp,max_temp,min_ph,max_ph FROM options LIMIT 1',one=True)
+            if field in ('min_temp','max_temp','min_ph','max_ph','min_tds','max_tds'):
+                existing=query('SELECT min_temp,max_temp,min_ph,max_ph,min_tds,max_tds FROM options LIMIT 1',one=True)
                 if not existing:
                     return jsonify(error='Missing options row'),409
                 other={'min_temp':'max_temp','max_temp':'min_temp',
-                       'min_ph':'max_ph','max_ph':'min_ph'}[field]
+                       'min_ph':'max_ph','max_ph':'min_ph',
+                       'min_tds':'max_tds','max_tds':'min_tds'}[field]
                 current=existing[other]
                 if current is not None and ((field.startswith('min_') and parsed>=current) or
                                             (field.startswith('max_') and parsed<=current)):
@@ -279,6 +280,8 @@ def options():
                 raise ValueError('Temperature minimum must be less than maximum')
             if changes.get('min_ph',current.get('min_ph') or 0) >= changes.get('max_ph',current.get('max_ph') or 14):
                 raise ValueError('pH minimum must be less than maximum')
+            if changes.get('min_tds',current.get('min_tds') if current.get('min_tds') is not None else 0) >= changes.get('max_tds',current.get('max_tds') if current.get('max_tds') is not None else 10000):
+                raise ValueError('TDS minimum must be less than maximum')
             for key in TIME_FIELDS:
                 raw=request.form.get(key,'').strip()
                 if raw:
