@@ -81,6 +81,36 @@
       item.append(value);legend.append(item);
     }
   }
+  const miniColors=['#5eead4','#8fa8ff','#ffc48b','#ce93d8'];
+  function drawMiniSeries(el,points,fields){
+    const W=360,H=76,P=4;
+    let svg='<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" aria-hidden="true">';
+    for(const y of [19,38,57])svg+='<line x1="0" y1="'+y+'" x2="'+W+'" y2="'+y+'" stroke="#2a4758" stroke-width=".7"/>';
+    let any=false;
+    fields.forEach((field,index)=>{
+      const values=points.map(p=>p[field]==null?null:Number(p[field]));
+      const good=values.filter(v=>v!=null&&Number.isFinite(v));
+      if(!good.length)return;
+      any=true;
+      const min=Math.min(...good),max=Math.max(...good),span=Math.max(1,max-min);
+      const x=i=>points.length===1?W/2:i*W/(points.length-1);
+      // Each counter has its own vertical scale: only compare trend shapes,
+      // not relative magnitudes or percentages.
+      const y=v=>H-P-((v-min)/span)*(H-2*P);
+      let part=[];
+      const emit=()=>{
+        if(!part.length)return;
+        svg+='<path d="M '+part.map(q=>q[0].toFixed(1)+' '+q[1].toFixed(1)).join(' L ')+'" fill="none" stroke="'+miniColors[index%miniColors.length]+'" stroke-width="1.15" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>';
+        const last=part[part.length-1];
+        svg+='<circle cx="'+last[0]+'" cy="'+last[1]+'" r="2.1" fill="'+miniColors[index%miniColors.length]+'"/>';
+        part=[];
+      };
+      values.forEach((v,i)=>{if(v==null||!Number.isFinite(v))emit();else part.push([x(i),y(v)]);});
+      emit();
+    });
+    if(!any){el.textContent='No history yet';return;}
+    el.innerHTML=svg+'</svg>';
+  }
   async function refresh(){
     try{
       const response=await fetch('/api/system/history',{cache:'no-store',credentials:'same-origin'});
@@ -143,6 +173,10 @@
         el.textContent=display;
         el.title=n.toLocaleString('en-US')+(isBytes?' bytes':field.endsWith('time')?' ms':'');
       }
+      document.querySelectorAll('.system-mini-spark[data-mini-series]').forEach(el=>{
+        const fields=el.dataset.miniSeries.split(',').filter(Boolean);
+        drawMiniSeries(el,points,fields);
+      });
       const cores=document.getElementById('cpu-cores-chart');
       if(cores){coreChart(cores,points);
         for(let n=0;n<4;n++){const val=points.map(p=>p['cpus_percent_'+n]).filter(v=>v!=null&&Number.isFinite(Number(v))).at(-1);const out=document.getElementById('core-value-'+n);if(out)out.textContent=(val==null?'—':Number(val).toFixed(0))+'%';}
