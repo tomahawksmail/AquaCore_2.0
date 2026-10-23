@@ -1213,3 +1213,9 @@ status trends preserved */
 .sidebar-save-status.settings-autosave-info .mdi{font-size:15px;flex:none}
 .sidebar-save-status+.sidebar-version{margin-top:0}
 @media(max-width:700px){.sidebar-save-status.settings-autosave-info{display:none}}
+
+/* History retention occupies last cell of the second water-quality row */
+.settings-form .settings-fields>.settings-history-inline{grid-column:4;grid-row:2;margin:0;padding:0;border:0;min-width:0;width:100%}
+.settings-form .settings-fields>.settings-history-inline .settings-field{width:100%;max-width:100%;height:100%;margin:0}
+@media(max-width:1200px){.settings-form .settings-fields>.settings-history-inline{grid-column:2;grid-row:3}}
+@media(max-width:700px){.settings-form .settings-fields>.settings-history-inline{grid-column:1;grid-row:auto}}
