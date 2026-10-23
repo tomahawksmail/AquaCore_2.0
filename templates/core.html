@@ -2,7 +2,6 @@
 {% block title %}System · AquaCore{% endblock %}
 {% block content %}
 <div class="heading system-heading"><div><h1>System metrics</h1></div></div>
-{% set items = [('RAM_percent','RAM usage','mdi-memory','%',1),('disk_usage_percent','Disk usage','mdi-harddisk','%',1),('RAM_available','Available RAM','mdi-memory','MB',0)] %}
 <section class="system-cpu-grid" aria-label="CPU frequency and core utilization">
   <article class="system-cpu-panel">
     <div class="system-cpu-heading"><i class="mdi mdi-speedometer" aria-hidden="true"></i> CPU Frequency</div>
@@ -87,14 +86,6 @@
   </article>
   {% endfor %}
 </section>
-<section class="system-strip-grid" aria-label="Current system metrics and trends">
-{% for field,label,icon,unit,precision in items %}
-  <article class="system-strip-card">
-    <div class="system-strip-label"><i class="mdi {{icon}}" aria-hidden="true"></i><span>{{label}}</span></div>
-    <div class="system-strip-value" id="system-value-{{field}}">{% if row and row[field] is not none %}{{('%.1f' if precision else '%.0f')|format(row[field]|float)}}{% else %}—{% endif %}<small>{{unit}}</small></div>
-    <div class="system-strip-chart" data-system-field="{{field}}" role="img" aria-label="{{label}} recent trend"></div>
-  </article>
-{% endfor %}
-</section>
+
 <script defer src="{{url_for('static',filename='system.js',v='20261023-disk-v1')}}"></script>
 {% endblock %}
