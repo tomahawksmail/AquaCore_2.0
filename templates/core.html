@@ -2,7 +2,7 @@
 {% block title %}System · AquaCore{% endblock %}
 {% block content %}
 <div class="heading system-heading"><div><h1>System metrics</h1></div></div>
-{% set items = [('RAM_percent','RAM usage','mdi-memory','%',1),('cpu_thermal_cur','CPU temperature','mdi-thermometer','°C',1),('disk_usage_percent','Disk usage','mdi-harddisk','%',1),('RAM_available','Available RAM','mdi-memory','MB',0)] %}
+{% set items = [('RAM_percent','RAM usage','mdi-memory','%',1),('disk_usage_percent','Disk usage','mdi-harddisk','%',1),('RAM_available','Available RAM','mdi-memory','MB',0)] %}
 <section class="system-cpu-grid" aria-label="CPU frequency and core utilization">
   <article class="system-cpu-panel">
     <div class="system-cpu-heading"><i class="mdi mdi-speedometer" aria-hidden="true"></i> CPU Frequency</div>
@@ -30,6 +30,16 @@
     <p class="system-ram-note">RAM % is plotted as its equivalent share of total RAM to share the MB scale.</p>
   </article>
 </section>
+<section class="system-cpu-grid system-temperature-grid" aria-label="CPU temperature current value and history">
+  <article class="system-cpu-panel system-temperature-value-panel">
+    <div class="system-cpu-heading"><i class="mdi mdi-thermometer" aria-hidden="true"></i> CPU Temperature</div>
+    <div class="system-cpu-value" id="cpu-temp-value">{% if row and row.cpu_thermal_cur is not none %}{{row.cpu_thermal_cur}}{% else %}—{% endif %}<small>°C</small></div>
+  </article>
+  <article class="system-cpu-panel">
+    <div class="system-cpu-heading"><i class="mdi mdi-chart-line" aria-hidden="true"></i> CPU Temperature History</div>
+    <div class="system-core-chart system-temperature-chart" data-system-field="cpu_thermal_cur" aria-label="Recent CPU temperature readings"></div>
+  </article>
+</section>
 <section class="system-strip-grid" aria-label="Current system metrics and trends">
 {% for field,label,icon,unit,precision in items %}
   <article class="system-strip-card">
@@ -39,5 +49,5 @@
   </article>
 {% endfor %}
 </section>
-<script defer src="{{url_for('static',filename='system.js',v='20261023-ram')}}"></script>
+<script defer src="{{url_for('static',filename='system.js',v='20261023-cpu-thermal-row')}}"></script>
 {% endblock %}
