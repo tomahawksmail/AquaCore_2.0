@@ -115,6 +115,12 @@
       }
       const ramChart=document.getElementById('ram-breakdown-chart');
       if(ramChart){drawRamBreakdown(ramChart,points);updateRamLegend(points);}
+      const cpuTemp=document.getElementById('cpu-temp-value');
+      if(cpuTemp){
+        const temp=points.map(p=>p.cpu_thermal_cur).filter(v=>v!=null&&Number.isFinite(Number(v))).at(-1);
+        cpuTemp.textContent=temp==null?'—':Number(temp).toFixed(0);
+        const unit=document.createElement('small');unit.textContent='°C';cpuTemp.append(unit);
+      }
       const cores=document.getElementById('cpu-cores-chart');
       if(cores){coreChart(cores,points);
         for(let n=0;n<4;n++){const val=points.map(p=>p['cpus_percent_'+n]).filter(v=>v!=null&&Number.isFinite(Number(v))).at(-1);const out=document.getElementById('core-value-'+n);if(out)out.textContent=(val==null?'—':Number(val).toFixed(0))+'%';}
