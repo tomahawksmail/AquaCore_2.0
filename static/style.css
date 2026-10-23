@@ -1321,3 +1321,11 @@ status trends preserved */
 
 .system-disk-grid .system-disk-values{grid-template-columns:repeat(2,minmax(0,1fr));row-gap:13px}
 .system-disk-grid .system-network-direction{font-size:11px}
+
+/* Compact paired trends below Network and Disk counters */
+.system-network-card .system-mini-spark{height:76px;min-height:76px;width:calc(100% + 34px);margin:auto -17px -18px;overflow:hidden;border-radius:0 0 17px 17px;color:#88abc0;font-size:11px}
+.system-network-card .system-mini-spark svg{width:100%;height:100%;display:block}
+.system-network-card{min-height:215px}
+.system-network-card .system-network-unit{display:none}
+.system-disk-grid .system-network-card{min-height:230px}
+@media(max-width:600px){.system-network-card{min-height:195px}.system-disk-grid .system-network-card{min-height:210px}}
