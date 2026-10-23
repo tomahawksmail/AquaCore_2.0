@@ -1259,3 +1259,12 @@ status trends preserved */
 .system-core-chart{height:150px;margin:auto -20px 0;width:calc(100% + 40px)}
 .system-core-chart svg{width:100%;height:100%;display:block}
 @media(max-width:900px){.system-cpu-grid{grid-template-columns:1fr}.system-cpu-panel{min-height:210px}}
+
+/* Second System row: detailed RAM utilization */
+.system-ram-grid .system-cpu-panel{min-height:265px}
+.system-ram-legend{display:flex;flex-wrap:wrap;gap:8px 15px;margin:13px 0;color:#abc7d5;font-size:11px}
+.system-ram-key{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.system-ram-key i{width:8px;height:8px;border-radius:50%;flex:none;display:inline-block}
+.system-ram-key strong{color:#e6f0f9;font-variant-numeric:tabular-nums}
+.system-ram-note{margin:5px 0 10px;color:#779fb3;font-size:10px;line-height:1.4}
+@media(max-width:900px){.system-ram-grid .system-cpu-panel{min-height:215px}}
