@@ -36,8 +36,8 @@ DEVICES = [
  ('o2_status','Oxygen','o2_on','o2_off'),
  ('UV_status','UV sterilizer','UV_on','UV_off'),
  ('MasterL_status','Main light','Master_light_on','Master_light_off'),
- ('RedL_status','Red light','RedL_on','RedL_off'),
- ('BlueL_status','Blue light','BlueL_on','BlueL_off'),
+ ('Backlight_status','Backlight','Backlight_on','Backlight_off'),
+ ('PlantL_status','Plant light','PlantL_on','PlantL_off'),
  ('MoonL_status','Moonlight','MoonL_on','MoonL_off'),
  ('Projector_status','Projector','ProjectorL_on','ProjectorL_off'),
 ]
