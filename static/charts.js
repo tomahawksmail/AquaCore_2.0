@@ -50,6 +50,12 @@
       high = Math.max(high, maxLimit + pad * .3);
       if (validCap) low = Math.min(low, maxLimit - pad * 1.5);
     }
+    // Temperature uses fixed 5°C ticks; all readings and reference limits remain visible.
+    if (field === 'temp') {
+      low = Math.floor(low / 5) * 5;
+      high = Math.ceil(high / 5) * 5;
+      if (high <= low) high = low + 5;
+    }
     const x=t => L+(t-t0)/(t1-t0)*(W-L-R);
     const y=v => T+(high-v)/(high-low)*(H-T-B);
     const svg=el('svg',{viewBox:`0 0 ${W} ${H}`,class:'chart-svg',role:'img', 'aria-label':`${field} history chart; ${valid.length} available intervals`},target);
@@ -68,15 +74,33 @@
       limitLine(minLimit, 'MIN ' + minLimit);
       limitLine(maxLimit, 'MAX ' + maxLimit);
     } else if (validCap) limitLine(maxLimit, 'MAX ' + maxLimit + ' ppm');
-    for(let i=0;i<=3;i++){
-      const val=low+(high-low)*i/3, py=y(val);
+    const ticks = field === 'temp'
+      ? Array.from({length:Math.round((high-low)/5)+1},(_,i)=>low+i*5)
+      : Array.from({length:4},(_,i)=>low+(high-low)*i/3);
+    for (const val of ticks) {
+      const py=y(val);
       el('line',{x1:L,y1:py,x2:W-R,y2:py,class:'chart-gridline'},svg);
-      el('text',{x:L-8,y:py+4,'text-anchor':'end'},svg,val.toFixed(field==='ph'?2:1));
+      el('text',{x:L-8,y:py+4,'text-anchor':'end'},svg,field==='temp'?String(val):val.toFixed(field==='ph'?2:1));
     }
-    [0,.5,1].forEach(f=>{
-      const d=new Date(t0+(t1-t0)*f).toISOString();
-      el('text',{x:L+(W-L-R)*f,y:H-7,'text-anchor':f===0?'start':f===1?'middle':'end'},svg,dateLabel(d,period));
-    });
+    if (period === '24h') {
+      // Labels only at exact local clock hours, never at arbitrary sample minutes.
+      // Avoid overcrowding long time ranges by skipping whole hours.
+      const hourMs=3600000;
+      const first=Math.ceil(t0/hourMs)*hourMs;
+      const last=Math.floor(t1/hourMs)*hourMs;
+      const available=Math.max(0,Math.floor((last-first)/hourMs)+1);
+      const stride=Math.max(1,Math.ceil(available/6));
+      for(let ms=first;ms<=last;ms+=stride*hourMs){
+        const dt=new Date(ms);
+        const label=String(dt.getHours()).padStart(2,'0')+':00';
+        el('text',{x:x(ms),y:H-7,'text-anchor':'middle'},svg,label);
+      }
+    } else {
+      [0,.5,1].forEach(f=>{
+        const d=new Date(t0+(t1-t0)*f).toISOString();
+        el('text',{x:L+(W-L-R)*f,y:H-7,'text-anchor':f===0?'start':f===1?'middle':'end'},svg,dateLabel(d,period));
+      });
+    }
     // Break paths for missing measurements or unusually long time gaps.
     const diffs=times.slice(1).map((t,i)=>t-times[i]).filter(v=>v>0);
     diffs.sort((a,b)=>a-b); const interval=diffs[Math.floor(diffs.length/2)] || 3600000;
