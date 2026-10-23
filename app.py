@@ -310,7 +310,7 @@ def logs():
 @app.get('/core_dashboard')
 @logged_in
 def core():
-    latest=query('SELECT Id,RAM_percent,cpu_thermal_cur,disk_usage_percent,RAM_available FROM psutil ORDER BY Id DESC LIMIT 1',one=True)
+    latest=query('SELECT Id,scpufreq_cur,cpus_percent_0,cpus_percent_1,cpus_percent_2,cpus_percent_3,RAM_percent,cpu_thermal_cur,disk_usage_percent,RAM_available FROM psutil ORDER BY Id DESC LIMIT 1',one=True)
     return render_template('core.html',row=latest)
 
 @app.get('/api/system/history')
@@ -322,7 +322,7 @@ def system_history():
     result=[]
     for row in reversed(rows):
         result.append({key: (float(row[key]) if row.get(key) is not None else None)
-                       for key in ('RAM_percent','cpu_thermal_cur','disk_usage_percent','RAM_available')})
+                       for key in ('scpufreq_cur','cpus_percent_0','cpus_percent_1','cpus_percent_2','cpus_percent_3','RAM_percent','cpu_thermal_cur','disk_usage_percent','RAM_available')})
     response=jsonify({'points':result})
     response.headers['Cache-Control']='no-store'
     return response
