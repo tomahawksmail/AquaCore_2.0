@@ -7,7 +7,6 @@
   <article class="system-cpu-panel">
     <div class="system-cpu-heading"><i class="mdi mdi-speedometer" aria-hidden="true"></i> CPU Frequency</div>
     <div class="system-cpu-value" id="cpu-freq-value">{% if row and row.scpufreq_cur is not none %}{{row.scpufreq_cur}}{% else %}—{% endif %}<small>MHz</small></div>
-    <div class="system-cpu-spark" id="cpu-freq-chart" aria-label="Recent CPU frequency"></div>
   </article>
   <article class="system-cpu-panel">
     <div class="system-cpu-heading"><i class="mdi mdi-chip" aria-hidden="true"></i> CPU core utilization</div>
@@ -21,7 +20,6 @@
   <article class="system-cpu-panel">
     <div class="system-cpu-heading"><i class="mdi mdi-memory" aria-hidden="true"></i> RAM Total</div>
     <div class="system-cpu-value" id="ram-total-value">{% if row and row.RAM_total is not none %}{{row.RAM_total}}{% else %}—{% endif %}<small>MB</small></div>
-    <div class="system-cpu-spark" id="ram-total-chart" aria-label="Recent total RAM"></div>
   </article>
   <article class="system-cpu-panel">
     <div class="system-cpu-heading"><i class="mdi mdi-chart-multiple" aria-hidden="true"></i> RAM Breakdown</div>
@@ -37,7 +35,7 @@
   </article>
   <article class="system-cpu-panel">
     <div class="system-cpu-heading"><i class="mdi mdi-chart-line" aria-hidden="true"></i> CPU Temperature History</div>
-    <div class="system-core-chart system-temperature-chart" data-system-field="cpu_thermal_cur" aria-label="Recent CPU temperature readings"></div>
+    <div class="system-core-chart system-temperature-chart" id="cpu-temp-chart" aria-label="Recent CPU temperature readings"></div>
   </article>
 </section>
 <section class="system-strip-grid" aria-label="Current system metrics and trends">
@@ -49,5 +47,5 @@
   </article>
 {% endfor %}
 </section>
-<script defer src="{{url_for('static',filename='system.js',v='20261023-cpu-thermal-row')}}"></script>
+<script defer src="{{url_for('static',filename='system.js',v='20261023-cpu-temp-fix')}}"></script>
 {% endblock %}
