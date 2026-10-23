@@ -1191,3 +1191,25 @@ status trends preserved */
 .settings-autosave-info[data-state="saved"]{color:#69e5c6}
 .settings-autosave-info[data-state="saving"]{color:#9bc7e3}
 .settings-autosave-info[data-state="error"]{color:#ffab9f}
+
+/* Water settings: four clean cards per row, no overflowing fields */
+.settings-form .settings-card{min-width:0;overflow:hidden}
+.settings-form .settings-fields{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;width:100%}
+.settings-form .settings-field{box-sizing:border-box;width:100%;min-width:0;max-width:100%;padding:14px 12px;overflow:hidden;gap:6px}
+.settings-form .settings-field-title{font-size:13px;letter-spacing:0;white-space:normal;overflow-wrap:anywhere;line-height:1.35}
+.settings-form .settings-field-title .mdi{font-size:19px;flex:none}
+.settings-form .settings-field-description{font-size:11px;line-height:1.3;min-height:28px}
+.settings-form .settings-input-wrap{width:100%;min-width:0;max-width:100%;display:block}
+.settings-form .settings-input-wrap input{box-sizing:border-box;display:block;width:100%;min-width:0;max-width:100%;padding:10px 44px 10px 11px;font-size:15px;appearance:textfield;-moz-appearance:textfield}
+.settings-form .settings-input-wrap input::-webkit-inner-spin-button,
+.settings-form .settings-input-wrap input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.settings-form .settings-unit{right:12px;font-size:11px}
+.settings-form .settings-history .settings-field{max-width:none;width:calc((100% - 36px)/4)}
+@media(max-width:1200px){.settings-form .settings-fields{grid-template-columns:repeat(2,minmax(0,1fr))}.settings-form .settings-history .settings-field{width:calc((100% - 12px)/2)}}
+@media(max-width:700px){.settings-form .settings-fields{grid-template-columns:1fr}.settings-form .settings-history .settings-field{width:100%}}
+
+/* Save status: sidebar footer, above last commit; phone: above bottom navigation */
+.sidebar-save-status.settings-autosave-info{margin:auto 6px 9px;padding:10px 9px;min-height:36px;display:flex;align-items:center;gap:7px;white-space:normal;overflow-wrap:anywhere;color:#8eb9c8;font-size:11px;background:#102b3a;border:1px solid #234456;border-radius:9px}
+.sidebar-save-status.settings-autosave-info .mdi{font-size:15px;flex:none}
+.sidebar-save-status+.sidebar-version{margin-top:0}
+@media(max-width:700px){.sidebar-save-status.settings-autosave-info{display:none}}
