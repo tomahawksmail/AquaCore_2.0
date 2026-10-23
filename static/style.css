@@ -1281,3 +1281,23 @@ status trends preserved */
 .system-cpu-grid > .system-cpu-panel:first-child .system-cpu-value{margin:auto 0;text-align:center;font-size:clamp(38px,3.8vw,72px)}
 .system-temperature-chart{height:165px;min-height:165px}
 .system-temperature-chart svg{height:100%;width:100%;display:block}
+
+/* System quarter cards: true center alignment and significantly larger digits */
+.system-cpu-grid>.system-cpu-panel:first-child{
+  display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;
+}
+.system-cpu-grid>.system-cpu-panel:first-child .system-cpu-heading{flex:none}
+.system-cpu-grid>.system-cpu-panel:first-child .system-cpu-value{
+  display:flex;align-items:baseline;justify-content:center;gap:8px;
+  flex:1;min-height:130px;width:100%;margin:0;
+  font-size:clamp(54px,5.7vw,104px);font-weight:800;line-height:1;
+  letter-spacing:-.055em;text-align:center;font-variant-numeric:tabular-nums;
+}
+.system-cpu-grid>.system-cpu-panel:first-child .system-cpu-value small{
+  font-size:clamp(15px,1.4vw,22px);letter-spacing:0;
+}
+.system-core-chart,.system-temperature-chart{height:174px;min-height:174px}
+.system-core-chart svg,.system-temperature-chart svg{width:100%;height:100%;display:block}
+@media(max-width:900px){
+ .system-cpu-grid>.system-cpu-panel:first-child .system-cpu-value{font-size:clamp(60px,11vw,100px)}
+}
