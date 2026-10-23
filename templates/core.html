@@ -59,8 +59,8 @@
 <article class="system-network-card">
   <div class="system-cpu-heading"><i class="mdi {{icon}}" aria-hidden="true"></i> {{label}}</div>
   <div class="system-network-pair">
-    <div><span class="system-network-direction"><i class="mdi mdi-arrow-up"></i> Sent / Out</span><strong id="network-{{sent}}">{{row[sent] if row and row[sent] is not none else '—'}}</strong></div>
-    <div><span class="system-network-direction"><i class="mdi mdi-arrow-down"></i> Received / In</span><strong id="network-{{received}}">{{row[received] if row and row[received] is not none else '—'}}</strong></div>
+    <div><span class="system-network-direction"><i class="mdi mdi-arrow-up"></i> {{ 'In' if sent.endswith('in') else 'Sent / Out' }}</span><strong id="network-{{sent}}">{{row[sent] if row and row[sent] is not none else '—'}}</strong></div>
+    <div><span class="system-network-direction"><i class="mdi mdi-arrow-down"></i> {{ 'Out' if received.endswith('out') else 'Received / In' }}</span><strong id="network-{{received}}">{{row[received] if row and row[received] is not none else '—'}}</strong></div>
   </div>
   <span class="system-network-unit">Cumulative {{unit}} counters</span>
 </article>
