@@ -17,6 +17,19 @@
     <div class="system-core-chart" id="cpu-cores-chart" aria-label="Recent CPU usage for cores zero through three"></div>
   </article>
 </section>
+<section class="system-cpu-grid system-ram-grid" aria-label="RAM total and RAM usage breakdown">
+  <article class="system-cpu-panel">
+    <div class="system-cpu-heading"><i class="mdi mdi-memory" aria-hidden="true"></i> RAM Total</div>
+    <div class="system-cpu-value" id="ram-total-value">{% if row and row.RAM_total is not none %}{{row.RAM_total}}{% else %}—{% endif %}<small>MB</small></div>
+    <div class="system-cpu-spark" id="ram-total-chart" aria-label="Recent total RAM"></div>
+  </article>
+  <article class="system-cpu-panel">
+    <div class="system-cpu-heading"><i class="mdi mdi-chart-multiple" aria-hidden="true"></i> RAM Breakdown</div>
+    <div class="system-ram-legend" id="ram-breakdown-legend" aria-label="RAM readings legend"></div>
+    <div class="system-core-chart" id="ram-breakdown-chart" aria-label="RAM usage and memory breakdown history"></div>
+    <p class="system-ram-note">RAM % is plotted as its equivalent share of total RAM to share the MB scale.</p>
+  </article>
+</section>
 <section class="system-strip-grid" aria-label="Current system metrics and trends">
 {% for field,label,icon,unit,precision in items %}
   <article class="system-strip-card">
@@ -26,5 +39,5 @@
   </article>
 {% endfor %}
 </section>
-<script defer src="{{url_for('static',filename='system.js',v='20261023-cpu')}}"></script>
+<script defer src="{{url_for('static',filename='system.js',v='20261023-ram')}}"></script>
 {% endblock %}
