@@ -40,6 +40,60 @@
     });
     el.innerHTML=svg+'</svg>';
   }
+  const ramSeries=[
+    ['RAM_available','Available','#5eead4'],['RAM_percent','Usage %','#f7ad75'],
+    ['RAM_used','Used','#8fa8ff'],['RAM_free','Free','#76cdfa'],
+    ['RAM_active','Active','#f4d35e'],['RAM_inactive','Inactive','#ce93d8'],
+    ['RAM_buffers','Buffers','#6cd2a1'],['RAM_cached','Cached','#ef9e80'],
+    ['RAM_shared','Shared','#c3d5e8'],['RAM_slab','Slab','#e2abcb']
+  ];
+  function drawRamBreakdown(el,points){
+    if(!points.length){el.textContent='No history yet';return;}
+    const W=1000,H=155,T=7,B=131;
+    const total=Math.max(1,...points.map(p=>Number(p.RAM_total)||0));
+    const values=ramSeries.flatMap(([field])=>points.map(p=>field==='RAM_percent'
+      ? (p.RAM_percent==null||p.RAM_total==null?null:Number(p.RAM_total)*Number(p.RAM_percent)/100)
+      : (p[field]==null?null:Number(p[field])))).filter(v=>v!=null&&Number.isFinite(v));
+    if(!values.length){el.textContent='No RAM readings yet';return;}
+    const ymax=Math.max(total,...values,1)*1.05;
+    const x=i=>points.length<=1?W/2:i*W/(points.length-1);
+    const y=v=>B-Math.max(0,v)/ymax*(B-T);
+    let svg='<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" aria-hidden="true">';
+    for(const fraction of [0,.25,.5,.75,1]){
+      const pos=B-fraction*(B-T);
+      svg+='<line x1="0" y1="'+pos+'" x2="'+W+'" y2="'+pos+'" stroke="#2a4758" stroke-width=".7"/>';
+    }
+    ramSeries.forEach(([field,label,color])=>{
+      let parts=[],segment=[];
+      points.forEach((p,i)=>{
+        const raw=field==='RAM_percent'
+          ? (p.RAM_percent==null||p.RAM_total==null?null:Number(p.RAM_total)*Number(p.RAM_percent)/100)
+          : p[field];
+        const v=raw==null?NaN:Number(raw);
+        if(!Number.isFinite(v)){if(segment.length)parts.push(segment);segment=[];}
+        else segment.push([x(i),y(v)]);
+      });
+      if(segment.length)parts.push(segment);
+      for(const part of parts){
+        svg+='<path d="M '+part.map(v=>v[0].toFixed(1)+' '+v[1].toFixed(1)).join(' L ')+'" fill="none" stroke="'+color+'" stroke-width="1.1" vector-effect="non-scaling-stroke"/>';
+      }
+    });
+    el.innerHTML=svg+'</svg>';
+  }
+  function updateRamLegend(points){
+    const legend=document.getElementById('ram-breakdown-legend');
+    if(!legend)return;
+    legend.replaceChildren();
+    for(const [field,label,color] of ramSeries){
+      const latest=points.map(p=>p[field]).filter(v=>v!=null&&Number.isFinite(Number(v))).at(-1);
+      const item=document.createElement('span');item.className='system-ram-key';
+      const marker=document.createElement('i');marker.style.backgroundColor=color;item.append(marker);
+      item.append(document.createTextNode(label+': '));
+      const value=document.createElement('strong');
+      value.textContent=latest==null?'—':(field==='RAM_percent'?Number(latest).toFixed(0)+'%':Math.round(latest)+' MB');
+      item.append(value);legend.append(item);
+    }
+  }
   async function refresh(){
     try{
       const response=await fetch('/api/system/history',{cache:'no-store',credentials:'same-origin'});
@@ -52,6 +106,15 @@
         const latest=points.map(p=>p.scpufreq_cur).filter(v=>v!=null&&Number.isFinite(Number(v))).at(-1);
         if(freqValue){freqValue.textContent=latest==null?'—':String(Math.round(latest));const unit=document.createElement('small');unit.textContent='MHz';freqValue.append(unit);}
       }
+      const ramTotalChart=document.getElementById('ram-total-chart');
+      const ramTotalValue=document.getElementById('ram-total-value');
+      if(ramTotalChart){
+        draw(ramTotalChart,points.map(p=>p.RAM_total),'#57dccc');
+        const latest=points.map(p=>p.RAM_total).filter(v=>v!=null&&Number.isFinite(Number(v))).at(-1);
+        if(ramTotalValue){ramTotalValue.textContent=latest==null?'—':String(Math.round(latest));const unit=document.createElement('small');unit.textContent='MB';ramTotalValue.append(unit);}
+      }
+      const ramChart=document.getElementById('ram-breakdown-chart');
+      if(ramChart){drawRamBreakdown(ramChart,points);updateRamLegend(points);}
       const cores=document.getElementById('cpu-cores-chart');
       if(cores){coreChart(cores,points);
         for(let n=0;n<4;n++){const val=points.map(p=>p['cpus_percent_'+n]).filter(v=>v!=null&&Number.isFinite(Number(v))).at(-1);const out=document.getElementById('core-value-'+n);if(out)out.textContent=(val==null?'—':Number(val).toFixed(0))+'%';}
