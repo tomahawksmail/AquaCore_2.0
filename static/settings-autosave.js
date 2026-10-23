@@ -6,9 +6,18 @@
   form.addEventListener('submit',event=>event.preventDefault());
   const fields=[...form.querySelectorAll('input[name]:not([type="hidden"]):not([type="checkbox"])')];
   let pending=0;
+  let hideTimer=null;
   const say=(message,state)=>{
+    if(hideTimer!==null)clearTimeout(hideTimer);
     status.textContent=message;
     status.dataset.state=state;
+    status.classList.add('is-visible');
+    if(state==='saved'){
+      hideTimer=setTimeout(()=>{
+        status.classList.remove('is-visible');
+        status.dataset.state='idle';
+      },3000);
+    }
   };
   for(const input of fields){
     input.dataset.saved=input.value;
