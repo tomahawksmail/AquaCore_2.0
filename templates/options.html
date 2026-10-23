@@ -20,7 +20,7 @@
  'PlantL_status':'mdi-led-on', 'MoonL_status':'mdi-weather-night',
  'Projector_status':'mdi-projector'
 } %}
-<form method="post" class="settings-form">
+<form class="settings-form" id="settings-autosave-form" autocomplete="off">
   <input type="hidden" name="csrf" value="{{csrf_token()}}">
   <section class="card settings-card">
     <div class="settings-section-head">
@@ -85,15 +85,11 @@
       </div>
     </div>
     {% endfor %}
-    <p class="control-disclaimer"><i class="mdi mdi-information-outline" aria-hidden="true"></i> Schedule times are saved using the button below. Manual switches take effect immediately and last until the next scheduled transition. Save changed times before using a manual switch.</p>
+    <p class="control-disclaimer"><i class="mdi mdi-information-outline" aria-hidden="true"></i> Changes to times and water parameters save automatically. Manual switches take effect immediately and last until the next scheduled transition.</p>
   </section>
-  {% if session.get('role') == 1 %}
-    <div class="settings-actions">
-      <span><i class="mdi mdi-information-outline" aria-hidden="true"></i> Manual overrides remain active until the next scheduled change.</span>
-      <button class="primary save" type="submit"><i class="mdi mdi-content-save-outline" aria-hidden="true"></i> Save settings</button>
-    </div>
-  {% endif %}
+  <div class="settings-autosave-info" aria-live="polite" id="settings-save-status"><i class="mdi mdi-cloud-check-outline" aria-hidden="true"></i> Changes save automatically</div>
 </form>
 <script>window.AQUACORE_CSRF = {{ csrf_token()|tojson }};</script>
 <script defer src="{{ url_for('static', filename='controls.js') }}"></script>
+<script defer src="{{ url_for('static', filename='settings-autosave.js', v='20261023') }}"></script>
 {% endblock %}
