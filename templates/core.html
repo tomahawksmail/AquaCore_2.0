@@ -3,6 +3,20 @@
 {% block content %}
 <div class="heading system-heading"><div><h1>System metrics</h1></div></div>
 {% set items = [('RAM_percent','RAM usage','mdi-memory','%',1),('cpu_thermal_cur','CPU temperature','mdi-thermometer','°C',1),('disk_usage_percent','Disk usage','mdi-harddisk','%',1),('RAM_available','Available RAM','mdi-memory','MB',0)] %}
+<section class="system-cpu-grid" aria-label="CPU frequency and core utilization">
+  <article class="system-cpu-panel">
+    <div class="system-cpu-heading"><i class="mdi mdi-speedometer" aria-hidden="true"></i> CPU Frequency</div>
+    <div class="system-cpu-value" id="cpu-freq-value">{% if row and row.scpufreq_cur is not none %}{{row.scpufreq_cur}}{% else %}—{% endif %}<small>MHz</small></div>
+    <div class="system-cpu-spark" id="cpu-freq-chart" aria-label="Recent CPU frequency"></div>
+  </article>
+  <article class="system-cpu-panel">
+    <div class="system-cpu-heading"><i class="mdi mdi-chip" aria-hidden="true"></i> CPU core utilization</div>
+    <div class="system-core-legend" id="cpu-core-legend">
+      {% for n in range(4) %}<span class="cpu-core-key cpu-core-{{n}}"><i></i> Core {{n}}: <strong id="core-value-{{n}}">{% if row and row['cpus_percent_' ~ n] is not none %}{{row['cpus_percent_' ~ n]}}{% else %}—{% endif %}%</strong></span>{% endfor %}
+    </div>
+    <div class="system-core-chart" id="cpu-cores-chart" aria-label="Recent CPU usage for cores zero through three"></div>
+  </article>
+</section>
 <section class="system-strip-grid" aria-label="Current system metrics and trends">
 {% for field,label,icon,unit,precision in items %}
   <article class="system-strip-card">
@@ -12,5 +26,5 @@
   </article>
 {% endfor %}
 </section>
-<script defer src="{{url_for('static',filename='system.js',v='20261022-thin-spark')}}"></script>
+<script defer src="{{url_for('static',filename='system.js',v='20261023-cpu')}}"></script>
 {% endblock %}
