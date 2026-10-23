@@ -11,7 +11,8 @@
   ('max_temp', 'Maximum temperature', 'mdi-thermometer-high', '°C', 'Upper acceptable water temperature'),
   ('min_ph', 'Minimum pH', 'mdi-water-minus-outline', 'pH', 'Lower acceptable acidity limit'),
   ('max_ph', 'Maximum pH', 'mdi-water-plus-outline', 'pH', 'Upper acceptable acidity limit'),
-  ('tds', 'Maximum TDS', 'mdi-water-check-outline', 'ppm', 'Upper acceptable dissolved-solids limit')
+  ('min_tds', 'Minimum TDS', 'mdi-water-minus-outline', 'ppm', 'Lower acceptable dissolved-solids limit'),
+  ('max_tds', 'Maximum TDS', 'mdi-water-check-outline', 'ppm', 'Upper acceptable dissolved-solids limit')
 ] %}
 {% set icons = {
  'co2_status':'mdi-molecule-co2', 'o2_status':'mdi-molecule',
@@ -89,5 +90,5 @@
 </form>
 <script>window.AQUACORE_CSRF = {{ csrf_token()|tojson }};</script>
 <script defer src="{{ url_for('static', filename='controls.js') }}"></script>
-<script defer src="{{ url_for('static', filename='settings-autosave.js', v='20261023') }}"></script>
+<script defer src="{{ url_for('static', filename='settings-autosave.js', v='20261023-tds') }}"></script>
 {% endblock %}
