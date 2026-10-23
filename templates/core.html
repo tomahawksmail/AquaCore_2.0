@@ -67,30 +67,25 @@
 {% endfor %}
 </section>
 <section class="system-network-grid system-disk-grid" aria-label="Disk performance and capacity counters">
-{% set disk_pairs = [
- ('disk_read_count','disk_write_count','Disk operations','mdi-harddisk','Read','Write'),
- ('disk_read_bytes','disk_write_bytes','Disk transfer','mdi-swap-horizontal','Read','Write'),
- ('disk_read_time','disk_write_time','Disk I/O time','mdi-timer-outline','Read','Write'),
- ('disk_usage_total','disk_usage_used','Disk capacity','mdi-database-outline','Total','Used')
-] %}
-{% for left,right,title,icon,left_label,right_label in disk_pairs %}
-<article class="system-network-card">
-  <div class="system-cpu-heading"><i class="mdi {{icon}}" aria-hidden="true"></i> {{title}}</div>
-  <div class="system-network-pair">
-    <div><span class="system-network-direction">{{left_label}}</span><strong id="disk-{{left}}">{{row[left] if row and row[left] is not none else '—'}}</strong></div>
-    <div><span class="system-network-direction">{{right_label}}</span><strong id="disk-{{right}}">{{row[right] if row and row[right] is not none else '—'}}</strong></div>
-  </div>
-  <span class="system-network-unit">{{'Cumulative counts' if loop.index==1 else ('Cumulative bytes' if loop.index==2 else ('Cumulative ms' if loop.index==3 else 'Capacity bytes'))}}</span>
-</article>
-{% endfor %}
-<article class="system-network-card">
- <div class="system-cpu-heading"><i class="mdi mdi-chart-donut" aria-hidden="true"></i> Disk status</div>
- <div class="system-network-pair">
-  <div><span class="system-network-direction">Free</span><strong id="disk-disk_usage_free">{{row.disk_usage_free if row and row.disk_usage_free is not none else '—'}}</strong></div>
-  <div><span class="system-network-direction">Busy time</span><strong id="disk-disk_busy_time">{{row.disk_busy_time if row and row.disk_busy_time is not none else '—'}}</strong></div>
- </div>
- <span class="system-network-unit">Free: bytes · Busy: cumulative ms</span>
-</article>
+  {% set disk_cards=[
+    ('Disk operations','mdi-harddisk',[('disk_read_count','Reads'),('disk_write_count','Writes')],'Cumulative operations'),
+    ('Disk transfer','mdi-swap-horizontal',[('disk_read_bytes','Read'),('disk_write_bytes','Written')],'Cumulative bytes'),
+    ('Disk I/O time','mdi-timer-outline',[('disk_read_time','Read'),('disk_write_time','Write'),('disk_busy_time','Busy')],'Cumulative milliseconds'),
+    ('Disk capacity','mdi-database-outline',[('disk_usage_total','Total'),('disk_usage_used','Used'),('disk_usage_free','Free'),('disk_usage_percent','Used %')],'Capacity and utilization')
+  ] %}
+  {% for title,icon,items,description in disk_cards %}
+  <article class="system-network-card">
+    <div class="system-cpu-heading"><i class="mdi {{icon}}" aria-hidden="true"></i> {{title }}</div>
+    <div class="system-network-pair system-disk-values">
+      {% for field,label in items %}
+      <div><span class="system-network-direction">{{label}}</span>
+        <strong id="disk-{{field}}">{{row[field] if row and row[field] is not none else '—'}}</strong>
+      </div>
+      {% endfor %}
+    </div>
+    <span class="system-network-unit">{{description}}</span>
+  </article>
+  {% endfor %}
 </section>
 <section class="system-strip-grid" aria-label="Current system metrics and trends">
 {% for field,label,icon,unit,precision in items %}
