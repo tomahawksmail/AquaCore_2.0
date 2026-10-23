@@ -50,12 +50,15 @@
       high = Math.max(high, maxLimit + pad * .3);
       if (validCap) low = Math.min(low, maxLimit - pad * 1.5);
     }
-    // Temperature uses fixed 5°C ticks; all readings and reference limits remain visible.
-    if (field === 'temp') {
-      low = Math.floor(low / 5) * 5;
-      high = Math.ceil(high / 5) * 5;
-      if (high <= low) high = low + 5;
-    }
+    // Use readable rounded steps on every Y axis. Scale remains wide enough
+    // to contain all observed readings and configured MIN/MAX limits.
+    const step = field === 'temp' ? 5
+      : field === 'ph' ? 0.5
+      : [10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000, 10000]
+          .find(v => (high-low)/v <= 7) || 20000;
+    low = Math.floor(low / step) * step;
+    high = Math.ceil(high / step) * step;
+    if (high <= low) high = low + step;
     const x=t => L+(t-t0)/(t1-t0)*(W-L-R);
     const y=v => T+(high-v)/(high-low)*(H-T-B);
     const svg=el('svg',{viewBox:`0 0 ${W} ${H}`,class:'chart-svg',role:'img', 'aria-label':`${field} history chart; ${valid.length} available intervals`},target);
@@ -74,13 +77,12 @@
       limitLine(minLimit, 'MIN ' + minLimit);
       limitLine(maxLimit, 'MAX ' + maxLimit);
     } else if (validCap) limitLine(maxLimit, 'MAX ' + maxLimit + ' ppm');
-    const ticks = field === 'temp'
-      ? Array.from({length:Math.round((high-low)/5)+1},(_,i)=>low+i*5)
-      : Array.from({length:4},(_,i)=>low+(high-low)*i/3);
-    for (const val of ticks) {
-      const py=y(val);
+    const count=Math.round((high-low)/step);
+    for (let i=0;i<=count;i++) {
+      const val=low+i*step, py=y(val);
       el('line',{x1:L,y1:py,x2:W-R,y2:py,class:'chart-gridline'},svg);
-      el('text',{x:L-8,y:py+4,'text-anchor':'end'},svg,field==='temp'?String(val):val.toFixed(field==='ph'?2:1));
+      const label=field==='ph' ? Number(val.toFixed(1)).toString() : String(Math.round(val));
+      el('text',{x:L-8,y:py+4,'text-anchor':'end'},svg,label);
     }
     if (period === '24h') {
       // Labels only at exact local clock hours, never at arbitrary sample minutes.
