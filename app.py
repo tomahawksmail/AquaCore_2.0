@@ -223,6 +223,46 @@ def history():
     response.headers['Cache-Control'] = 'no-store'
     return response
 
+@app.post('/api/options/field')
+@logged_in
+def save_option_field():
+    """Save one field without resubmitting unrelated settings."""
+    if int(session.get('role', 0)) != 1:
+        abort(403)
+    payload=request.get_json(silent=True)
+    if not isinstance(payload,dict):
+        return jsonify(error='Expected JSON object'),400
+    field=payload.get('field')
+    if not isinstance(field,str) or field not in SETTINGS and field not in TIME_FIELDS:
+        return jsonify(error='Unknown setting'),400
+    raw=str(payload.get('value') if payload.get('value') is not None else '').strip()
+    if not raw:
+        return jsonify(error='A value is required'),400
+    try:
+        if field in SETTINGS:
+            cast,low,high=SETTINGS[field]
+            parsed=cast(raw)
+            if not __import__('math').isfinite(parsed) or not low<=parsed<=high:
+                raise ValueError('Outside permitted range')
+            if field in ('min_temp','max_temp','min_ph','max_ph'):
+                existing=query('SELECT min_temp,max_temp,min_ph,max_ph FROM options LIMIT 1',one=True)
+                if not existing:
+                    return jsonify(error='Missing options row'),409
+                other={'min_temp':'max_temp','max_temp':'min_temp',
+                       'min_ph':'max_ph','max_ph':'min_ph'}[field]
+                current=existing[other]
+                if current is not None and ((field.startswith('min_') and parsed>=current) or
+                                            (field.startswith('max_') and parsed<=current)):
+                    return jsonify(error='Minimum must be below maximum'),400
+        else:
+            parsed=datetime.strptime(raw,'%H:%M').strftime('%H:%M:%S')
+    except (ValueError,OverflowError,TypeError):
+        return jsonify(error='Invalid value'),400
+    mutate('UPDATE options SET `'+field+'`=%s LIMIT 1',(parsed,))
+    response=jsonify(ok=True,field=field,value=parsed)
+    response.headers['Cache-Control']='no-store'
+    return response
+
 @app.route('/options',methods=['GET','POST'])
 @logged_in
 def options():
