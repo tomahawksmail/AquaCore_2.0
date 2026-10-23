@@ -36,7 +36,7 @@
         <span class="settings-input-wrap">
           <input id="setting-{{key}}" type="number" name="{{key}}" step="0.1"
                  min="{{low}}" max="{{high}}"
-                 value="{{options[key] if options[key] is not none else ''}}">
+                 value="{{options[key] if options[key] is not none else ''}}" {% if session.get('role')|int != 1 %}disabled{% endif %}>
           <span class="settings-unit">{{unit}}</span>
         </span>
       </label>
@@ -49,7 +49,7 @@
         {% set cast, low, high = settings['history'] %}
         <span class="settings-input-wrap">
           <input id="setting-history" type="number" step="1" name="history"
-                 min="{{low}}" max="{{high}}" value="{{options.history if options.history is not none else ''}}">
+                 min="{{low}}" max="{{high}}" value="{{options.history if options.history is not none else ''}}" {% if session.get('role')|int != 1 %}disabled{% endif %}>
           <span class="settings-unit">value</span>
         </span>
       </label>
@@ -71,8 +71,8 @@
             <span class="settings-device-icon"><i class="mdi {{icons.get(field, 'mdi-power-plug-outline')}}" aria-hidden="true"></i></span>
             <div><strong>{{label}}</strong><span class="control-state" id="state-{{field}}">{{('Manual until ' ~ manual[field].strftime('%H:%M')) if field in manual else 'Scheduled · ' ~ ('ON' if active else 'OFF')}}</span></div>
           </div>
-          <label class="device-time" for="time-{{on}}"><span>ON time</span><input id="time-{{on}}" type="time" name="{{on}}" value="{{options[on]|string|truncate(5,True,'') if options[on] is not none else ''}}"></label>
-          <label class="device-time" for="time-{{off}}"><span>OFF time</span><input id="time-{{off}}" type="time" name="{{off}}" value="{{options[off]|string|truncate(5,True,'') if options[off] is not none else ''}}"></label>
+          <label class="device-time" for="time-{{on}}"><span>ON time</span><input id="time-{{on}}" type="time" name="{{on}}" value="{{options[on]|string|truncate(5,True,'') if options[on] is not none else ''}}" {% if session.get('role')|int != 1 %}disabled{% endif %}></label>
+          <label class="device-time" for="time-{{off}}"><span>OFF time</span><input id="time-{{off}}" type="time" name="{{off}}" value="{{options[off]|string|truncate(5,True,'') if options[off] is not none else ''}}" {% if session.get('role')|int != 1 %}disabled{% endif %}></label>
           <div class="device-manual">
             <span>Manual</span>
             <label class="ios-switch" aria-label="Toggle {{label}} manually">
