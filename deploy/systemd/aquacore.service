@@ -1,0 +1,26 @@
+[Unit]
+Description=AquaCore Flask web interface (Gunicorn)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=aquacore
+Group=aquacore
+WorkingDirectory=/opt/aquacore
+Environment=PYTHONUNBUFFERED=1
+Environment=COOKIE_SECURE=true
+EnvironmentFile=-/etc/aquacore/web.env
+ExecStart=/opt/aquacore/.venv/bin/gunicorn --config /opt/aquacore/gunicorn.conf.py wsgi:app
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/opt/aquacore
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target
