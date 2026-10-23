@@ -1,44 +1,56 @@
 "use strict";
 (() => {
   const config={RAM_percent:['%',1,'#57dccc'],disk_usage_percent:['%',1,'#90a9ff'],RAM_available:['MB',0,'#76cdfa']};
+  function plot(el,series,points,{fixedMax=null,unit='',format=null}={}){
+    const W=1000,H=185,L=62,R=16,T=12,B=154;
+    const numbers=series.flatMap(item=>points.map(p=>item.get(p))).filter(v=>v!=null&&Number.isFinite(Number(v))).map(Number);
+    if(!numbers.length){el.textContent='No history yet';return;}
+    let lo=fixedMax===100?0:Math.min(...numbers),hi=fixedMax===100?100:Math.max(...numbers);
+    if(fixedMax!==100){
+      const gap=Math.max((hi-lo)*.13,hi===lo?Math.max(1,Math.abs(hi)*.03):.1);
+      lo=Math.max(0,lo-gap);hi+=gap;
+    }
+    const steps=fixedMax===100?25:Math.pow(10,Math.floor(Math.log10(Math.max(.001,(hi-lo)/4))));
+    const tickStep=fixedMax===100?25:([1,2,2.5,5,10].map(n=>n*steps).find(n=>(hi-lo)/n<=5)||steps*10);
+    lo=fixedMax===100?0:Math.floor(lo/tickStep)*tickStep;
+    hi=fixedMax===100?100:Math.ceil(hi/tickStep)*tickStep;
+    if(hi<=lo)hi=lo+tickStep;
+    const x=i=>L+(points.length===1?(W-L-R)/2:i*(W-L-R)/(points.length-1));
+    const y=v=>B-(Number(v)-lo)/(hi-lo)*(B-T);
+    const txt=v=>format?format(v):(tickStep<1?Number(v.toFixed(2)).toString():Math.round(v).toString());
+    let svg='<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" aria-hidden="true">';
+    const ticks=Math.min(12,Math.round((hi-lo)/tickStep));
+    for(let k=0;k<=ticks;k++){
+      const value=lo+k*tickStep,py=y(value);
+      svg+='<line x1="'+L+'" y1="'+py+'" x2="'+(W-R)+'" y2="'+py+'" stroke="#2a4758" stroke-width=".8"/>';
+      svg+='<text x="'+(L-8)+'" y="'+(py+4)+'" text-anchor="end" fill="#9cbdcf" font-size="12">'+txt(value)+'</text>';
+    }
+    // Horizontal positions represent successive measurements, oldest to latest.
+    [[0,'Older'],[1,'Latest']].forEach(([f,label])=>{
+      svg+='<text x="'+(L+f*(W-L-R))+'" y="'+(H-6)+'" text-anchor="'+(f?'end':'start')+'" fill="#86acbe" font-size="12">'+label+'</text>';
+    });
+    for(const item of series){
+      let sections=[],section=[];
+      points.forEach((p,k)=>{
+        const v=item.get(p);
+        if(v==null||!Number.isFinite(Number(v))){if(section.length)sections.push(section);section=[];}
+        else section.push([x(k),y(v)]);
+      });
+      if(section.length)sections.push(section);
+      for(const part of sections){
+        svg+='<path d="M '+part.map(t=>t[0].toFixed(1)+' '+t[1].toFixed(1)).join(' L ')+'" fill="none" stroke="'+item.color+'" stroke-width="1.2" vector-effect="non-scaling-stroke"/>';
+      }
+      const last=sections.at(-1)?.at(-1);
+      if(last)svg+='<circle cx="'+last[0]+'" cy="'+last[1]+'" r="3.2" fill="'+item.color+'" stroke="#102335" stroke-width="1.2"/>';
+    }
+    el.innerHTML=svg+'</svg>';
+  }
   function draw(el,raw,color){
-    const data=raw.map(v=>v==null||!Number.isFinite(Number(v))?null:Number(v));
-    const valid=data.filter(v=>v!==null);
-    if(!valid.length){el.textContent='No history yet';return;}
-    const W=1000,H=150,B=149,low=Math.min(...valid),high=Math.max(...valid),pad=Math.max(1,(high-low)*.22);
-    const x=i=>data.length===1?W/2:i*W/(data.length-1);
-    const y=v=>14+(high+pad-v)/(high-low+2*pad)*104;
-    let paths=[],segment=[];
-    data.forEach((v,i)=>{if(v===null){if(segment.length){paths.push(segment);segment=[];}}else segment.push([x(i),y(v)]);});
-    if(segment.length)paths.push(segment);
-    const fixed=p=>p[0].toFixed(2)+' '+p[1].toFixed(2);
-    const svg=paths.map(points=>{
-      const line='M '+points.map(fixed).join(' L ');
-      const first=points[0],last=points[points.length-1];
-      const area=line+' L '+last[0].toFixed(2)+' '+B+' L '+first[0].toFixed(2)+' '+B+' Z';
-      return '<path d="'+area+'" fill="'+color+'" opacity=".13"/><path d="'+line+'" fill="none" stroke="'+color+'" stroke-width="1.1" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round"/>';
-    }).join('');
-    el.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" aria-hidden="true">'+svg+'</svg>';
+    plot(el,[{color,get:p=>p.value}],raw.map(value=>({value})));
   }
   const coreColors=['#5eead4','#8fa8ff','#ffc48b','#76cdfa'];
   function coreChart(el,points){
-    const fields=[0,1,2,3].map(i=>'cpus_percent_'+i);
-    const W=1000,H=155,T=8,B=130;
-    const x=i=>points.length<2?W/2:i*W/(points.length-1);
-    const y=v=>T+(100-v)/100*(B-T);
-    let svg='<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" aria-hidden="true">';
-    for(const v of [0,25,50,75,100])svg+='<line x1="0" x2="'+W+'" y1="'+y(v)+'" y2="'+y(v)+'" stroke="#2a4758" stroke-width=".7"/>';
-    fields.forEach((field,n)=>{
-      let segments=[],pointsNow=[];
-      points.forEach((p,i)=>{
-        const value=p[field];
-        if(value==null||!Number.isFinite(Number(value))){if(pointsNow.length)segments.push(pointsNow);pointsNow=[];}
-        else pointsNow.push([x(i),y(Math.max(0,Math.min(100,Number(value))))]);
-      });
-      if(pointsNow.length)segments.push(pointsNow);
-      for(const segment of segments)svg+='<path d="M '+segment.map(v=>v[0].toFixed(1)+' '+v[1].toFixed(1)).join(' L ')+'" fill="none" stroke="'+coreColors[n]+'" stroke-width="1.2" vector-effect="non-scaling-stroke"/>';
-    });
-    el.innerHTML=svg+'</svg>';
+    plot(el,[0,1,2,3].map(n=>({color:coreColors[n],get:p=>p['cpus_percent_'+n]})),points,{fixedMax:100});
   }
   const ramSeries=[
     ['RAM_available','Available','#5eead4'],['RAM_percent','Usage %','#f7ad75'],
@@ -48,37 +60,12 @@
     ['RAM_shared','Shared','#c3d5e8'],['RAM_slab','Slab','#e2abcb']
   ];
   function drawRamBreakdown(el,points){
-    if(!points.length){el.textContent='No history yet';return;}
-    const W=1000,H=155,T=7,B=131;
-    const total=Math.max(1,...points.map(p=>Number(p.RAM_total)||0));
-    const values=ramSeries.flatMap(([field])=>points.map(p=>field==='RAM_percent'
-      ? (p.RAM_percent==null||p.RAM_total==null?null:Number(p.RAM_total)*Number(p.RAM_percent)/100)
-      : (p[field]==null?null:Number(p[field])))).filter(v=>v!=null&&Number.isFinite(v));
-    if(!values.length){el.textContent='No RAM readings yet';return;}
-    const ymax=Math.max(total,...values,1)*1.05;
-    const x=i=>points.length<=1?W/2:i*W/(points.length-1);
-    const y=v=>B-Math.max(0,v)/ymax*(B-T);
-    let svg='<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" aria-hidden="true">';
-    for(const fraction of [0,.25,.5,.75,1]){
-      const pos=B-fraction*(B-T);
-      svg+='<line x1="0" y1="'+pos+'" x2="'+W+'" y2="'+pos+'" stroke="#2a4758" stroke-width=".7"/>';
-    }
-    ramSeries.forEach(([field,label,color])=>{
-      let parts=[],segment=[];
-      points.forEach((p,i)=>{
-        const raw=field==='RAM_percent'
-          ? (p.RAM_percent==null||p.RAM_total==null?null:Number(p.RAM_total)*Number(p.RAM_percent)/100)
-          : p[field];
-        const v=raw==null?NaN:Number(raw);
-        if(!Number.isFinite(v)){if(segment.length)parts.push(segment);segment=[];}
-        else segment.push([x(i),y(v)]);
-      });
-      if(segment.length)parts.push(segment);
-      for(const part of parts){
-        svg+='<path d="M '+part.map(v=>v[0].toFixed(1)+' '+v[1].toFixed(1)).join(' L ')+'" fill="none" stroke="'+color+'" stroke-width="1.1" vector-effect="non-scaling-stroke"/>';
-      }
-    });
-    el.innerHTML=svg+'</svg>';
+    const series=ramSeries.map(([field,label,color])=>({
+      color,get:p=>field==='RAM_percent'
+        ? (p.RAM_percent==null||p.RAM_total==null?null:Number(p.RAM_total)*Number(p.RAM_percent)/100)
+        : p[field]
+    }));
+    plot(el,series,points);
   }
   function updateRamLegend(points){
     const legend=document.getElementById('ram-breakdown-legend');
