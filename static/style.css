@@ -1241,3 +1241,21 @@ status trends preserved */
 /* Keep save notification and commit info together at sidebar bottom */
 .sidebar-save-status.settings-autosave-info{margin-top:auto}
 .sidebar-save-status+.sidebar-version{margin-top:0}
+
+/* CPU overview: frequency 25%, four-core history 75%. */
+.system-cpu-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,3fr);gap:16px;width:100%;margin-bottom:18px}
+.system-cpu-panel{min-width:0;overflow:hidden;border:1px solid #234456;background:#112337;border-radius:17px;padding:19px 20px 0;display:flex;flex-direction:column;min-height:240px}
+.system-cpu-heading{color:#a6c6d4;font-size:15px;font-weight:750;display:flex;align-items:center;gap:8px}
+.system-cpu-heading .mdi{font-size:21px;color:#5eead4}
+.system-cpu-value{text-align:center;font-size:clamp(35px,3.2vw,55px);color:#e6effe;font-weight:800;margin:12px 0}
+.system-cpu-value small{font-size:15px;color:#90b6c9;margin-left:6px}
+.system-cpu-spark{height:110px;width:calc(100% + 40px);margin:auto -20px 0}
+.system-cpu-spark svg{width:100%;height:100%;display:block}
+.system-core-legend{display:flex;flex-wrap:wrap;gap:9px 19px;margin:14px 0;color:#a7c9d8;font-size:12px}
+.cpu-core-key{display:inline-flex;align-items:center;gap:6px}
+.cpu-core-key i{height:8px;width:8px;border-radius:50%;display:inline-block;background:#5eead4}
+.cpu-core-1 i{background:#8fa8ff}.cpu-core-2 i{background:#ffc48b}.cpu-core-3 i{background:#76cdfa}
+.cpu-core-key strong{color:#e2f1f8}
+.system-core-chart{height:150px;margin:auto -20px 0;width:calc(100% + 40px)}
+.system-core-chart svg{width:100%;height:100%;display:block}
+@media(max-width:900px){.system-cpu-grid{grid-template-columns:1fr}.system-cpu-panel{min-height:210px}}
