@@ -86,7 +86,6 @@
     {% endfor %}
     <p class="control-disclaimer"><i class="mdi mdi-information-outline" aria-hidden="true"></i> Changes to times and water parameters save automatically. Manual switches take effect immediately and last until the next scheduled transition.</p>
   </section>
-  <div class="settings-autosave-info" aria-live="polite" id="settings-save-status"><i class="mdi mdi-cloud-check-outline" aria-hidden="true"></i> Changes save automatically</div>
 </form>
 <script>window.AQUACORE_CSRF = {{ csrf_token()|tojson }};</script>
 <script defer src="{{ url_for('static', filename='controls.js') }}"></script>
