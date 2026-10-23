@@ -1275,3 +1275,9 @@ status trends preserved */
 .system-temperature-value-panel .system-cpu-value{font-size:clamp(45px,4vw,72px);margin:auto 0;color:#e6effe}
 .system-temperature-chart{height:165px}
 @media(max-width:900px){.system-temperature-grid .system-cpu-panel{min-height:200px}}
+
+/* Quarter-width System cards show only large current readings */
+.system-cpu-grid > .system-cpu-panel:first-child{justify-content:flex-start}
+.system-cpu-grid > .system-cpu-panel:first-child .system-cpu-value{margin:auto 0;text-align:center;font-size:clamp(38px,3.8vw,72px)}
+.system-temperature-chart{height:165px;min-height:165px}
+.system-temperature-chart svg{height:100%;width:100%;display:block}
