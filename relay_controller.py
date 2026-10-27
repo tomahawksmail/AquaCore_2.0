@@ -18,34 +18,21 @@ from dotenv import load_dotenv
 LOG = logging.getLogger("aquacore.relay")
 RUNNING = True
 
-# Verified from the user's previous R2 relay wiring. GPIO numbering must match
-# the installed 'gpio' utility (not Linux gpiochip line offsets).
-KNOWN_PINS = {
-    "co2_status": 19,
-    "o2_status": 14,
-    "UV_status": 12,
+# Orange Pi Zero 2W 40-pin header, in AquaCore UI order.
+# Each pair is (PHYSICAL_HEADER_PIN, SUNXI_GPIO_NUMBER).
+# Requires wiringOP 'gpio -g' (SoC pin mode), not default wPi pin numbering.
+PIN_MAP = {
+    "co2_status": (18, 228),         # PH4
+    "o2_status": (22, 262),          # PI6
+    "UV_status": (24, 229),          # PH5
+    "MasterL_status": (26, 233),     # PH9
+    "Backlight_status": (37, 272),   # PI16
+    "PlantL_status": (36, 76),       # PC12
 }
-# MasterL_status, Backlight_status, PlantL_status intentionally UNMAPPED until
-# their physical relay pins are confirmed. Heater is deliberately excluded.
-ALLOWED_FIELDS = tuple(KNOWN_PINS) + (
-    "MasterL_status", "Backlight_status", "PlantL_status"
-)
 
 def load_config():
     load_dotenv(os.getenv("AQUACORE_ENV", "/home/orangepi/AquaCore/.env"))
-    pins = dict(KNOWN_PINS)
-    for field, var in (
-        ("MasterL_status", "AQUACORE_GPIO_MAINLIGHT"),
-        ("Backlight_status", "AQUACORE_GPIO_BACKLIGHT"),
-        ("PlantL_status", "AQUACORE_GPIO_PLANTLIGHT"),
-    ):
-        if os.getenv(var):
-            pins[field] = int(os.environ[var])
-    if len(set(pins.values())) != len(pins):
-        raise ValueError("GPIO pins must be unique")
-    if any(pin < 0 for pin in pins.values()):
-        raise ValueError("GPIO pin numbers must be nonnegative")
-    return pins
+    return dict(PIN_MAP)
 
 def database():
     config = {
@@ -74,17 +61,17 @@ def get_status(pins):
     return rows[0]
 
 def gpio(*args):
-    subprocess.run(["gpio", *map(str,args)], check=True,
+    subprocess.run(["gpio", "-g", *map(str,args)], check=True,
                    timeout=3, stdout=subprocess.DEVNULL)
 
 def setup_pins(pins, apply):
-    for field, pin in pins.items():
+    for field, (physical, pin) in pins.items():
         if apply:
             gpio("mode", pin, "out")
-        LOG.info("%s mapped to GPIO %s", field, pin)
+        LOG.info("%s => physical pin %s (SoC GPIO %s)", field, physical, pin)
 
 def apply_states(rows, pins, previous, apply):
-    for field, pin in pins.items():
+    for field, (physical, pin) in pins.items():
         state = rows[field]
         if state not in ("checked", "unchecked"):
             LOG.warning("Skipping invalid/NULL %s=%r", field, state)
@@ -92,10 +79,10 @@ def apply_states(rows, pins, previous, apply):
         if previous.get(field) == state:
             continue
         # Existing board: 'down' energizes relay, 'up' de-energizes it.
-        level = "down" if state == "checked" else "up"
+        level = 0 if state == "checked" else 1
         if apply:
             gpio("write", pin, level)
-        LOG.info("%s -> %s on GPIO %s (%s)", field, state, pin,
+        LOG.info("%s -> %s on physical %s / SoC GPIO %s (%s)", field, state, physical, pin,
                  "APPLIED" if apply else "DRY RUN")
         previous[field] = state
 
