@@ -2,18 +2,24 @@
 
 The modern AquaCore web app updates `status` in MariaDB. `scheduler.py` computes scheduled states and temporary manual overrides. `relay_controller.py` is the **only** component that should drive the GPIO output pins. Run each as a separate service/process, with exactly one instance of each.
 
-## Migrated relay channels
+## Six relay connections (Orange Pi Zero 2W)
 
-| DB field | Orange Pi `gpio` pin | Source |
-|---|---:|---|
-| `co2_status` | 19 | previous R2 wiring |
-| `o2_status` | 14 | previous R2 wiring |
-| `UV_status` | 12 | previous R2 wiring |
-| `MasterL_status` | not confirmed | configure via env |
-| `Backlight_status` | not confirmed | configure via env |
-| `PlantL_status` | not confirmed | configure via env |
+Wiring is in the same order as AquaCore Settings. Physical header numbers and SoC GPIO numbers are different: this controller uses `gpio -g` and SoC GPIO numbers.
 
-Old heater relay (11) is **not** managed. Removed Moonlight/Projector are not managed. Additional pins used by other modules are untouched. Pin numbering matches the existing `gpio` CLI, not Linux GPIO chip offsets. Outputs preserve active-low behavior: `checked => gpio write PIN down`; `unchecked => gpio write PIN up`.
+| AquaCore device | Database field | Physical pin | Port | SoC GPIO |
+|---|---|---:|---|---:|
+| CO₂ | `co2_status` | 18 | PH4 | 228 |
+| Oxygen | `o2_status` | 22 | PI6 | 262 |
+| UV sterilizer | `UV_status` | 24 | PH5 | 229 |
+| Main light | `MasterL_status` | 26 | PH9 | 233 |
+| Backlight | `Backlight_status` | 37 | PI16 | 272 |
+| Plant light | `PlantL_status` | 36 | PC12 | 76 |
+
+Active-low relay-module logic preserved from your previous code: `checked => LOW (0) => ON`; `unchecked => HIGH (1) => OFF`. Confirm your module really follows this and is electrically compatible with 3.3 V logic. Some 5 V relay boards need appropriate transistor/level-shifter drivers; Orange Pi GPIO must never power relay coils directly.
+
+**Warning:** Configuring a GPIO as output can momentarily energize an active-low module. Test with loads disconnected and arrange hardware pull-ups/enable gating for fail-safe startup. Confirm `gpio readall` reports physical pins and SoC names exactly as above. Make sure none of these pins are reserved by SPI/I2C/UART overlays.
+
+Heater and removed Moonlight/Projector are deliberately excluded.
 
 ## Install and safely test
 
@@ -31,17 +37,6 @@ cd /home/orangepi/AquaCore
 ```bash
 .venv/bin/python relay_controller.py --apply
 ```
-
-5. Only after confirming wiring, supply optional pin numbers in `.env`:
-
-```ini
-# Set ONLY after identifying the exact hardware wiring:
-# AQUACORE_GPIO_MAINLIGHT=10
-# AQUACORE_GPIO_BACKLIGHT=13
-# AQUACORE_GPIO_PLANTLIGHT=15
-```
-
-The numbers above are **examples, not established hardware assignments**; the old R1/U9/U10 listing alone did not identify which light connects to which pin.
 
 ## Reliability notes
 
