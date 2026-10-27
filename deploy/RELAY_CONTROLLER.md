@@ -21,6 +21,19 @@ Active-low relay-module logic preserved from your previous code: `checked => LOW
 
 Heater and removed Moonlight/Projector are deliberately excluded.
 
+## Second relay module: four reserved channels
+
+| Channel | Physical header | Port | SoC GPIO | Status |
+|---|---:|---|---:|---|
+| Spare 1 | 29 | PI0 | 256 | Reserved, inactive |
+| Spare 2 | 23 | PH6 | 230 | Reserved, inactive |
+| Spare 3 | 21 | PH8 | 232 | Reserved, inactive |
+| Spare 4 | 19 | PH7 | 231 | Reserved, inactive |
+
+These are listed in `SPARE_PIN_MAP` but deliberately excluded from the live `PIN_MAP`. The controller does not configure or drive these GPIO pins, and there are no database status fields for them.
+
+**SPI conflict:** Physical pins 19, 21, and 23 have SPI alternate functions. Inspect `gpio readall` and enabled device-tree overlays before using them as outputs. No loads should be connected to the second module during mapping and polarity checks.
+
 ## Install and safely test
 
 1. STOP the old relay script/service first. Two controllers writing the same physical outputs can cause unexpected cycling.
