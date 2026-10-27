@@ -30,8 +30,21 @@ PIN_MAP = {
     "PlantL_status": (36, 76),       # PC12
 }
 
+# Second four-channel module, connected but NOT managed by AquaCore.
+# GPIO numbers are SUNXI, used with "gpio -g".
+# These pins remain inputs/unconfigured by this script until explicitly assigned.
+SPARE_PIN_MAP = {
+    "spare_1": (29, 256),  # PI0
+    "spare_2": (23, 230),  # PH6 / SPI clock
+    "spare_3": (21, 232),  # PH8 / SPI MISO
+    "spare_4": (19, 231),  # PH7 / SPI MOSI
+}
+
 def load_config():
     load_dotenv(os.getenv("AQUACORE_ENV", "/home/orangepi/AquaCore/.env"))
+    all_pins = [physical for physical, _ in (*PIN_MAP.values(), *SPARE_PIN_MAP.values())]
+    if len(set(all_pins)) != len(all_pins):
+        raise ValueError('Duplicate physical header pins across relay modules')
     return dict(PIN_MAP)
 
 def database():
