@@ -73,10 +73,45 @@ def reconcile():
         except Exception:
             con.rollback();raise
 
+def insert_missing_sensor_zeros():
+    """Write a 0-valued sample once per minute while no sensor rows arrive.
+
+    Existing scheduler process only; never start another watchdog.
+    A fresh real sensor row resets the timeout automatically.
+    """
+    from app import db
+    with db() as con:
+        try:
+            with con.cursor() as cur:
+                # Avoid double inserts if the scheduler is accidentally started twice.
+                cur.execute("SELECT GET_LOCK('aquacore_sensor_sample_60s', 0) AS acquired")
+                if cur.fetchone()['acquired'] != 1:
+                    return
+                try:
+                    cur.execute('SELECT NOW() AS now_time')
+                    now = cur.fetchone()['now_time']
+                    cur.execute('SELECT `Datetime` FROM `data` ORDER BY `Datetime` DESC, `Id` DESC LIMIT 1')
+                    latest = cur.fetchone()
+                    if latest and latest['Datetime'] is not None:
+                        age = (now - latest['Datetime']).total_seconds()
+                        if age < 60 or age < 0:
+                            return
+                    cur.execute('INSERT INTO `data` (`Datetime`,`temp`,`ph`,`tds`) VALUES (%s,0,0,0)', (now,))
+                    con.commit()
+                    logging.info('No sensor data for 60 seconds: inserted temp=0, ph=0, tds=0')
+                finally:
+                    cur.execute("SELECT RELEASE_LOCK('aquacore_sensor_sample_60s')")
+            con.commit()
+        except Exception:
+            con.rollback()
+            raise
+
 if __name__=='__main__':
     logging.basicConfig(level=logging.INFO,format='%(asctime)s %(levelname)s %(message)s')
     logging.info('AquaCore schedule controller started')
     while True:
         try: reconcile()
         except Exception: logging.exception('Scheduler cycle failed')
+        try: insert_missing_sensor_zeros()
+        except Exception: logging.exception('Sensor zero fallback failed')
         time.sleep(5)
