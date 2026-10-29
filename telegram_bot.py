@@ -36,11 +36,83 @@ DEVICE_KEYS = list(DEVICES)
 FIELDS = {**{name: "number" for name in SETTINGS}, **{name: "time" for name in TIME_FIELDS}}
 
 
+def init_users_table():
+    """Persistent access list. The environment owner always remains administrator."""
+    with db() as con:
+        with con.cursor() as cur:
+            cur.execute("""CREATE TABLE IF NOT EXISTS telegram_users (
+                telegram_id BIGINT UNSIGNED NOT NULL PRIMARY KEY,
+                role VARCHAR(16) NOT NULL DEFAULT 'viewer',
+                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""")
+        con.commit()
+
+
+def user_role(user_id):
+    if user_id == OWNER:
+        return "admin"
+    try:
+        with db() as con:
+            with con.cursor() as cur:
+                cur.execute("SELECT role FROM telegram_users WHERE telegram_id=%s", (user_id,))
+                row=cur.fetchone()
+        return row["role"] if row and row["role"] in ("viewer","operator") else None
+    except Exception:
+        LOG.exception("Cannot verify Telegram authorization")
+        return None
+
+
 def authorized(event):
     user = event.from_user
-    chat = event.chat if isinstance(event, Message) else event.message.chat if event.message else None
-    return bool(user and user.id == OWNER and chat and chat.type == "private"
-                and chat.id == OWNER)
+    chat = event.chat if isinstance(event, Message) else None
+    return bool(user and chat and chat.type == "private" and chat.id == user.id
+                and user_role(user.id) is not None)
+
+
+def can_manage(user_id):
+    return user_role(user_id) in ("admin", "operator")
+
+
+def is_owner(user_id):
+    return user_id == OWNER
+
+
+def list_users():
+    with db() as con:
+        with con.cursor() as cur:
+            cur.execute("SELECT telegram_id,role FROM telegram_users ORDER BY telegram_id")
+            rows=cur.fetchall()
+    return rows
+
+
+def change_user(user_id,role=None):
+    if user_id<=0 or user_id==OWNER:
+        raise ValueError("Enter another user's positive numeric Telegram ID")
+    with db() as con:
+        try:
+            with con.cursor() as cur:
+                if role is None:
+                    cur.execute("DELETE FROM telegram_users WHERE telegram_id=%s",(user_id,))
+                elif role in ("viewer","operator"):
+                    cur.execute("INSERT INTO telegram_users (telegram_id,role) VALUES (%s,%s) "
+                                "ON DUPLICATE KEY UPDATE role=VALUES(role)",(user_id,role))
+                else:
+                    raise ValueError("Invalid user role")
+            con.commit()
+        except Exception:
+            con.rollback()
+            raise
+
+
+def users_report():
+    lines=["👥 TELEGRAM ACCESS","━━━━━━━━━━━━━━━━━━",
+           f"👑 Owner: {OWNER} · admin"]
+    for entry in list_users():
+        icon="👁" if entry["role"]=="viewer" else "🎛"
+        lines.append(f"{icon} {entry['telegram_id']} · {entry['role']}")
+    lines.extend(["","Viewer: metrics only","Operator: metrics and equipment/settings",
+                  "Only owner can add or remove users."])
+    return "\\n".join(lines)
 
 
 def fmt(value, digits=1):
@@ -52,7 +124,7 @@ def fmt(value, digits=1):
         return str(value)
 
 
-MENU_LABELS={"🐠 Aquarium metrics":"aqua","🖥 System metrics":"system","📈 Aquarium chart":"chart_aqua","📉 System chart":"chart_system","🔌 Equipment control":"equipment","🕒 Timings":"timings","⚙️ Settings":"settings","❔ Help":"help","🏠 Main menu":"menu"}
+MENU_LABELS={"🐠 Aquarium metrics":"aqua","🖥 System metrics":"system","📈 Aquarium chart":"chart_aqua","📉 System chart":"chart_system","🔌 Equipment control":"equipment","🕒 Timings":"timings","⚙️ Settings":"settings","👥 Telegram users":"users","💧 Water limits":"limits","❔ Help":"help","🏠 Main menu":"menu"}
 STATE={}
 DEVICE_CHOICES={"🔌 "+name:field for field,name in DEVICES.items()}
 TIMING_CHOICES={"🕒 "+DEVICES[field]+" "+kind:column for field,(on,off) in SCHEDULE_MAP.items() for kind,column in (("ON",on),("OFF",off))}
@@ -66,7 +138,36 @@ def devices_menu():
     return keyboard([labels[i:i+2] for i in range(0,len(labels),2)]+[["🏠 Main menu"]])
 def timings_menu():
     labels=list(TIMING_CHOICES)
-    return keyboard([labels[i:i+2] for i in range(0,len(labels),2)]+[["🏠 Main menu"]])
+    return keyboard([labels[i:i+2] for i in range(0,len(labels),2)]+[["⚙️ Settings","🏠 Main menu"]])
+
+
+LIMIT_CHOICES = {
+    "🌡 Minimum temperature": "min_temp", "🌡 Maximum temperature": "max_temp",
+    "🧪 Minimum pH": "min_ph", "🧪 Maximum pH": "max_ph",
+    "💧 Minimum TDS": "min_tds", "💧 Maximum TDS": "max_tds",
+}
+
+
+def settings_menu(owner=False):
+    rows=[["💧 Water limits","🕒 Timings"]]
+    if owner:
+        rows.append(["👥 Telegram users"])
+    rows.append(["🏠 Main menu"])
+    return keyboard(rows)
+
+
+def limits_menu():
+    keys=list(LIMIT_CHOICES)
+    return keyboard([keys[i:i+2] for i in range(0,len(keys),2)]+[["⚙️ Settings","🏠 Main menu"]])
+
+
+def users_menu():
+    return keyboard([
+        ["➕ Add viewer","➕ Add operator"],
+        ["🗑 Remove user","👥 Telegram users"],
+        ["⚙️ Settings","🏠 Main menu"],
+    ])
+
 
 def freshness(recorded, now):
     """60-second sampling: 0–90s current, 90–180s delayed, older stale."""
@@ -197,6 +298,18 @@ def read_settings():
     return "\n".join(lines)
 
 
+def read_limits():
+    with db() as con:
+        with con.cursor() as cur:
+            cur.execute("SELECT * FROM options LIMIT 1")
+            options=cur.fetchone()
+    if not options:
+        return "⚠️ No settings found"
+    return ("💧 WATER QUALITY LIMITS\\n━━━━━━━━━━━━━━━━━━\\n"
+            + "\\n".join(f"{label}: {options.get(field)}" for label,field in LIMIT_CHOICES.items())
+            + "\\n\\nSelect a parameter below to change it.")
+
+
 def read_timings():
     with db() as con:
         with con.cursor() as cur:
@@ -242,7 +355,7 @@ def chart_image(which):
     plt.close(fig)
     return out.getvalue()
 
-def set_device(field, action):
+def set_device(field, action, actor=None):
     if field not in DEVICES or action not in ("on","off","auto"):
         raise ValueError("Unsupported device or action")
     with db() as con:
@@ -272,7 +385,7 @@ def set_device(field, action):
                         (field,desired,until,now))
                 cur.execute("UPDATE status SET `"+field+"`=%s",(desired,))
                 cur.execute("INSERT INTO loging (`User`,`Event`,`Datetime`) VALUES (%s,%s,%s)",
-                            ("Telegram:"+str(OWNER),f"{field} {action} => {desired}",now))
+                            ("Telegram:"+str(actor if actor is not None else OWNER),f"{field} {action} => {desired}",now))
             con.commit()
         except Exception:
             con.rollback()
@@ -280,7 +393,7 @@ def set_device(field, action):
     return f"✅ {DEVICES[field]}: {action.upper()} requested" + (f" until {until} (server time)" if until else " (schedule mode)") + "\nPhysical relay state is not independently verified."
 
 
-def set_option(field, raw):
+def set_option(field, raw, actor=None):
     if field not in FIELDS:
         raise ValueError("Unknown field; see /settings")
     if field in SETTINGS:
@@ -306,7 +419,7 @@ def set_option(field, raw):
                 cur.execute("SELECT NOW() AS t")
                 now=cur.fetchone()["t"]
                 cur.execute("INSERT INTO loging (`User`,`Event`,`Datetime`) VALUES (%s,%s,%s)",
-                            ("Telegram:"+str(OWNER),f"Setting {field} = {parsed}",now))
+                            ("Telegram:"+str(actor if actor is not None else OWNER),f"Setting {field} = {parsed}",now))
             con.commit()
         except Exception:
             con.rollback()
@@ -322,31 +435,50 @@ HELP = ("AquaCore Telegram\n"
         "ON/OFF lasts until the next scheduled transition; AUTO returns to schedule. "
         "Changes are recorded in MariaDB.")
 
-VIEWS={"aqua":read_aqua,"system":read_system,"equipment":read_equipment,"settings":read_settings,"timings":read_timings}
+VIEWS={"aqua":read_aqua,"system":read_system,"equipment":read_equipment,
+       "settings":read_settings,"timings":read_timings,"limits":read_limits,
+       "users":users_report}
+
 
 async def show_view(message,view):
+    uid=message.from_user.id
     if view=="menu":
-        STATE.clear()
-        await message.answer("🌊 Welcome to AquaCore 2.0",reply_markup=reply_menu())
+        STATE.pop(uid,None)
+        await message.answer("🌊 AquaCore 2.0\\nChoose an option using the keyboard below.",reply_markup=reply_menu())
     elif view=="help":
-        await message.answer(HELP+"\n\nUse the bottom keyboard to navigate.",reply_markup=reply_menu())
+        await message.answer(HELP+"\\n\\nUse the bottom keyboard to navigate.",reply_markup=reply_menu())
     elif view.startswith("chart_"):
         kind=view.split("_",1)[1]
         image=await asyncio.to_thread(chart_image,kind)
         if image:await message.answer_photo(BufferedInputFile(image,filename=kind+".png"),caption="📈 "+kind.title()+" metrics",reply_markup=reply_menu())
         else:await message.answer("No timestamped metrics available.",reply_markup=reply_menu())
     elif view=="equipment":
-        STATE.clear()
-        await message.answer(await asyncio.to_thread(read_equipment),reply_markup=devices_menu())
+        STATE.pop(uid,None)
+        await message.answer(await asyncio.to_thread(read_equipment),reply_markup=devices_menu() if can_manage(uid) else reply_menu())
+    elif view=="settings":
+        STATE.pop(uid,None)
+        await message.answer("⚙️ AQUACORE SETTINGS\\n━━━━━━━━━━━━━━━━━━\\n💧 Water quality thresholds\\n🕒 Equipment schedules"
+                             + ("\\n👥 Authorized Telegram users" if is_owner(uid) else ""),
+                             reply_markup=settings_menu(is_owner(uid)))
+    elif view=="users":
+        if not is_owner(uid):
+            await message.answer("⛔ Only the owner can manage users.");return
+        STATE.pop(uid,None)
+        await message.answer(await asyncio.to_thread(users_report),reply_markup=users_menu())
     elif view=="timings":
-        STATE.clear()
-        await message.answer(await asyncio.to_thread(read_timings),reply_markup=timings_menu())
+        STATE.pop(uid,None)
+        await message.answer(await asyncio.to_thread(read_timings),reply_markup=timings_menu() if can_manage(uid) else settings_menu(is_owner(uid)))
+    elif view=="limits":
+        STATE.pop(uid,None)
+        await message.answer(await asyncio.to_thread(read_limits),reply_markup=limits_menu() if can_manage(uid) else settings_menu(is_owner(uid)))
     else:
         await message.answer(await asyncio.to_thread(VIEWS[view]),reply_markup=reply_menu())
+
 
 @dp.message(CommandStart())
 async def start(message:Message):
     if authorized(message):await show_view(message,"menu")
+
 
 @dp.message(Command("aqua","system","equipment","settings","help"))
 async def commands(message:Message):
@@ -354,34 +486,53 @@ async def commands(message:Message):
     try:await show_view(message,message.text.split()[0][1:].split("@")[0])
     except Exception:LOG.exception("Command error");await message.answer("⚠️ Could not load data")
 
+
 @dp.message(Command("set"))
 async def set_command(message:Message):
     if not authorized(message):return
+    if not can_manage(message.from_user.id):
+        await message.answer("⛔ Read-only account.");return
     parts=(message.text or "").split()
     if len(parts)!=3:
         await message.answer("Use /set FIELD VALUE, e.g. /set co2_on 08:00")
         return
-    try:result=await asyncio.to_thread(set_option,parts[1],parts[2])
+    try:result=await asyncio.to_thread(set_option,parts[1],parts[2],message.from_user.id)
     except ValueError as err:await message.answer("⚠️ "+str(err));return
     except Exception:LOG.exception("Setting failed");await message.answer("⚠️ Save failed");return
     await message.answer(result,reply_markup=reply_menu())
 
+
 @dp.message()
 async def menu_handler(message:Message):
     if not authorized(message) or not message.text:return
+    uid=message.from_user.id
     value=message.text.strip()
     try:
         if value in MENU_LABELS:
             await show_view(message,MENU_LABELS[value]);return
         if value in DEVICE_CHOICES:
-            STATE[OWNER]={"type":"device","field":DEVICE_CHOICES[value]}
-            await message.answer(value+"\nChoose a mode:",reply_markup=keyboard([["🟢 ON","🔴 OFF"],["🔄 AUTO"],["🏠 Main menu"]]))
+            if not can_manage(uid):
+                await message.answer("⛔ Read-only account.");return
+            STATE[uid]={"type":"device","field":DEVICE_CHOICES[value]}
+            await message.answer(value+"\\nChoose a mode:",reply_markup=keyboard([["🟢 ON","🔴 OFF"],["🔄 AUTO"],["🔌 Equipment control","🏠 Main menu"]]))
             return
-        if value in TIMING_CHOICES:
-            STATE[OWNER]={"type":"time","field":TIMING_CHOICES[value]}
-            await message.answer("Send new time for "+TIMING_CHOICES[value]+" (HH:MM), or select Main menu.",reply_markup=keyboard([["🏠 Main menu"]]))
+        if value in TIMING_CHOICES or value in LIMIT_CHOICES:
+            if not can_manage(uid):
+                await message.answer("⛔ Read-only account.");return
+            field=TIMING_CHOICES[value] if value in TIMING_CHOICES else LIMIT_CHOICES[value]
+            STATE[uid]={"type":"setting","field":field}
+            example="08:30" if field in TIME_FIELDS else "25.5"
+            await message.answer(f"✏️ Update {value}\\n\\nSend the new value (example: {example}).",reply_markup=keyboard([["⚙️ Settings","🏠 Main menu"]]))
             return
-        pending=STATE.get(OWNER)
+        if value in ("➕ Add viewer","➕ Add operator","🗑 Remove user"):
+            if not is_owner(uid):
+                await message.answer("⛔ Owner access required.");return
+            mode={"➕ Add viewer":"viewer","➕ Add operator":"operator","🗑 Remove user":"remove"}[value]
+            STATE[uid]={"type":"user_id","mode":mode}
+            await message.answer("👥 Send the numeric Telegram user ID.\\nThe person must open a private chat with this bot and send /start.",
+                                 reply_markup=users_menu())
+            return
+        pending=STATE.get(uid)
         if pending and pending["type"]=="device" and value in ACTIONS:
             pending["type"]="confirm";pending["action"]=ACTIONS[value]
             await message.answer("Confirm "+DEVICES[pending["field"]]+" "+pending["action"].upper()+"? (software request)",reply_markup=keyboard([["✅ Confirm","❌ Cancel"],["🏠 Main menu"]]))
@@ -390,25 +541,58 @@ async def menu_handler(message:Message):
             if value=="❌ Cancel":
                 await show_view(message,"equipment");return
             if value=="✅ Confirm":
-                STATE.clear()
-                result=await asyncio.to_thread(set_device,pending["field"],pending["action"])
+                STATE.pop(uid,None)
+                if not can_manage(uid):
+                    await message.answer("⛔ Access revoked.");return
+                result=await asyncio.to_thread(set_device,pending["field"],pending["action"],uid)
                 await message.answer(result,reply_markup=devices_menu());return
-        if pending and pending["type"]=="time":
-            try:datetime.strptime(value,"%H:%M")
-            except ValueError:
-                await message.answer("Please enter HH:MM, e.g. 18:30");return
-            result=await asyncio.to_thread(set_option,pending["field"],value)
-            STATE.clear()
-            await message.answer(result,reply_markup=timings_menu());return
+        if pending and pending["type"]=="setting":
+            if not can_manage(uid):
+                STATE.pop(uid,None)
+                await message.answer("⛔ Read-only account.");return
+            field=pending["field"]
+            if field in TIME_FIELDS:
+                try:datetime.strptime(value,"%H:%M")
+                except ValueError:
+                    await message.answer("Enter 24-hour time HH:MM, e.g. 18:30");return
+            result=await asyncio.to_thread(set_option,field,value,uid)
+            STATE.pop(uid,None)
+            await message.answer(result,reply_markup=timings_menu() if field in TIME_FIELDS else limits_menu());return
+        if pending and pending["type"]=="user_id":
+            if not is_owner(uid):
+                STATE.pop(uid,None);return
+            if not value.isdecimal() or int(value)<=0:
+                await message.answer("⚠️ Please send a positive numeric Telegram user ID.");return
+            target=int(value)
+            if target==OWNER:
+                await message.answer("⚠️ Owner account cannot be modified.");return
+            pending["type"]="user_confirm"
+            pending["target"]=target
+            await message.answer(f"Confirm {pending['mode']} for Telegram ID {target}?",
+                                 reply_markup=keyboard([["✅ Confirm","❌ Cancel"],["👥 Telegram users"]]))
+            return
+        if pending and pending["type"]=="user_confirm":
+            if value=="❌ Cancel":
+                await show_view(message,"users");return
+            if value=="✅ Confirm":
+                if not is_owner(uid):
+                    STATE.pop(uid,None);return
+                target=pending["target"]
+                role=None if pending["mode"]=="remove" else pending["mode"]
+                await asyncio.to_thread(change_user,target,role)
+                STATE.pop(uid,None)
+                await message.answer("✅ Access updated.\\n"+await asyncio.to_thread(users_report),reply_markup=users_menu())
+                return
         await message.answer("Use the menu buttons below.",reply_markup=reply_menu())
     except ValueError as err:await message.answer("⚠️ "+str(err))
     except Exception:LOG.exception("Telegram menu failure");await message.answer("⚠️ Action failed; see logs")
+
 
 async def main():
     if not TOKEN or OWNER<=0:
         raise RuntimeError("BOT_TOKEN and numeric MyTGaccount must be set in .env")
     logging.basicConfig(level=logging.INFO,format="%(asctime)s %(levelname)s %(message)s")
-    bot=Bot(token=TOKEN)
+    await asyncio.to_thread(init_users_table)\n    bot=Bot(token=TOKEN)
     # Private message/callback traffic only. Explicit auth remains in every handler.
     await dp.start_polling(bot,allowed_updates=["message"],
                            handle_as_tasks=False)
