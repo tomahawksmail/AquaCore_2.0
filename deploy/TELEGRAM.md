@@ -50,3 +50,22 @@ sudo journalctl -u aquacore-telegram -f
 If instead running from /home/orangepi/AquaCore, adjust WorkingDirectory, ExecStart, and user/group **before** installing this service. `ProtectHome=true` prevents reading files in /home, so don't use this service unchanged with a home-directory installation.
 
 Security: Keep BOT_TOKEN private, consider rotating it after exposure, restrict .env permissions, keep the bot and OS updated, and never put a bot token in an Nginx URL or Git repository. Commands check the initiating Telegram user ID **and private chat ID**; the bot uses polling, not a public Telegram webhook. Telegram transport and bot trust are not equivalent to end-to-end encryption; avoid transmitting secrets in messages.
+
+## Settings and additional Telegram users
+
+Settings is a reply-keyboard submenu: **Water limits**, **Timings**, and (owner-only) **Telegram users**. Select a specific limit or scheduled ON/OFF field, then enter a validated number or HH:MM. Changes are persisted to `options` with an audit-log entry.
+
+The bot persists additional Telegram IDs in a `telegram_users` MariaDB table, created on startup if the database user has CREATE privilege. The database user must have SELECT, INSERT, UPDATE and DELETE on this table. If the production app database user does not have CREATE permission, a database administrator must run the following once:
+
+```sql
+CREATE TABLE IF NOT EXISTS telegram_users (
+    telegram_id BIGINT UNSIGNED NOT NULL PRIMARY KEY,
+    role VARCHAR(16) NOT NULL DEFAULT 'viewer',
+    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+-- Grant SELECT, INSERT, UPDATE, DELETE on the table to the app's exact MariaDB account.
+```
+
+**Owner** is always the numeric `MyTGaccount` from the private .env file. Only owner can add a viewer, add an operator, or remove users, using numeric Telegram IDs and a confirmation step. Viewer can read metrics, charts and existing settings; operator can also change equipment and scheduled times. The bot checks permissions on each incoming message and only accepts private chats whose chat ID equals the sender's Telegram ID. Added users must first open the bot and send /start. Access revocation is effective on their next message. Do not grant operator privileges to untrusted people: equipment commands can affect pumps, CO2, lights, and UV.
+
+Restart the running polling process after updating; do not run two copies for one token.
