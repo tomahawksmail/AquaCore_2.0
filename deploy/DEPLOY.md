@@ -1,3 +1,23 @@
+> **STATUS — IN PRODUCTION / TESTING (not yet validated).** The Tailscale HTTPS automation and instructions below are being developed and tested. Do not consider them production-verified until installation, certificate trust, private access, and restart persistence have been tested on the Orange Pi.
+
+## Tailscale private HTTPS (testing)
+
+Expected URL: `https://aquacore.orangepi.ts.net` (only if the tailnet's assigned DNS suffix is `orangepi.ts.net`).
+
+From an existing AquaCore checkout on the Orange Pi, with Gunicorn listening at `127.0.0.1:5001`:
+
+```bash
+git pull origin master
+chmod +x deploy/setup_tailscale_https.sh
+./deploy/setup_tailscale_https.sh
+```
+
+The script installs/configures Tailscale, validates the exact hostname, and sets up private Tailscale Serve over HTTPS. The client device must belong to the same authorized tailnet. No router port forwarding is required; do not enable Funnel. Enable MagicDNS and HTTPS certificates in Tailscale's DNS settings as necessary.
+
+**Testing checklist:** verify backend responds, the hostname matches exactly, the certificate is trusted without browser warnings, an authorized remote client can connect, an unauthorized client cannot, and Serve remains available after a reboot. The script has not yet been executed or verified on the target host.
+
+---
+
 # AquaCore: Nginx + Gunicorn + systemd (Linux)
 
 Assumptions: Debian/Ubuntu/Armbian host; Gunicorn and Nginx on the **same host**; hostname `aquacore.example.com` is a placeholder. Flask handles authentication and sessions. This deploys the **web app only**; schedule automation is a separate process.
