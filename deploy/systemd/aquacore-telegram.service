@@ -1,0 +1,23 @@
+[Unit]
+Description=AquaCore private Telegram remote controller
+Wants=network-online.target
+After=network-online.target mariadb.service
+
+[Service]
+Type=simple
+User=aquacore
+Group=aquacore
+WorkingDirectory=/opt/aquacore
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/etc/aquacore/web.env
+ExecStart=/opt/aquacore/.venv/bin/python /opt/aquacore/telegram_bot.py
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
