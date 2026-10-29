@@ -85,9 +85,9 @@ def freshness(recorded, now):
     return "🔴 Old"
 
 
-def metric_header(title, stamp, now):
+def metric_header(title, stamp, now, all_zero=False):
     """Shared Telegram layout for both metric reports."""
-    status = freshness(stamp, now) if stamp is not None else "🔴 No data"
+    status = "🔴 Old — no valid readings" if all_zero else (freshness(stamp, now) if stamp is not None else "🔴 No data")
     when = str(stamp) if stamp is not None else "Unknown"
     return f"{title}\n{status}\n🕒 Sample: {when}\n━━━━━━━━━━━━━━━━━━\n"
 
@@ -102,7 +102,7 @@ def read_aqua():
     if row is None:
         return metric_header("🐠 AQUARIUM METRICS", None, now) + "No readings available."
     zero = all(row.get(k) == 0 for k in ("temp","ph","tds"))
-    return (metric_header("🐠 AQUARIUM METRICS", row.get("Datetime"), now)
+    return (metric_header("🐠 AQUARIUM METRICS", row.get("Datetime"), now, all_zero=zero)
             + "💧 WATER QUALITY\n"
             + f"🌡 Temperature: {fmt(row['temp'])} °C\n"
             + f"🧪 pH: {fmt(row['ph'],2)}\n"
@@ -140,7 +140,7 @@ def read_system():
     is_zero=all(r.get(key) is not None and float(r[key])==0 for key in zero_fields)
     cores = "  |  ".join(f"{fmt(r.get('cpus_percent_'+str(n)),0)}%" for n in range(4))
     return (
-        metric_header("🖥 SYSTEM METRICS", stamp, now)
+        metric_header("🖥 SYSTEM METRICS", stamp, now, all_zero=is_zero)
         + "⚙️ PROCESSOR\n"
         + f"⚡ CPU frequency: {fmt(r.get('scpufreq_cur'),0)} MHz\n"
         f"🧩 CPU cores 0–3: {cores}\n"
