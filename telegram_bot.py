@@ -86,6 +86,21 @@ def read_aqua():
             f"🕒 Server time: {row['Datetime']}\n")
 
 
+def readable_bytes(value):
+    """Convert cumulative byte counters to binary-sized MB/GB display."""
+    if value is None:
+        return "—"
+    try:
+        amount = float(value)
+    except (TypeError, ValueError):
+        return "—"
+    if amount < 0:
+        return "—"
+    if amount >= 1024 ** 3:
+        return f"{amount / (1024 ** 3):,.2f} GB"
+    return f"{amount / (1024 ** 2):,.2f} MB"
+
+
 def read_system():
     with db() as con:
         with con.cursor() as cur:
@@ -93,15 +108,22 @@ def read_system():
             r = cur.fetchone()
     if not r:
         return "🖥 System metrics: no data"
-    cores = " | ".join(f"{fmt(r.get('cpus_percent_'+str(n)),0)}%" for n in range(4))
-    return ("🖥 System metrics (latest stored)\n"
-            f"CPU frequency: {fmt(r.get('scpufreq_cur'),0)} MHz\n"
-            f"Core 0–3: {cores}\n"
-            f"CPU temperature: {fmt(r.get('cpu_thermal_cur'))} °C\n"
-            f"DDR temperature: {fmt(r.get('ddr_thermal_cur'))} °C\n"
-            f"RAM: {fmt(r.get('RAM_percent'))}% of {fmt(r.get('RAM_total'),0)} MB\n"
-            f"Disk usage: {fmt(r.get('disk_usage_percent'))}%\n"
-            f"Network sent/received: {fmt(r.get('net_bytes_sent'),0)} / {fmt(r.get('net_bytes_recv'),0)} bytes")
+    cores = "  |  ".join(f"{fmt(r.get('cpus_percent_'+str(n)),0)}%" for n in range(4))
+    return (
+        "🖥 SYSTEM METRICS\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        f"⚡ CPU frequency: {fmt(r.get('scpufreq_cur'),0)} MHz\n"
+        f"🧩 CPU cores 0–3: {cores}\n"
+        f"🌡 CPU temperature: {fmt(r.get('cpu_thermal_cur'))} °C\n"
+        f"🌡 DDR temperature: {fmt(r.get('ddr_thermal_cur'))} °C\n"
+        f"🧠 RAM usage: {fmt(r.get('RAM_percent'))}%\n"
+        f"💾 RAM total: {fmt(r.get('RAM_total'),0)} MB\n"
+        f"🗄 Disk usage: {fmt(r.get('disk_usage_percent'))}%\n"
+        "\n🌐 NETWORK TRAFFIC\n"
+        f"⬆️ Sent: {readable_bytes(r.get('net_bytes_sent'))}\n"
+        f"⬇️ Received: {readable_bytes(r.get('net_bytes_recv'))}\n"
+        "ℹ️ Network values are cumulative totals, not current speed."
+    )
 
 
 def read_equipment():
