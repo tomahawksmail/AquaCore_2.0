@@ -83,8 +83,7 @@ def read_aqua():
             f"🌡 Temperature: {fmt(row['temp'])} °C\n"
             f"🧪 pH: {fmt(row['ph'],2)}\n"
             f"💧 TDS: {fmt(row['tds'],0)} ppm\n"
-            f"🕒 Sample: {row['Datetime']} (server time)\n"
-            "Note: zero readings may be missing-sensor placeholders.")
+            f"🕒 Server time: {row['Datetime']}\n")
 
 
 def read_system():
@@ -270,7 +269,7 @@ VIEWS={"aqua":read_aqua,"system":read_system,"equipment":read_equipment,"setting
 async def show_view(message,view):
     if view=="menu":
         STATE.clear()
-        await message.answer("🌊 AquaCore 2.0\nChoose an option using the keyboard below.",reply_markup=reply_menu())
+        await message.answer("🌊 Welcome to AquaCore 2.0",reply_markup=reply_menu())
     elif view=="help":
         await message.answer(HELP+"\n\nUse the bottom keyboard to navigate.",reply_markup=reply_menu())
     elif view.startswith("chart_"):

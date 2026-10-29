@@ -110,8 +110,10 @@ if __name__=='__main__':
     logging.basicConfig(level=logging.INFO,format='%(asctime)s %(levelname)s %(message)s')
     logging.info('AquaCore schedule controller started')
     while True:
-        try: reconcile()
+        try:
+            reconcile()
         except Exception: logging.exception('Scheduler cycle failed')
-        try: insert_missing_sensor_zeros()
+        try:
+            insert_missing_sensor_zeros()
         except Exception: logging.exception('Sensor zero fallback failed')
         time.sleep(5)
