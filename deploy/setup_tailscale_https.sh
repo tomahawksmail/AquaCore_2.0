@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# STATUS: IN PRODUCTION / TESTING — not yet verified on the target Orange Pi.
+# Experimental deployment script. Review output and validate HTTPS before relying on it.
 set -Eeuo pipefail
 EXPECTED="aquacore.orangepi.ts.net"
 TARGET="http://127.0.0.1:5001"
