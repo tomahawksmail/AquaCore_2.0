@@ -135,6 +135,9 @@ def read_system():
     if not r:
         return metric_header("🖥 SYSTEM METRICS", None, now) + "No readings available."
     stamp=next((r.get(k) for k in ("Datetime","datetime","Timestamp","timestamp","created_at","CreatedAt","date_time") if r.get(k) is not None),None)
+    # A fresh synthetic zero row indicates missing collection, not healthy metrics.
+    zero_fields=("scpufreq_cur","RAM_total","cpu_thermal_cur","net_bytes_sent","net_bytes_recv")
+    is_zero=all(r.get(key) is not None and float(r[key])==0 for key in zero_fields)
     cores = "  |  ".join(f"{fmt(r.get('cpus_percent_'+str(n)),0)}%" for n in range(4))
     return (
         metric_header("🖥 SYSTEM METRICS", stamp, now)
@@ -151,6 +154,7 @@ def read_system():
         f"⬆️ Sent: {readable_bytes(r.get('net_bytes_sent'))}\n"
         f"⬇️ Received: {readable_bytes(r.get('net_bytes_recv'))}\n"
         "ℹ️ Network values are cumulative totals, not current speed."
+        + ("\\n\\n⚠️ Zero readings — system collector data unverified." if is_zero else "")
     )
 
 
