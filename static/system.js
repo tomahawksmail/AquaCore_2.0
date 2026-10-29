@@ -15,7 +15,14 @@
     lo=fixedMax===100?0:Math.floor(lo/tickStep)*tickStep;
     hi=fixedMax===100?100:Math.ceil(hi/tickStep)*tickStep;
     if(hi<=lo)hi=lo+tickStep;
-    const x=i=>L+(points.length===1?(W-L-R)/2:i*(W-L-R)/(points.length-1));
+    const times=points.map(p=>{
+      if(!p.timestamp)return NaN;
+      const ms=Date.parse(String(p.timestamp).replace(' ','T'));
+      return Number.isFinite(ms)?ms:NaN;
+    });
+    const timed=times.length>1&&times.every(Number.isFinite)&&times.at(-1)>times[0];
+    const x=i=>L+(timed?(times[i]-times[0])/(times.at(-1)-times[0])*(W-L-R):(points.length===1?(W-L-R)/2:i*(W-L-R)/(points.length-1)));
+
     const y=v=>B-(Number(v)-lo)/(hi-lo)*(B-T);
     const txt=v=>format?format(v):(tickStep<1?Number(v.toFixed(2)).toString():Math.round(v).toString());
     let svg='<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" aria-hidden="true">';
@@ -25,10 +32,22 @@
       svg+='<line x1="'+L+'" y1="'+py+'" x2="'+(W-R)+'" y2="'+py+'" stroke="#2a4758" stroke-width=".8"/>';
       svg+='<text x="'+(L-8)+'" y="'+(py+4)+'" text-anchor="end" fill="#9cbdcf" font-size="12">'+txt(value)+'</text>';
     }
-    // Horizontal positions represent successive measurements, oldest to latest.
-    [[0,'Older'],[1,'Latest']].forEach(([f,label])=>{
-      svg+='<text x="'+(L+f*(W-L-R))+'" y="'+(H-6)+'" text-anchor="'+(f?'end':'start')+'" fill="#86acbe" font-size="12">'+label+'</text>';
-    });
+    // Clock-time ticks at 3-hour boundaries, matched to actual measurement times.
+    if(timed){
+      const hour=60*60*1000,step=3*hour;
+      const first=Math.ceil(times[0]/step)*step;
+      for(let t=first;t<=times.at(-1);t+=step){
+        const px=L+(t-times[0])/(times.at(-1)-times[0])*(W-L-R);
+        const d=new Date(t);
+        const label=String(d.getHours()).padStart(2,'0')+':00';
+        svg+='<line x1="'+px+'" y1="'+T+'" x2="'+px+'" y2="'+B+'" stroke="#284354" stroke-width=".7"/>';
+        svg+='<text x="'+px+'" y="'+(H-6)+'" text-anchor="middle" fill="#86acbe" font-size="12">'+label+'</text>';
+      }
+    }else{
+      [[0,'Older'],[1,'Latest']].forEach(([f,label])=>{
+        svg+='<text x="'+(L+f*(W-L-R))+'" y="'+(H-6)+'" text-anchor="'+(f?'end':'start')+'" fill="#86acbe" font-size="12">'+label+'</text>';
+      });
+    }
     for(const item of series){
       let sections=[],section=[];
       points.forEach((p,k)=>{
@@ -45,8 +64,8 @@
     }
     el.innerHTML=svg+'</svg>';
   }
-  function draw(el,raw,color){
-    plot(el,[{color,get:p=>p.value}],raw.map(value=>({value})));
+  function draw(el,points,field,color){
+    plot(el,[{color,get:p=>p[field]}],points);
   }
   const coreColors=['#5eead4','#8fa8ff','#ffc48b','#76cdfa'];
   function coreChart(el,points){
@@ -138,7 +157,7 @@
         const unit=document.createElement('small');unit.textContent='°C';cpuTemp.append(unit);
       }
       const tempChart=document.getElementById('cpu-temp-chart');
-      if(tempChart)draw(tempChart,points.map(p=>p.cpu_thermal_cur),'#f7ad75');
+      if(tempChart)draw(tempChart,points,'cpu_thermal_cur','#f7ad75');
       const ddrValue=document.getElementById('ddr-temp-value');
       if(ddrValue){
         const latest=points.map(p=>p.ddr_thermal_cur).filter(v=>v!=null&&Number.isFinite(Number(v))).at(-1);
@@ -146,7 +165,7 @@
         const unit=document.createElement('small');unit.textContent='°C';ddrValue.append(unit);
       }
       const ddrChart=document.getElementById('ddr-temp-chart');
-      if(ddrChart)draw(ddrChart,points.map(p=>p.ddr_thermal_cur),'#ce93d8');
+      if(ddrChart)draw(ddrChart,points,'ddr_thermal_cur','#ce93d8');
       for(const field of ['net_bytes_sent','net_bytes_recv','net_packets_sent','net_packets_recv','net_errin','net_errout','net_dropin','net_dropout']){
         const el=document.getElementById('network-'+field);
         if(!el)continue;
@@ -185,7 +204,7 @@
         const el=document.querySelector('[data-system-field="'+field+'"]'),value=document.getElementById('system-value-'+field);
         if(!el||!value)continue;
         const readings=(body.points||[]).map(p=>p[field]);
-        draw(el,readings,color);
+        draw(el,points,field,color);
         const latest=readings.filter(v=>v!=null&&Number.isFinite(Number(v))).at(-1);
         value.textContent=latest===undefined?'—':Number(latest).toFixed(precision);
         const suffix=document.createElement('small');suffix.textContent=unit;value.appendChild(suffix);
