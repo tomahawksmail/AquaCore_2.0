@@ -137,7 +137,11 @@ def read_system():
     stamp=next((r.get(k) for k in ("Datetime","datetime","Timestamp","timestamp","created_at","CreatedAt","date_time") if r.get(k) is not None),None)
     # A fresh synthetic zero row indicates missing collection, not healthy metrics.
     zero_fields=("scpufreq_cur","RAM_total","cpu_thermal_cur","net_bytes_sent","net_bytes_recv")
-    is_zero=all(r.get(key) is not None and float(r[key])==0 for key in zero_fields)
+    # Evaluate before building the report; synthetic zero samples are never fresh.
+    try:
+        is_zero=all(r.get(key) is not None and float(r[key]) == 0 for key in zero_fields)
+    except (ValueError, TypeError):
+        is_zero=False
     cores = "  |  ".join(f"{fmt(r.get('cpus_percent_'+str(n)),0)}%" for n in range(4))
     return (
         metric_header("🖥 SYSTEM METRICS", stamp, now, all_zero=is_zero)
