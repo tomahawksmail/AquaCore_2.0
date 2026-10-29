@@ -7,11 +7,12 @@ relay_controller.py remain responsible for physical outputs.
 import asyncio
 import logging
 import os
+import io
 from datetime import datetime, time as clock_time, timedelta
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, CommandStart
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup, Message
+from aiogram.types import KeyboardButton, ReplyKeyboardMarkup, Message, BufferedInputFile
 from dotenv import load_dotenv
 
 from app import SETTINGS, TIME_FIELDS, db
@@ -51,70 +52,21 @@ def fmt(value, digits=1):
         return str(value)
 
 
-MENU_LABELS = {
-    "🐠 Aquarium metrics": "aqua",
-    "🖥 System metrics": "system",
-    "🔌 Equipment control": "equipment",
-    "⚙️ Settings": "settings",
-    "❔ Help": "help",
-    "🏠 Main menu": "menu",
-}
-
+MENU_LABELS={"🐠 Aquarium metrics":"aqua","🖥 System metrics":"system","📈 Aquarium chart":"chart_aqua","📉 System chart":"chart_system","🔌 Equipment control":"equipment","🕒 Timings":"timings","⚙️ Settings":"settings","❔ Help":"help","🏠 Main menu":"menu"}
+STATE={}
+DEVICE_CHOICES={"🔌 "+name:field for field,name in DEVICES.items()}
+TIMING_CHOICES={"🕒 "+DEVICES[field]+" "+kind:column for field,(on,off) in SCHEDULE_MAP.items() for kind,column in (("ON",on),("OFF",off))}
+ACTIONS={"🟢 ON":"on","🔴 OFF":"off","🔄 AUTO":"auto"}
+def keyboard(rows):
+    return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text=x) for x in row] for row in rows],resize_keyboard=True,is_persistent=True)
 def reply_menu():
-    """Persistent two-column keyboard available from every screen."""
-    return ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="🐠 Aquarium metrics"), KeyboardButton(text="🖥 System metrics")],
-        [KeyboardButton(text="🔌 Equipment control"), KeyboardButton(text="⚙️ Settings")],
-        [KeyboardButton(text="❔ Help"), KeyboardButton(text="🏠 Main menu")],
-    ], resize_keyboard=True, is_persistent=True, input_field_placeholder="Choose an AquaCore action…")
-
-
-def device_picker():
-    rows=[]
-    for index,label in enumerate(DEVICES.values()):
-        rows.append([InlineKeyboardButton(text="🔌 "+label+"   ›",callback_data=f"device:{index}")])
-    rows.append([InlineKeyboardButton(text="🔄 Refresh status",callback_data="view:equipment")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-def device_controls(index):
-    name=list(DEVICES.values())[index]
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🟢 Turn ON",callback_data=f"confirm:{index}:on"),
-         InlineKeyboardButton(text="🔴 Turn OFF",callback_data=f"confirm:{index}:off")],
-        [InlineKeyboardButton(text="🕒 Automatic schedule",callback_data=f"confirm:{index}:auto")],
-        [InlineKeyboardButton(text="‹ All equipment",callback_data="view:equipment")],
-    ])
-
-
-def main_keyboard():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🐠 Aquarium", callback_data="view:aqua"),
-         InlineKeyboardButton(text="🖥 System", callback_data="view:system")],
-        [InlineKeyboardButton(text="🔌 Equipment", callback_data="view:equipment"),
-         InlineKeyboardButton(text="⚙️ Settings", callback_data="view:settings")],
-        [InlineKeyboardButton(text="📋 Help", callback_data="view:help")],
-    ])
-
-
-def equipment_keyboard():
-    rows = []
-    for index, label in enumerate(DEVICES.values()):
-        rows.append([
-            InlineKeyboardButton(text=f"{label} ON", callback_data=f"confirm:{index}:on"),
-            InlineKeyboardButton(text="OFF", callback_data=f"confirm:{index}:off"),
-            InlineKeyboardButton(text="AUTO", callback_data=f"confirm:{index}:auto"),
-        ])
-    rows.append([InlineKeyboardButton(text="↩ Menu", callback_data="view:menu")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-def confirm_keyboard(index, action):
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="✅ Confirm", callback_data=f"execute:{index}:{action}"),
-        InlineKeyboardButton(text="Cancel", callback_data="view:equipment"),
-    ]])
-
+    return keyboard([["🐠 Aquarium metrics","🖥 System metrics"],["📈 Aquarium chart","📉 System chart"],["🔌 Equipment control","🕒 Timings"],["⚙️ Settings","❔ Help"],["🏠 Main menu"]])
+def devices_menu():
+    labels=list(DEVICE_CHOICES)
+    return keyboard([labels[i:i+2] for i in range(0,len(labels),2)]+[["🏠 Main menu"]])
+def timings_menu():
+    labels=list(TIMING_CHOICES)
+    return keyboard([labels[i:i+2] for i in range(0,len(labels),2)]+[["🏠 Main menu"]])
 
 def read_aqua():
     with db() as con:
@@ -187,6 +139,51 @@ def read_settings():
     lines.append("Supported fields: " + ", ".join(sorted(FIELDS)))
     return "\n".join(lines)
 
+
+def read_timings():
+    with db() as con:
+        with con.cursor() as cur:
+            cur.execute("SELECT * FROM options LIMIT 1")
+            opts=cur.fetchone()
+    if not opts:return "No settings found"
+    return "🕒 Equipment schedule (server time)\\n"+ "\\n".join(f"{DEVICES[field]}: {str(opts.get(on))[:5]}–{str(opts.get(off))[:5]}" for field,(on,off) in SCHEDULE_MAP.items())
+
+def chart_image(which):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.dates import AutoDateLocator,DateFormatter
+    with db() as con:
+        with con.cursor() as cur:
+            if which=="aqua":
+                cur.execute("SELECT Datetime,temp,ph,tds FROM data WHERE Datetime>=NOW()-INTERVAL 24 HOUR ORDER BY Datetime ASC LIMIT 2000")
+                rows=cur.fetchall()
+                fields=[("temp","Temperature °C"),("ph","pH"),("tds","TDS ppm")]
+            else:
+                cur.execute("SELECT * FROM psutil ORDER BY Id DESC LIMIT 300")
+                rows=list(reversed(cur.fetchall()))
+                fields=[("cpus_percent_0","CPU core 0 %"),("RAM_percent","RAM %"),("cpu_thermal_cur","CPU °C")]
+    if not rows:return None
+    dates=[next((r.get(k) for k in ("Datetime","datetime","Timestamp","timestamp","created_at") if r.get(k) is not None),None) for r in rows]
+    dates=[datetime.fromisoformat(d) if isinstance(d,str) else d for d in dates]
+    if not all(isinstance(d,datetime) for d in dates):return None
+    fig,axes=plt.subplots(3,1,figsize=(9,7),sharex=True)
+    fig.patch.set_facecolor("#142536")
+    for ax,(field,label),color in zip(axes,fields,("#58dfc0","#84a7ff","#f3bc80")):
+        ax.set_facecolor("#1d3548")
+        ax.plot(dates,[float(r[field]) if r.get(field) is not None else float("nan") for r in rows],color=color,linewidth=1.6)
+        ax.set_ylabel(label,color="#d7e4ec")
+        ax.tick_params(colors="#cad9e4")
+        ax.grid(alpha=.18)
+    axes[-1].xaxis.set_major_locator(AutoDateLocator(maxticks=7))
+    axes[-1].xaxis.set_major_formatter(DateFormatter("%H:%M"))
+    fig.suptitle("AquaCore · "+which.title()+" metrics",color="white")
+    fig.autofmt_xdate()
+    fig.tight_layout()
+    out=io.BytesIO()
+    fig.savefig(out,format="png",dpi=130,facecolor=fig.get_facecolor())
+    plt.close(fig)
+    return out.getvalue()
 
 def set_device(field, action):
     if field not in DEVICES or action not in ("on","off","auto"):
@@ -268,154 +265,87 @@ HELP = ("AquaCore Telegram\n"
         "ON/OFF lasts until the next scheduled transition; AUTO returns to schedule. "
         "Changes are recorded in MariaDB.")
 
-VIEWS = {"aqua":read_aqua,"system":read_system,"equipment":read_equipment,"settings":read_settings}
+VIEWS={"aqua":read_aqua,"system":read_system,"equipment":read_equipment,"settings":read_settings,"timings":read_timings}
 
-
-async def show_view(message, view):
+async def show_view(message,view):
     if view=="menu":
-        await message.answer("🌊 AquaCore 2.0  •  Control Center\n\n🐠 Aquarium monitoring\n🖥 System health\n🔌 Equipment and schedules\n\nSelect a button below to continue.",reply_markup=reply_menu())
+        STATE.clear()
+        await message.answer("🌊 AquaCore 2.0\\nChoose an option using the keyboard below.",reply_markup=reply_menu())
     elif view=="help":
-        await message.answer(HELP+"\n\nUse the persistent buttons below to navigate.",reply_markup=reply_menu())
+        await message.answer(HELP+"\\n\\nUse the bottom keyboard to navigate.",reply_markup=reply_menu())
+    elif view.startswith("chart_"):
+        kind=view.split("_",1)[1]
+        image=await asyncio.to_thread(chart_image,kind)
+        if image:await message.answer_photo(BufferedInputFile(image,filename=kind+".png"),caption="📈 "+kind.title()+" metrics",reply_markup=reply_menu())
+        else:await message.answer("No timestamped metrics available.",reply_markup=reply_menu())
+    elif view=="equipment":
+        STATE.clear()
+        await message.answer(await asyncio.to_thread(read_equipment),reply_markup=devices_menu())
+    elif view=="timings":
+        STATE.clear()
+        await message.answer(await asyncio.to_thread(read_timings),reply_markup=timings_menu())
     else:
-        result=await asyncio.to_thread(VIEWS[view])
-        await message.answer(result,reply_markup=device_picker() if view=="equipment" else main_keyboard())
-
+        await message.answer(await asyncio.to_thread(VIEWS[view]),reply_markup=reply_menu())
 
 @dp.message(CommandStart())
 async def start(message:Message):
-    if not authorized(message):return
-    await show_view(message,"menu")
-
+    if authorized(message):await show_view(message,"menu")
 
 @dp.message(Command("aqua","system","equipment","settings","help"))
 async def commands(message:Message):
     if not authorized(message):return
-    name=message.text.split()[0][1:].split("@")[0].lower()
-    try:
-        await show_view(message,name)
-    except Exception:
-        LOG.exception("Failed to retrieve %s",name)
-        await message.answer("⚠️ Database is unavailable; check server logs.")
-
+    try:await show_view(message,message.text.split()[0][1:].split("@")[0])
+    except Exception:LOG.exception("Command error");await message.answer("⚠️ Could not load data")
 
 @dp.message(Command("set"))
 async def set_command(message:Message):
     if not authorized(message):return
     parts=(message.text or "").split()
     if len(parts)!=3:
-        await message.answer("Usage: /set FIELD VALUE\nExample: /set co2_on 08:00")
+        await message.answer("Use /set FIELD VALUE, e.g. /set co2_on 08:00")
         return
-    try:
-        result=await asyncio.to_thread(set_option,parts[1],parts[2])
-    except ValueError as exc:
-        await message.answer(f"⚠️ {exc}")
-        return
-    except Exception:
-        LOG.exception("Failed to save setting")
-        await message.answer("⚠️ Database write failed; check server logs.")
-        return
-    await message.answer(result,reply_markup=main_keyboard())
-
-
-@dp.callback_query(F.data.startswith("view:"))
-async def view_callback(query:CallbackQuery):
-    if not authorized(query):return
-    view=query.data.split(":",1)[1]
-    if view not in (*VIEWS,"menu","help"):
-        await query.answer("Unknown menu",show_alert=True)
-        return
-    await query.answer()
-    try:
-        await show_view(query.message,view)
-    except Exception:
-        LOG.exception("Failed Telegram view")
-        await query.message.answer("⚠️ Database is unavailable.")
-
-
-@dp.callback_query(F.data.startswith("device:"))
-async def device_page(query:CallbackQuery):
-    if not authorized(query):return
-    try:
-        index=int(query.data.split(":",1)[1])
-        if index<0 or index>=len(DEVICE_KEYS):
-            raise ValueError
-    except (ValueError,AttributeError):
-        await query.answer("Unknown device",show_alert=True)
-        return
-    await query.answer()
-    field=DEVICE_KEYS[index]
-    try:
-        summary=await asyncio.to_thread(read_equipment)
-        entry=next((line for line in summary.splitlines() if DEVICES[field]+":" in line),"")
-    except Exception:
-        LOG.exception("Unable to load equipment status")
-        await query.message.answer("⚠️ Could not retrieve equipment state.")
-        return
-    await query.message.answer("🔌 "+DEVICES[field]+"\n\n"+entry+"\n\nChoose an action:",reply_markup=device_controls(index))
-
-
-@dp.callback_query(F.data.startswith("confirm:"))
-async def confirm_action(query:CallbackQuery):
-    if not authorized(query):return
-    try:
-        _,index,action=query.data.split(":")
-        index=int(index)
-        if not 0<=index<len(DEVICE_KEYS) or action not in ("on","off","auto"):
-            raise ValueError
-    except (ValueError,AttributeError):
-        await query.answer("Invalid command",show_alert=True)
-        return
-    field=DEVICE_KEYS[index]
-    await query.answer()
-    await query.message.answer(
-        f"Confirm {DEVICES[field]} → {action.upper()}?\n"
-        +("This changes a software request; no physical relay feedback." if action!="auto" else "Return to automatic schedule."),
-        reply_markup=confirm_keyboard(index,action))
-
-
-@dp.callback_query(F.data.startswith("execute:"))
-async def execute_action(query:CallbackQuery):
-    if not authorized(query):return
-    try:
-        _,index,action=query.data.split(":")
-        index=int(index)
-        if not 0<=index<len(DEVICE_KEYS) or action not in ("on","off","auto"):
-            raise ValueError
-    except (ValueError,AttributeError):
-        await query.answer("Invalid command",show_alert=True)
-        return
-    await query.answer("Processing")
-    try:
-        result=await asyncio.to_thread(set_device,DEVICE_KEYS[index],action)
-    except ValueError as exc:
-        await query.message.answer(f"⚠️ {exc}")
-        return
-    except Exception:
-        LOG.exception("Telegram device action failed")
-        await query.message.answer("⚠️ Write failed. No success was confirmed.")
-        return
-    # Remove the confirmation buttons to prevent accidental duplicate actions.
-    try:await query.message.edit_reply_markup(reply_markup=None)
-    except Exception:pass
-    await query.message.answer(result,reply_markup=device_controls(index))
-
-
-@dp.message(F.text.in_(tuple(MENU_LABELS)))
-async def menu_buttons(message:Message):
-    if not authorized(message):return
-    view=MENU_LABELS[message.text]
-    try:
-        await show_view(message,view)
-    except Exception:
-        LOG.exception("Telegram menu failed")
-        await message.answer("⚠️ Could not load this view; check server logs.")
-
+    try:result=await asyncio.to_thread(set_option,parts[1],parts[2])
+    except ValueError as err:await message.answer("⚠️ "+str(err));return
+    except Exception:LOG.exception("Setting failed");await message.answer("⚠️ Save failed");return
+    await message.answer(result,reply_markup=reply_menu())
 
 @dp.message()
-async def unknown_message(message:Message):
-    if authorized(message):
-        await message.answer("Choose one of the menu buttons below.",reply_markup=reply_menu())
-
+async def menu_handler(message:Message):
+    if not authorized(message) or not message.text:return
+    value=message.text.strip()
+    try:
+        if value in MENU_LABELS:
+            await show_view(message,MENU_LABELS[value]);return
+        if value in DEVICE_CHOICES:
+            STATE[OWNER]={"type":"device","field":DEVICE_CHOICES[value]}
+            await message.answer(value+"\\nChoose a mode:",reply_markup=keyboard([["🟢 ON","🔴 OFF"],["🔄 AUTO"],["🏠 Main menu"]]))
+            return
+        if value in TIMING_CHOICES:
+            STATE[OWNER]={"type":"time","field":TIMING_CHOICES[value]}
+            await message.answer("Send new time for "+TIMING_CHOICES[value]+" (HH:MM), or select Main menu.",reply_markup=keyboard([["🏠 Main menu"]]))
+            return
+        pending=STATE.get(OWNER)
+        if pending and pending["type"]=="device" and value in ACTIONS:
+            pending["type"]="confirm";pending["action"]=ACTIONS[value]
+            await message.answer("Confirm "+DEVICES[pending["field"]]+" "+pending["action"].upper()+"? (software request)",reply_markup=keyboard([["✅ Confirm","❌ Cancel"],["🏠 Main menu"]]))
+            return
+        if pending and pending["type"]=="confirm":
+            if value=="❌ Cancel":
+                await show_view(message,"equipment");return
+            if value=="✅ Confirm":
+                STATE.clear()
+                result=await asyncio.to_thread(set_device,pending["field"],pending["action"])
+                await message.answer(result,reply_markup=devices_menu());return
+        if pending and pending["type"]=="time":
+            try:datetime.strptime(value,"%H:%M")
+            except ValueError:
+                await message.answer("Please enter HH:MM, e.g. 18:30");return
+            result=await asyncio.to_thread(set_option,pending["field"],value)
+            STATE.clear()
+            await message.answer(result,reply_markup=timings_menu());return
+        await message.answer("Use the menu buttons below.",reply_markup=reply_menu())
+    except ValueError as err:await message.answer("⚠️ "+str(err))
+    except Exception:LOG.exception("Telegram menu failure");await message.answer("⚠️ Action failed; see logs")
 
 async def main():
     if not TOKEN or OWNER<=0:
@@ -423,7 +353,7 @@ async def main():
     logging.basicConfig(level=logging.INFO,format="%(asctime)s %(levelname)s %(message)s")
     bot=Bot(token=TOKEN)
     # Private message/callback traffic only. Explicit auth remains in every handler.
-    await dp.start_polling(bot,allowed_updates=["message","callback_query"],
+    await dp.start_polling(bot,allowed_updates=["message"],
                            handle_as_tasks=False)
 
 
