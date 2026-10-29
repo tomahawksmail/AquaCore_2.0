@@ -68,6 +68,23 @@ def timings_menu():
     labels=list(TIMING_CHOICES)
     return keyboard([labels[i:i+2] for i in range(0,len(labels),2)]+[["🏠 Main menu"]])
 
+def freshness(recorded, now):
+    """60-second sampling: 0–90s current, 90–180s delayed, older stale."""
+    if not isinstance(recorded, datetime):
+        try:
+            recorded=datetime.fromisoformat(str(recorded))
+        except (TypeError,ValueError):
+            return "🔴 Timestamp unavailable"
+    seconds=(now-recorded).total_seconds()
+    if seconds < -15:
+        return "🟡 Clock mismatch"
+    if seconds <= 90:
+        return "🟢 Current"
+    if seconds <= 180:
+        return "🟡 Delayed"
+    return "🔴 Old"
+
+
 def read_aqua():
     with db() as con:
         with con.cursor() as cur:
@@ -77,9 +94,10 @@ def read_aqua():
             row = cur.fetchone()
     if row is None:
         return "🐠 Aquarium readings: no data"
-    age = (now-row["Datetime"]).total_seconds() if row.get("Datetime") else None
-    warning = "⚠️ STALE" if age is None or age > 120 else "⚠️ ZERO / UNVERIFIED" if all(row.get(k) == 0 for k in ("temp","ph","tds")) else "✅ Recent"
-    return (f"🐠 Aquarium readings ({warning})\n"
+    status=freshness(row.get("Datetime"),now)
+    if all(row.get(k) == 0 for k in ("temp","ph","tds")):
+        status += " · ⚠️ Zero readings (sensor data unverified)"
+    return (f"🐠 Aquarium readings · {status}\n"
             f"🌡 Temperature: {fmt(row['temp'])} °C\n"
             f"🧪 pH: {fmt(row['ph'],2)}\n"
             f"💧 TDS: {fmt(row['tds'],0)} ppm\n"
@@ -104,13 +122,19 @@ def readable_bytes(value):
 def read_system():
     with db() as con:
         with con.cursor() as cur:
+            cur.execute("SELECT NOW() AS server_time")
+            now=cur.fetchone()["server_time"]
             cur.execute("SELECT * FROM psutil ORDER BY Id DESC LIMIT 1")
             r = cur.fetchone()
     if not r:
         return "🖥 System metrics: no data"
+    stamp=next((r.get(k) for k in ("Datetime","datetime","Timestamp","timestamp","created_at","CreatedAt","date_time") if r.get(k) is not None),None)
+    status=freshness(stamp,now)
     cores = "  |  ".join(f"{fmt(r.get('cpus_percent_'+str(n)),0)}%" for n in range(4))
     return (
         "🖥 SYSTEM METRICS\n"
+        f"{status}\n"
+        f"🕒 Sample: {stamp if stamp is not None else 'Unknown'}\n"
         "━━━━━━━━━━━━━━━━━━\n"
         f"⚡ CPU frequency: {fmt(r.get('scpufreq_cur'),0)} MHz\n"
         f"🧩 CPU cores 0–3: {cores}\n"
