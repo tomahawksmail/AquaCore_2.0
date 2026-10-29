@@ -592,7 +592,8 @@ async def main():
     if not TOKEN or OWNER<=0:
         raise RuntimeError("BOT_TOKEN and numeric MyTGaccount must be set in .env")
     logging.basicConfig(level=logging.INFO,format="%(asctime)s %(levelname)s %(message)s")
-    await asyncio.to_thread(init_users_table)\n    bot=Bot(token=TOKEN)
+    await asyncio.to_thread(init_users_table)
+    bot=Bot(token=TOKEN)
     # Private message/callback traffic only. Explicit auth remains in every handler.
     await dp.start_polling(bot,allowed_updates=["message"],
                            handle_as_tasks=False)
