@@ -11,7 +11,7 @@ from datetime import datetime, time as clock_time, timedelta
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, CommandStart
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup, Message
 from dotenv import load_dotenv
 
 from app import SETTINGS, TIME_FIELDS, db
@@ -49,6 +49,42 @@ def fmt(value, digits=1):
         return f"{float(value):.{digits}f}"
     except (TypeError, ValueError):
         return str(value)
+
+
+MENU_LABELS = {
+    "🐠 Aquarium metrics": "aqua",
+    "🖥 System metrics": "system",
+    "🔌 Equipment control": "equipment",
+    "⚙️ Settings": "settings",
+    "❔ Help": "help",
+    "🏠 Main menu": "menu",
+}
+
+def reply_menu():
+    """Persistent two-column keyboard available from every screen."""
+    return ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="🐠 Aquarium metrics"), KeyboardButton(text="🖥 System metrics")],
+        [KeyboardButton(text="🔌 Equipment control"), KeyboardButton(text="⚙️ Settings")],
+        [KeyboardButton(text="❔ Help"), KeyboardButton(text="🏠 Main menu")],
+    ], resize_keyboard=True, is_persistent=True, input_field_placeholder="Choose an AquaCore action…")
+
+
+def device_picker():
+    rows=[]
+    for index,label in enumerate(DEVICES.values()):
+        rows.append([InlineKeyboardButton(text="🔌 "+label+"   ›",callback_data=f"device:{index}")])
+    rows.append([InlineKeyboardButton(text="🔄 Refresh status",callback_data="view:equipment")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def device_controls(index):
+    name=list(DEVICES.values())[index]
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🟢 Turn ON",callback_data=f"confirm:{index}:on"),
+         InlineKeyboardButton(text="🔴 Turn OFF",callback_data=f"confirm:{index}:off")],
+        [InlineKeyboardButton(text="🕒 Automatic schedule",callback_data=f"confirm:{index}:auto")],
+        [InlineKeyboardButton(text="‹ All equipment",callback_data="view:equipment")],
+    ])
 
 
 def main_keyboard():
@@ -237,12 +273,12 @@ VIEWS = {"aqua":read_aqua,"system":read_system,"equipment":read_equipment,"setti
 
 async def show_view(message, view):
     if view=="menu":
-        await message.answer("AquaCore control center",reply_markup=main_keyboard())
+        await message.answer("🌊 AquaCore 2.0  •  Control Center\n\n🐠 Aquarium monitoring\n🖥 System health\n🔌 Equipment and schedules\n\nSelect a button below to continue.",reply_markup=reply_menu())
     elif view=="help":
-        await message.answer(HELP,reply_markup=main_keyboard())
+        await message.answer(HELP+"\n\nUse the persistent buttons below to navigate.",reply_markup=reply_menu())
     else:
         result=await asyncio.to_thread(VIEWS[view])
-        await message.answer(result,reply_markup=equipment_keyboard() if view=="equipment" else main_keyboard())
+        await message.answer(result,reply_markup=device_picker() if view=="equipment" else main_keyboard())
 
 
 @dp.message(CommandStart())
@@ -296,6 +332,28 @@ async def view_callback(query:CallbackQuery):
         await query.message.answer("⚠️ Database is unavailable.")
 
 
+@dp.callback_query(F.data.startswith("device:"))
+async def device_page(query:CallbackQuery):
+    if not authorized(query):return
+    try:
+        index=int(query.data.split(":",1)[1])
+        if index<0 or index>=len(DEVICE_KEYS):
+            raise ValueError
+    except (ValueError,AttributeError):
+        await query.answer("Unknown device",show_alert=True)
+        return
+    await query.answer()
+    field=DEVICE_KEYS[index]
+    try:
+        summary=await asyncio.to_thread(read_equipment)
+        entry=next((line for line in summary.splitlines() if DEVICES[field]+":" in line),"")
+    except Exception:
+        LOG.exception("Unable to load equipment status")
+        await query.message.answer("⚠️ Could not retrieve equipment state.")
+        return
+    await query.message.answer("🔌 "+DEVICES[field]+"\n\n"+entry+"\n\nChoose an action:",reply_markup=device_controls(index))
+
+
 @dp.callback_query(F.data.startswith("confirm:"))
 async def confirm_action(query:CallbackQuery):
     if not authorized(query):return
@@ -339,13 +397,24 @@ async def execute_action(query:CallbackQuery):
     # Remove the confirmation buttons to prevent accidental duplicate actions.
     try:await query.message.edit_reply_markup(reply_markup=None)
     except Exception:pass
-    await query.message.answer(result,reply_markup=equipment_keyboard())
+    await query.message.answer(result,reply_markup=device_controls(index))
+
+
+@dp.message(F.text.in_(tuple(MENU_LABELS)))
+async def menu_buttons(message:Message):
+    if not authorized(message):return
+    view=MENU_LABELS[message.text]
+    try:
+        await show_view(message,view)
+    except Exception:
+        LOG.exception("Telegram menu failed")
+        await message.answer("⚠️ Could not load this view; check server logs.")
 
 
 @dp.message()
 async def unknown_message(message:Message):
     if authorized(message):
-        await message.answer("Use /start to see options.",reply_markup=main_keyboard())
+        await message.answer("Choose one of the menu buttons below.",reply_markup=reply_menu())
 
 
 async def main():
