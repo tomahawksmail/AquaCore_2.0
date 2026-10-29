@@ -146,7 +146,7 @@ def read_timings():
             cur.execute("SELECT * FROM options LIMIT 1")
             opts=cur.fetchone()
     if not opts:return "No settings found"
-    return "🕒 Equipment schedule (server time)\\n"+ "\\n".join(f"{DEVICES[field]}: {str(opts.get(on))[:5]}–{str(opts.get(off))[:5]}" for field,(on,off) in SCHEDULE_MAP.items())
+    return "🕒 Equipment schedule (server time)\n"+ "\n".join(f"{DEVICES[field]}: {str(opts.get(on))[:5]}–{str(opts.get(off))[:5]}" for field,(on,off) in SCHEDULE_MAP.items())
 
 def chart_image(which):
     import matplotlib
@@ -270,9 +270,9 @@ VIEWS={"aqua":read_aqua,"system":read_system,"equipment":read_equipment,"setting
 async def show_view(message,view):
     if view=="menu":
         STATE.clear()
-        await message.answer("🌊 AquaCore 2.0\\nChoose an option using the keyboard below.",reply_markup=reply_menu())
+        await message.answer("🌊 AquaCore 2.0\nChoose an option using the keyboard below.",reply_markup=reply_menu())
     elif view=="help":
-        await message.answer(HELP+"\\n\\nUse the bottom keyboard to navigate.",reply_markup=reply_menu())
+        await message.answer(HELP+"\n\nUse the bottom keyboard to navigate.",reply_markup=reply_menu())
     elif view.startswith("chart_"):
         kind=view.split("_",1)[1]
         image=await asyncio.to_thread(chart_image,kind)
@@ -318,7 +318,7 @@ async def menu_handler(message:Message):
             await show_view(message,MENU_LABELS[value]);return
         if value in DEVICE_CHOICES:
             STATE[OWNER]={"type":"device","field":DEVICE_CHOICES[value]}
-            await message.answer(value+"\\nChoose a mode:",reply_markup=keyboard([["🟢 ON","🔴 OFF"],["🔄 AUTO"],["🏠 Main menu"]]))
+            await message.answer(value+"\nChoose a mode:",reply_markup=keyboard([["🟢 ON","🔴 OFF"],["🔄 AUTO"],["🏠 Main menu"]]))
             return
         if value in TIMING_CHOICES:
             STATE[OWNER]={"type":"time","field":TIMING_CHOICES[value]}
