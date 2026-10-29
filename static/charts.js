@@ -85,17 +85,15 @@
       el('text',{x:L-8,y:py+4,'text-anchor':'end'},svg,label);
     }
     if (period === '24h') {
-      // Labels only at exact local clock hours, never at arbitrary sample minutes.
-      // Avoid overcrowding long time ranges by skipping whole hours.
-      const hourMs=3600000;
-      const first=Math.ceil(t0/hourMs)*hourMs;
-      const last=Math.floor(t1/hourMs)*hourMs;
-      const available=Math.max(0,Math.floor((last-first)/hourMs)+1);
-      const stride=Math.max(1,Math.ceil(available/6));
-      for(let ms=first;ms<=last;ms+=stride*hourMs){
-        const dt=new Date(ms);
+      // Consistent local clock ticks and vertical grid lines every 3 hours.
+      const first=new Date(t0);
+      first.setHours(Math.ceil(first.getHours()/3)*3,0,0,0);
+      if(first.getTime()<t0)first.setHours(first.getHours()+3);
+      for(let dt=new Date(first);dt.getTime()<=t1;dt.setHours(dt.getHours()+3)){
+        const ms=dt.getTime(),px=x(ms);
         const label=String(dt.getHours()).padStart(2,'0')+':00';
-        el('text',{x:x(ms),y:H-7,'text-anchor':'middle'},svg,label);
+        el('line',{x1:px,y1:T,x2:px,y2:H-B,class:'chart-gridline'},svg);
+        el('text',{x:px,y:H-7,'text-anchor':'middle'},svg,label);
       }
     } else {
       [0,.5,1].forEach(f=>{
