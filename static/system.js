@@ -21,7 +21,8 @@
       return Number.isFinite(ms)?ms:NaN;
     });
     const timed=times.length>1&&times.every(Number.isFinite)&&times.at(-1)>times[0];
-    const x=i=>L+(timed?(times[i]-times[0])/(times.at(-1)-times[0])*(W-L-R):(points.length===1?(W-L-R)/2:i*(W-L-R)/(points.length-1)));
+    const axisEnd=Date.now(),axisStart=axisEnd-24*60*60*1000;
+    const x=i=>L+(timed?(times[i]-axisStart)/(axisEnd-axisStart)*(W-L-R):(points.length===1?(W-L-R)/2:i*(W-L-R)/(points.length-1)));
 
     const y=v=>B-(Number(v)-lo)/(hi-lo)*(B-T);
     const txt=v=>format?format(v):(tickStep<1?Number(v.toFixed(2)).toString():Math.round(v).toString());
@@ -34,12 +35,12 @@
     }
     // Local-clock 3-hour boundaries, matching Dashboard: 00, 03, ... 21.
     if(timed){
-      const start=new Date(times[0]);
+      const start=new Date(axisStart);
       start.setHours(Math.ceil(start.getHours()/3)*3,0,0,0);
-      if(start.getTime()<times[0])start.setHours(start.getHours()+3);
-      for(let d=new Date(start);d.getTime()<=times.at(-1);d.setHours(d.getHours()+3)){
+      if(start.getTime()<axisStart)start.setHours(start.getHours()+3);
+      for(let d=new Date(start);d.getTime()<=axisEnd;d.setHours(d.getHours()+3)){
         const t=d.getTime();
-        const px=L+(t-times[0])/(times.at(-1)-times[0])*(W-L-R);
+        const px=L+(t-axisStart)/(axisEnd-axisStart)*(W-L-R);
         const label=String(d.getHours()).padStart(2,'0')+':00';
         svg+='<line x1="'+px+'" y1="'+T+'" x2="'+px+'" y2="'+B+'" stroke="#284354" stroke-width=".8"/>';
         svg+='<text x="'+px+'" y="'+(H-6)+'" text-anchor="middle" fill="#86acbe" font-size="12">'+label+'</text>';
