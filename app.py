@@ -316,9 +316,9 @@ def core():
 @app.get('/api/system/history')
 @logged_in
 def system_history():
-    """Recent system measurements in chronological sample order (bounded to 120)."""
+    """Recent system measurements in chronological sample order (up to 1500 samples)."""
     # Query all psutil columns so optional DB timestamp fields are available.
-    rows=query('SELECT * FROM psutil ORDER BY Id DESC LIMIT 120')
+    rows=query('SELECT * FROM psutil ORDER BY Id DESC LIMIT 1500')
     result=[]
     for row in reversed(rows):
         point={key: (float(row[key]) if row.get(key) is not None else None)
