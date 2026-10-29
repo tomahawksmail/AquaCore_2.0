@@ -112,7 +112,7 @@ def users_report():
         lines.append(f"{icon} {entry['telegram_id']} · {entry['role']}")
     lines.extend(["","Viewer: metrics only","Operator: metrics and equipment/settings",
                   "Only owner can add or remove users."])
-    return "\\n".join(lines)
+    return "\n".join(lines)
 
 
 def fmt(value, digits=1):
@@ -305,9 +305,9 @@ def read_limits():
             options=cur.fetchone()
     if not options:
         return "⚠️ No settings found"
-    return ("💧 WATER QUALITY LIMITS\\n━━━━━━━━━━━━━━━━━━\\n"
-            + "\\n".join(f"{label}: {options.get(field)}" for label,field in LIMIT_CHOICES.items())
-            + "\\n\\nSelect a parameter below to change it.")
+    return ("💧 WATER QUALITY LIMITS\n━━━━━━━━━━━━━━━━━━\n"
+            + "\n".join(f"{label}: {options.get(field)}" for label,field in LIMIT_CHOICES.items())
+            + "\n\nSelect a parameter below to change it.")
 
 
 def read_timings():
@@ -444,9 +444,9 @@ async def show_view(message,view):
     uid=message.from_user.id
     if view=="menu":
         STATE.pop(uid,None)
-        await message.answer("🌊 AquaCore 2.0\\nChoose an option using the keyboard below.",reply_markup=reply_menu())
+        await message.answer("🌊 AquaCore 2.0\nChoose an option using the keyboard below.",reply_markup=reply_menu())
     elif view=="help":
-        await message.answer(HELP+"\\n\\nUse the bottom keyboard to navigate.",reply_markup=reply_menu())
+        await message.answer(HELP+"\n\nUse the bottom keyboard to navigate.",reply_markup=reply_menu())
     elif view.startswith("chart_"):
         kind=view.split("_",1)[1]
         image=await asyncio.to_thread(chart_image,kind)
@@ -457,8 +457,8 @@ async def show_view(message,view):
         await message.answer(await asyncio.to_thread(read_equipment),reply_markup=devices_menu() if can_manage(uid) else reply_menu())
     elif view=="settings":
         STATE.pop(uid,None)
-        await message.answer("⚙️ AQUACORE SETTINGS\\n━━━━━━━━━━━━━━━━━━\\n💧 Water quality thresholds\\n🕒 Equipment schedules"
-                             + ("\\n👥 Authorized Telegram users" if is_owner(uid) else ""),
+        await message.answer("⚙️ AQUACORE SETTINGS\n━━━━━━━━━━━━━━━━━━\n💧 Water quality thresholds\n🕒 Equipment schedules"
+                             + ("\n👥 Authorized Telegram users" if is_owner(uid) else ""),
                              reply_markup=settings_menu(is_owner(uid)))
     elif view=="users":
         if not is_owner(uid):
@@ -514,7 +514,7 @@ async def menu_handler(message:Message):
             if not can_manage(uid):
                 await message.answer("⛔ Read-only account.");return
             STATE[uid]={"type":"device","field":DEVICE_CHOICES[value]}
-            await message.answer(value+"\\nChoose a mode:",reply_markup=keyboard([["🟢 ON","🔴 OFF"],["🔄 AUTO"],["🔌 Equipment control","🏠 Main menu"]]))
+            await message.answer(value+"\nChoose a mode:",reply_markup=keyboard([["🟢 ON","🔴 OFF"],["🔄 AUTO"],["🔌 Equipment control","🏠 Main menu"]]))
             return
         if value in TIMING_CHOICES or value in LIMIT_CHOICES:
             if not can_manage(uid):
@@ -522,14 +522,14 @@ async def menu_handler(message:Message):
             field=TIMING_CHOICES[value] if value in TIMING_CHOICES else LIMIT_CHOICES[value]
             STATE[uid]={"type":"setting","field":field}
             example="08:30" if field in TIME_FIELDS else "25.5"
-            await message.answer(f"✏️ Update {value}\\n\\nSend the new value (example: {example}).",reply_markup=keyboard([["⚙️ Settings","🏠 Main menu"]]))
+            await message.answer(f"✏️ Update {value}\n\nSend the new value (example: {example}).",reply_markup=keyboard([["⚙️ Settings","🏠 Main menu"]]))
             return
         if value in ("➕ Add viewer","➕ Add operator","🗑 Remove user"):
             if not is_owner(uid):
                 await message.answer("⛔ Owner access required.");return
             mode={"➕ Add viewer":"viewer","➕ Add operator":"operator","🗑 Remove user":"remove"}[value]
             STATE[uid]={"type":"user_id","mode":mode}
-            await message.answer("👥 Send the numeric Telegram user ID.\\nThe person must open a private chat with this bot and send /start.",
+            await message.answer("👥 Send the numeric Telegram user ID.\nThe person must open a private chat with this bot and send /start.",
                                  reply_markup=users_menu())
             return
         pending=STATE.get(uid)
@@ -581,7 +581,7 @@ async def menu_handler(message:Message):
                 role=None if pending["mode"]=="remove" else pending["mode"]
                 await asyncio.to_thread(change_user,target,role)
                 STATE.pop(uid,None)
-                await message.answer("✅ Access updated.\\n"+await asyncio.to_thread(users_report),reply_markup=users_menu())
+                await message.answer("✅ Access updated.\n"+await asyncio.to_thread(users_report),reply_markup=users_menu())
                 return
         await message.answer("Use the menu buttons below.",reply_markup=reply_menu())
     except ValueError as err:await message.answer("⚠️ "+str(err))
