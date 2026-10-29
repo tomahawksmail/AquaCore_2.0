@@ -3,3 +3,4 @@ PyMySQL>=1.1,<2
 python-dotenv>=1.0,<2
 cryptography>=42
 gunicorn>=23,<25; platform_system == "Linux"
+aiogram>=3.20,<4
