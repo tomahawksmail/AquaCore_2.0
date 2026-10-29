@@ -317,12 +317,15 @@ def core():
 @logged_in
 def system_history():
     """Recent system measurements in chronological sample order (bounded to 120)."""
-    rows=query('SELECT Id,scpufreq_cur,cpus_percent_0,cpus_percent_1,cpus_percent_2,cpus_percent_3,RAM_total,RAM_available,RAM_percent,RAM_used,RAM_free,RAM_active,RAM_inactive,RAM_buffers,RAM_cached,RAM_shared,RAM_slab,cpu_thermal_cur,ddr_thermal_cur,net_bytes_sent,net_bytes_recv,net_packets_sent,net_packets_recv,net_errin,net_errout,net_dropin,net_dropout,disk_read_count,disk_write_count,disk_read_bytes,disk_write_bytes,disk_read_time,disk_write_time,disk_busy_time,disk_usage_total,disk_usage_used,disk_usage_free,disk_usage_percent '
-               'FROM psutil ORDER BY Id DESC LIMIT 120')
+    # Query all psutil columns so optional DB timestamp fields are available.
+    rows=query('SELECT * FROM psutil ORDER BY Id DESC LIMIT 120')
     result=[]
     for row in reversed(rows):
-        result.append({key: (float(row[key]) if row.get(key) is not None else None)
-                       for key in ('scpufreq_cur','cpus_percent_0','cpus_percent_1','cpus_percent_2','cpus_percent_3','RAM_total','RAM_available','RAM_percent','RAM_used','RAM_free','RAM_active','RAM_inactive','RAM_buffers','RAM_cached','RAM_shared','RAM_slab','cpu_thermal_cur','ddr_thermal_cur','net_bytes_sent','net_bytes_recv','net_packets_sent','net_packets_recv','net_errin','net_errout','net_dropin','net_dropout','disk_read_count','disk_write_count','disk_read_bytes','disk_write_bytes','disk_read_time','disk_write_time','disk_busy_time','disk_usage_total','disk_usage_used','disk_usage_free','disk_usage_percent')})
+        point={key: (float(row[key]) if row.get(key) is not None else None)
+                       for key in ('scpufreq_cur','cpus_percent_0','cpus_percent_1','cpus_percent_2','cpus_percent_3','RAM_total','RAM_available','RAM_percent','RAM_used','RAM_free','RAM_active','RAM_inactive','RAM_buffers','RAM_cached','RAM_shared','RAM_slab','cpu_thermal_cur','ddr_thermal_cur','net_bytes_sent','net_bytes_recv','net_packets_sent','net_packets_recv','net_errin','net_errout','net_dropin','net_dropout','disk_read_count','disk_write_count','disk_read_bytes','disk_write_bytes','disk_read_time','disk_write_time','disk_busy_time','disk_usage_total','disk_usage_used','disk_usage_free','disk_usage_percent')}
+        timestamp=next((row.get(k) for k in ('Datetime','datetime','Timestamp','timestamp','created_at','CreatedAt','date_time') if row.get(k) is not None),None)
+        point['timestamp']=timestamp.isoformat(sep=' ') if hasattr(timestamp,'isoformat') else (str(timestamp) if timestamp is not None else None)
+        result.append(point)
     response=jsonify({'points':result})
     response.headers['Cache-Control']='no-store'
     return response
