@@ -27,13 +27,16 @@
     const rows = points.filter(p => p.time);
     const valid = rows.filter(p => typeof p[field] === 'number' && Number.isFinite(p[field]));
     if (!valid.length) {
+      // Keep the chart panel visible even when there are no new sensor samples.
       const empty = document.createElement('p'); empty.className = 'dim';
-      empty.textContent = 'No measurements in this period.'; target.appendChild(empty); return;
+      empty.textContent = 'No measurements in this period — waiting for sensor data.';
+      target.appendChild(empty); return;
     }
     const W=Math.max(560,Math.round(target.getBoundingClientRect().width||560)),H=222,L=49,R=14,T=16,B=34;
     const times=rows.map(p=>new Date(p.time).getTime());
     let t0=Math.min(...times), t1=Math.max(...times);
-    if(period === "24h") { t1=Date.now(); t0=t1-24*3600000; }\n    else if(t0===t1){t0-=3600000;t1+=3600000;}
+    if(period === "24h") { t1=Date.now(); t0=t1-24*3600000; }
+    else if(t0===t1){t0-=3600000;t1+=3600000;}
     const values=valid.map(p=>p[field]);
     let low=Math.min(...values), high=Math.max(...values);
     const pad=Math.max((high-low)*0.13, field==='ph'?0.08:field==='temp'?0.3:5);
@@ -140,7 +143,7 @@
       if(!response.ok) throw new Error('Request failed ('+response.status+')');
       const data=await response.json();
       if(current!==period)return;
-      if(!data.points.length){message.textContent='No saved measurements for this period.';return;}
+      if(!data.points.length){message.textContent='No saved measurements for this period. Charts will reappear when readings arrive.';grid.hidden=false;return;}
       for(const field of ['temp','ph','tds'])draw(field,data.points,period,data.limits || {});
       message.hidden=true;grid.hidden=false;
     }catch(e){message.textContent='History unavailable: '+e.message;}
