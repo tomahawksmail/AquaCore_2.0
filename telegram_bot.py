@@ -154,7 +154,7 @@ def read_system():
         f"⬆️ Sent: {readable_bytes(r.get('net_bytes_sent'))}\n"
         f"⬇️ Received: {readable_bytes(r.get('net_bytes_recv'))}\n"
         "ℹ️ Network values are cumulative totals, not current speed."
-        + ("\\n\\n⚠️ Zero readings — system collector data unverified." if is_zero else "")
+        + ("\n\n⚠️ Zero readings — system collector data unverified." if is_zero else "")
     )
 
 
