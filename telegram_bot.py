@@ -85,6 +85,13 @@ def freshness(recorded, now):
     return "🔴 Old"
 
 
+def metric_header(title, stamp, now):
+    """Shared Telegram layout for both metric reports."""
+    status = freshness(stamp, now) if stamp is not None else "🔴 No data"
+    when = str(stamp) if stamp is not None else "Unknown"
+    return f"{title}\n{status}\n🕒 Sample: {when}\n━━━━━━━━━━━━━━━━━━\n"
+
+
 def read_aqua():
     with db() as con:
         with con.cursor() as cur:
@@ -93,15 +100,14 @@ def read_aqua():
             cur.execute("SELECT Datetime,temp,ph,tds FROM data ORDER BY Datetime DESC,Id DESC LIMIT 1")
             row = cur.fetchone()
     if row is None:
-        return "🐠 Aquarium readings: no data"
-    status=freshness(row.get("Datetime"),now)
-    if all(row.get(k) == 0 for k in ("temp","ph","tds")):
-        status += " · ⚠️ Zero readings (sensor data unverified)"
-    return (f"🐠 Aquarium readings · {status}\n"
-            f"🌡 Temperature: {fmt(row['temp'])} °C\n"
-            f"🧪 pH: {fmt(row['ph'],2)}\n"
-            f"💧 TDS: {fmt(row['tds'],0)} ppm\n"
-            f"🕒 Server time: {row['Datetime']}\n")
+        return metric_header("🐠 AQUARIUM METRICS", None, now) + "No readings available."
+    zero = all(row.get(k) == 0 for k in ("temp","ph","tds"))
+    return (metric_header("🐠 AQUARIUM METRICS", row.get("Datetime"), now)
+            + "💧 WATER QUALITY\n"
+            + f"🌡 Temperature: {fmt(row['temp'])} °C\n"
+            + f"🧪 pH: {fmt(row['ph'],2)}\n"
+            + f"💦 TDS: {fmt(row['tds'],0)} ppm"
+            + ("\n\n⚠️ Zero readings — sensor data unverified." if zero else ""))
 
 
 def readable_bytes(value):
@@ -127,19 +133,17 @@ def read_system():
             cur.execute("SELECT * FROM psutil ORDER BY Id DESC LIMIT 1")
             r = cur.fetchone()
     if not r:
-        return "🖥 System metrics: no data"
+        return metric_header("🖥 SYSTEM METRICS", None, now) + "No readings available."
     stamp=next((r.get(k) for k in ("Datetime","datetime","Timestamp","timestamp","created_at","CreatedAt","date_time") if r.get(k) is not None),None)
-    status=freshness(stamp,now)
     cores = "  |  ".join(f"{fmt(r.get('cpus_percent_'+str(n)),0)}%" for n in range(4))
     return (
-        "🖥 SYSTEM METRICS\n"
-        f"{status}\n"
-        f"🕒 Sample: {stamp if stamp is not None else 'Unknown'}\n"
-        "━━━━━━━━━━━━━━━━━━\n"
-        f"⚡ CPU frequency: {fmt(r.get('scpufreq_cur'),0)} MHz\n"
+        metric_header("🖥 SYSTEM METRICS", stamp, now)
+        + "⚙️ PROCESSOR\n"
+        + f"⚡ CPU frequency: {fmt(r.get('scpufreq_cur'),0)} MHz\n"
         f"🧩 CPU cores 0–3: {cores}\n"
         f"🌡 CPU temperature: {fmt(r.get('cpu_thermal_cur'))} °C\n"
         f"🌡 DDR temperature: {fmt(r.get('ddr_thermal_cur'))} °C\n"
+        "\n🧠 MEMORY & STORAGE\n"
         f"🧠 RAM usage: {fmt(r.get('RAM_percent'))}%\n"
         f"💾 RAM total: {fmt(r.get('RAM_total'),0)} MB\n"
         f"🗄 Disk usage: {fmt(r.get('disk_usage_percent'))}%\n"
