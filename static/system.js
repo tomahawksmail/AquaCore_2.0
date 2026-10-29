@@ -32,15 +32,16 @@
       svg+='<line x1="'+L+'" y1="'+py+'" x2="'+(W-R)+'" y2="'+py+'" stroke="#2a4758" stroke-width=".8"/>';
       svg+='<text x="'+(L-8)+'" y="'+(py+4)+'" text-anchor="end" fill="#9cbdcf" font-size="12">'+txt(value)+'</text>';
     }
-    // Clock-time ticks at 3-hour boundaries, matched to actual measurement times.
+    // Local-clock 3-hour boundaries, matching Dashboard: 00, 03, ... 21.
     if(timed){
-      const hour=60*60*1000,step=3*hour;
-      const first=Math.ceil(times[0]/step)*step;
-      for(let t=first;t<=times.at(-1);t+=step){
+      const start=new Date(times[0]);
+      start.setHours(Math.ceil(start.getHours()/3)*3,0,0,0);
+      if(start.getTime()<times[0])start.setHours(start.getHours()+3);
+      for(let d=new Date(start);d.getTime()<=times.at(-1);d.setHours(d.getHours()+3)){
+        const t=d.getTime();
         const px=L+(t-times[0])/(times.at(-1)-times[0])*(W-L-R);
-        const d=new Date(t);
         const label=String(d.getHours()).padStart(2,'0')+':00';
-        svg+='<line x1="'+px+'" y1="'+T+'" x2="'+px+'" y2="'+B+'" stroke="#284354" stroke-width=".7"/>';
+        svg+='<line x1="'+px+'" y1="'+T+'" x2="'+px+'" y2="'+B+'" stroke="#284354" stroke-width=".8"/>';
         svg+='<text x="'+px+'" y="'+(H-6)+'" text-anchor="middle" fill="#86acbe" font-size="12">'+label+'</text>';
       }
     }else{
