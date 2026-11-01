@@ -8,7 +8,8 @@ import argparse
 import logging
 import os
 import signal
-import subprocess
+import gpiod
+from gpiod.line import Direction, Value
 import time
 
 import pymysql
@@ -73,31 +74,40 @@ def get_status(pins):
         raise RuntimeError("Expected exactly one status row; got " + str(len(rows)))
     return rows[0]
 
-def gpio(*args):
-    subprocess.run(["gpio", "-g", *map(str,args)], check=True,
-                   timeout=3, stdout=subprocess.DEVNULL)
+def request_relay_lines(pins):
+    """Claim all six verified outputs together; initialize active-low relays OFF."""
+    line_ids=[number for _,number in pins.values()]
+    settings=gpiod.LineSettings(direction=Direction.OUTPUT,output_value=Value.ACTIVE)
+    # No active_low flag: ACTIVE means physical HIGH; on the relay module HIGH = OFF.
+    request=gpiod.request_lines("/dev/gpiochip1",consumer="aquacore-relays",
+                               config={tuple(line_ids):settings})
+    return request
+
 
 def setup_pins(pins, apply):
-    for field, (physical, pin) in pins.items():
-        if apply:
-            gpio("mode", pin, "out")
-        LOG.info("%s => physical pin %s (SoC GPIO %s)", field, physical, pin)
+    for field,(physical,pin) in pins.items():
+        LOG.info("%s => physical pin %s / chip1 offset %s",field,physical,pin)
+    return request_relay_lines(pins) if apply else None
 
-def apply_states(rows, pins, previous, apply):
-    for field, (physical, pin) in pins.items():
-        state = rows[field]
-        if state not in ("checked", "unchecked"):
-            LOG.warning("Skipping invalid/NULL %s=%r", field, state)
+
+def apply_states(rows,pins,previous,apply,request=None):
+    for field,(physical,pin) in pins.items():
+        state=rows[field]
+        if state not in ("checked","unchecked"):
+            LOG.warning("Ignoring invalid state %s=%r",field,state)
             continue
-        if previous.get(field) == state:
+        if previous.get(field)==state:
             continue
-        # Existing board: 'down' energizes relay, 'up' de-energizes it.
-        level = 0 if state == "checked" else 1
+        # Active-low relay input: LOW energizes; HIGH de-energizes.
+        level=Value.INACTIVE if state=="checked" else Value.ACTIVE
         if apply:
-            gpio("write", pin, level)
-        LOG.info("%s -> %s on physical %s / SoC GPIO %s (%s)", field, state, physical, pin,
+            if request is None:
+                raise RuntimeError("GPIO request unavailable")
+            request.set_value(pin,level)
+        LOG.info("%s -> %s, pin %s / line %s (%s)",field,state,physical,pin,
                  "APPLIED" if apply else "DRY RUN")
-        previous[field] = state
+        previous[field]=state
+
 
 def stop(_signum, _frame):
     global RUNNING
@@ -123,16 +133,23 @@ def main():
     # Do not switch relays to a guess at startup; wait for a valid DB read.
     # In particular, don't write OFF on transient DB failures.
     previous = {}
-    setup_pins(pins, args.apply)
-    while RUNNING:
+    request=setup_pins(pins,args.apply)
+    try:
+      while RUNNING:
         try:
-            rows = get_status(pins)
-            apply_states(rows, pins, previous, args.apply)
-        except (pymysql.MySQLError, OSError, subprocess.SubprocessError,
-                RuntimeError, ValueError, KeyError):
-            LOG.exception("Relay cycle failed; retaining last GPIO outputs")
-            # A failed write must be retried; previous only records successes.
+            rows=get_status(pins)
+            apply_states(rows,pins,previous,args.apply,request)
+        except (pymysql.MySQLError,OSError,RuntimeError,ValueError,KeyError):
+            LOG.exception("Relay cycle failed; retaining previous output")
         time.sleep(args.interval)
+    finally:
+        if request is not None:
+            # Before releasing, ask for OFF. Released line levels still are not
+            # guaranteed by the kernel; use external hardware failsafes.
+            for _field,(_physical,pin) in pins.items():
+                try:request.set_value(pin,Value.ACTIVE)
+                except OSError:LOG.exception("Unable to de-energize line %s",pin)
+            request.release()
 
 if __name__ == "__main__":
     main()
