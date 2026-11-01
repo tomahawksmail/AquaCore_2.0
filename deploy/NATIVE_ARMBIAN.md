@@ -76,6 +76,21 @@ curl -I http://127.0.0.1:5001/login
 ```
 Do **not** enable `aquacore-relays.service` yet.
 
+## Relay channel assignment (verified wiring)
+
+| Relay channel | Equipment | SoC pin | gpiochip1 offset | Physical header pin |
+| --- | --- | --- | ---: | ---: |
+| 1 | CO2 | PH4 | 228 | 18 |
+| 2 | Oxygen | PI6 | 262 | 22 |
+| 3 | Main light | PH9 | 233 | 26 |
+| 4 | Unused | PH5 | 229 | 24 |
+| 5 | Backlight | PI16 | 272 | 37 |
+| 6 | Plant light | PC12 | 76 | 36 |
+| 7 | UV | PI0 | 256 | 29 |
+| 8 | Reserved | PH6 | 230 | 23 |
+| 9 | Reserved | PH8 | 232 | 21 |
+| 10 | Reserved | PH7 | 231 | 19 |
+
 ## 6. Validate relays safely
 Stop any manual `gpioset` tests and physically disconnect mains/aquarium loads. Verify that offsets match your actual header wiring and that outputs are active-low:
 ```bash
