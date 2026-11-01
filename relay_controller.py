@@ -23,7 +23,7 @@ RUNNING = True
 # 1 CO2=PH4; 2 Oxygen=PI6; 3 Main Light=PH9; 4 unused=PH5;
 # 5 Backlight=PI16; 6 Plant Light=PC12; 7 UV=PI0.
 # Each pair is (PHYSICAL_HEADER_PIN, SUNXI_GPIO_NUMBER).
-# NOTE: Current driver uses wiringOP 'gpio -g'; not libgpiod.
+# Controlled using libgpiod v2 on gpiochip1.
 PIN_MAP = {
     "co2_status": (18, 228),         # 1 PH4
     "o2_status": (22, 262),          # 2 PI6
@@ -38,12 +38,56 @@ SPARE_PIN_MAP = {
     "spare_4": (24, 229),  # 4 PH5 — intentionally skipped
     "spare_8": (23, 230),  # 8 PH6 / SPI clock
     "spare_9": (21, 232),  # 9 PH8 / SPI MISO
-    "spare_10": (19, 231), # 10 PH7 / SPI MOSI
+    # Channel 10 is reserved for the CPU cooler (PH7 / physical pin 19).
 }
+
+COOLER_PIN = (19, 231)  # Relay channel 10, PH7
+CPU_TEMP_PATH = "/sys/class/thermal/thermal_zone0/temp"
+COOLER_ON_C = 70.0
+COOLER_OFF_C = 65.0
+
+
+def cpu_temperature_c(path=CPU_TEMP_PATH):
+    """Read CPU temperature in degrees C; reject missing/implausible readings."""
+    with open(path, "r", encoding="ascii") as file:
+        raw = file.read().strip()
+    temperature = float(raw) / 1000.0
+    if not -20 <= temperature <= 130:
+        raise ValueError("CPU temperature out of range: " + str(temperature))
+    return temperature
+
+
+def desired_cooler_on(temperature, previous_on):
+    """Hysteresis: switch on strictly above 70C; off at or below 65C."""
+    if temperature > COOLER_ON_C:
+        return True
+    if temperature <= COOLER_OFF_C:
+        return False
+    return previous_on
+
+
+def update_cooler(request, previous_on, apply):
+    try:
+        temperature = cpu_temperature_c()
+        on = desired_cooler_on(temperature, previous_on)
+        description = f"{temperature:.1f}C"
+    except (OSError, ValueError) as exc:
+        # Cooling is fail-on if the CPU temperature cannot be read.
+        on = True
+        description = f"temperature unavailable ({exc}); fail-on"
+    if previous_on is None or on != previous_on:
+        if apply:
+            if request is None:
+                raise RuntimeError("GPIO request unavailable")
+            request.set_value(COOLER_PIN[1], Value.INACTIVE if on else Value.ACTIVE)
+        LOG.info("CPU cooler %s at %s (%s)", "ON" if on else "OFF", description,
+                 "APPLIED" if apply else "DRY RUN")
+    return on
+
 
 def load_config():
     load_dotenv(os.getenv("AQUACORE_ENV", "/home/orangepi/AquaCore/.env"))
-    all_pins = [physical for physical, _ in (*PIN_MAP.values(), *SPARE_PIN_MAP.values())]
+    all_pins = [physical for physical, _ in (*PIN_MAP.values(), *SPARE_PIN_MAP.values(), COOLER_PIN)]
     if len(set(all_pins)) != len(all_pins):
         raise ValueError('Duplicate physical header pins across relay modules')
     return dict(PIN_MAP)
@@ -75,8 +119,8 @@ def get_status(pins):
     return rows[0]
 
 def request_relay_lines(pins):
-    """Claim all six verified outputs together; initialize active-low relays OFF."""
-    line_ids=[number for _,number in pins.values()]
+    """Claim aquarium and cooler GPIO lines in one persistent request."""
+    line_ids=[number for _,number in pins.values()] + [COOLER_PIN[1]]
     settings=gpiod.LineSettings(direction=Direction.OUTPUT,output_value=Value.ACTIVE)
     # No active_low flag: ACTIVE means physical HIGH; on the relay module HIGH = OFF.
     request=gpiod.request_lines("/dev/gpiochip1",consumer="aquacore-relays",
@@ -87,6 +131,7 @@ def request_relay_lines(pins):
 def setup_pins(pins, apply):
     for field,(physical,pin) in pins.items():
         LOG.info("%s => physical pin %s / chip1 offset %s",field,physical,pin)
+    LOG.info("CPU cooler => physical pin %s / chip1 offset %s", *COOLER_PIN)
     return request_relay_lines(pins) if apply else None
 
 
@@ -134,8 +179,13 @@ def main():
     # In particular, don't write OFF on transient DB failures.
     previous = {}
     request=setup_pins(pins,args.apply)
+    cooler_on = None
     try:
       while RUNNING:
+        try:
+            cooler_on = update_cooler(request, cooler_on, args.apply)
+        except (OSError, RuntimeError, ValueError):
+            LOG.exception("Cooler update failed")
         try:
             rows=get_status(pins)
             apply_states(rows,pins,previous,args.apply,request)
@@ -149,6 +199,10 @@ def main():
             for _field,(_physical,pin) in pins.items():
                 try:request.set_value(pin,Value.ACTIVE)
                 except OSError:LOG.exception("Unable to de-energize line %s",pin)
+            try:
+                request.set_value(COOLER_PIN[1], Value.INACTIVE)  # request cooling on shutdown
+            except OSError:
+                LOG.exception("Unable to energize CPU cooler on shutdown")
             request.release()
 
 if __name__ == "__main__":
