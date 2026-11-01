@@ -18,26 +18,26 @@ from dotenv import load_dotenv
 LOG = logging.getLogger("aquacore.relay")
 RUNNING = True
 
-# Orange Pi Zero 2W 40-pin header, in AquaCore UI order.
+# Orange Pi Zero 2W relay layout, by physical relay channel:
+# 1 CO2=PH4; 2 Oxygen=PI6; 3 Main Light=PH9; 4 unused=PH5;
+# 5 Backlight=PI16; 6 Plant Light=PC12; 7 UV=PI0.
 # Each pair is (PHYSICAL_HEADER_PIN, SUNXI_GPIO_NUMBER).
-# Requires wiringOP 'gpio -g' (SoC pin mode), not default wPi pin numbering.
+# NOTE: Current driver uses wiringOP 'gpio -g'; not libgpiod.
 PIN_MAP = {
-    "co2_status": (18, 228),         # PH4
-    "o2_status": (22, 262),          # PI6
-    "UV_status": (24, 229),          # PH5
-    "MasterL_status": (26, 233),     # PH9
-    "Backlight_status": (37, 272),   # PI16
-    "PlantL_status": (36, 76),       # PC12
+    "co2_status": (18, 228),         # 1 PH4
+    "o2_status": (22, 262),          # 2 PI6
+    "MasterL_status": (26, 233),     # 3 PH9
+    "Backlight_status": (37, 272),   # 5 PI16
+    "PlantL_status": (36, 76),       # 6 PC12
+    "UV_status": (29, 256),          # 7 PI0 (moved from PH5)
 }
 
-# Second four-channel module, connected but NOT managed by AquaCore.
-# GPIO numbers are SUNXI, used with "gpio -g".
-# These pins remain inputs/unconfigured by this script until explicitly assigned.
+# Unused relay channels: kept unconfigured/uncontrolled.
 SPARE_PIN_MAP = {
-    "spare_1": (29, 256),  # PI0
-    "spare_2": (23, 230),  # PH6 / SPI clock
-    "spare_3": (21, 232),  # PH8 / SPI MISO
-    "spare_4": (19, 231),  # PH7 / SPI MOSI
+    "spare_4": (24, 229),  # 4 PH5 — intentionally skipped
+    "spare_8": (23, 230),  # 8 PH6 / SPI clock
+    "spare_9": (21, 232),  # 9 PH8 / SPI MISO
+    "spare_10": (19, 231), # 10 PH7 / SPI MOSI
 }
 
 def load_config():
