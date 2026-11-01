@@ -63,6 +63,63 @@ sudo chown root:root /etc/aquacore/web.env
 ```
 No secrets in Git. The older `.env` is not necessary when running systemd services with EnvironmentFile.
 
+## Manual testing — no systemd services
+
+Do not start web, scheduler or Telegram units. Run each command in a separate SSH terminal. The `/etc/aquacore/web.env` file is root-only, so each command loads it in a root shell before dropping permissions where possible.
+
+**Terminal 1: Flask web app (Gunicorn)**
+
+```bash
+sudo bash -c '
+  set -a
+  . /etc/aquacore/web.env
+  set +a
+  cd /opt/aquacore
+  exec runuser -u aquacore -- .venv/bin/gunicorn --config gunicorn.conf.py wsgi:app
+'
+```
+Open from Orange Pi: `curl -I http://127.0.0.1:5001/login`. It binds to localhost until Tailscale is configured.
+
+**Terminal 2: scheduler**
+
+```bash
+sudo bash -c '
+  set -a
+  . /etc/aquacore/web.env
+  set +a
+  cd /opt/aquacore
+  exec runuser -u aquacore -- .venv/bin/python scheduler.py
+'
+```
+The scheduler **writes equipment schedule states** into the restored MariaDB `status` table but cannot energize relays unless a live relay worker is also running.
+
+**Terminal 3: Telegram**
+
+```bash
+sudo bash -c '
+  set -a
+  . /etc/aquacore/web.env
+  set +a
+  cd /opt/aquacore
+  exec runuser -u aquacore -- .venv/bin/python telegram_bot.py
+'
+```
+
+**Optional terminal 4: relay read-only/dry-run**
+
+```bash
+sudo bash -c '
+  set -a
+  . /etc/aquacore/web.env
+  set +a
+  cd /opt/aquacore
+  exec .venv/bin/python relay_controller.py
+'
+```
+This prints desired aquarium and cooler states without changing GPIO. When ready to test with aquarium and mains loads disconnected, explicitly use `--apply`. The fan output is active-low; GPIO 231 LOW means relay closed. Cooler activates above 70 C, deactivates at/below 65 C; intermediate values retain previous cooler state. On missing/invalid CPU temperature it requests cooler ON as a precaution. Temperature is read from `/sys/class/thermal/thermal_zone0/temp`; verify your actual CPU sensor before trusting this automated control. Cooler motor must have its own appropriately rated power source, not draw motor power from Orange Pi GPIO.
+
+Stop each manually launched process with Ctrl+C. Do not start duplicate copies of the same application or GPIO controller.
+
 ## 5. Install native services
 ```bash
 sudo cp /opt/aquacore/deploy/systemd/aquacore.service /etc/systemd/system/
@@ -89,7 +146,7 @@ Do **not** enable `aquacore-relays.service` yet.
 | 7 | UV | PI0 | 256 | 29 |
 | 8 | Reserved | PH6 | 230 | 23 |
 | 9 | Reserved | PH8 | 232 | 21 |
-| 10 | Reserved | PH7 | 231 | 19 |
+| 10 | CPU cooler (ON above 70 C; OFF at/below 65 C) | PH7 | 231 | 19 |
 
 ## 6. Validate relays safely
 Stop any manual `gpioset` tests and physically disconnect mains/aquarium loads. Verify that offsets match your actual header wiring and that outputs are active-low:
@@ -97,7 +154,7 @@ Stop any manual `gpioset` tests and physically disconnect mains/aquarium loads. 
 gpioinfo -c gpiochip1 | grep -E 'line +(228|262|233|272|76|256):'
 sudo /opt/aquacore/.venv/bin/python /opt/aquacore/relay_controller.py --interval 1
 ```
-This is dry-run mode. It reads DB states and logs requested outputs without touching GPIO. Ctrl+C to end. The relay worker now uses persistent `libgpiod 2` line ownership in `--apply` mode; six channels are CO2 PH4(228), Oxygen PI6(262), Main PH9(233), Backlight PI16(272), Plant PC12(76), UV PI0(256). Four other relay lines remain unclaimed. **On startup the active-low relay lines initialize HIGH/OFF, and switch based on DB state.** Releasing lines on exit may not preserve voltage; use external hardware fail-safe arrangements.
+This is dry-run mode. It reads DB states and logs requested outputs without touching GPIO. Ctrl+C to end. The relay worker now uses persistent `libgpiod 2` line ownership in `--apply` mode; six channels are CO2 PH4(228), Oxygen PI6(262), Main PH9(233), Backlight PI16(272), Plant PC12(76), UV PI0(256). Three other relay lines remain unclaimed (4, 8, 9); channel 10 is an independent CPU cooler. **On startup the active-low relay lines initialize HIGH/OFF, and switch based on DB state.** Releasing lines on exit may not preserve voltage; use external hardware fail-safe arrangements.
 After verifying the database schedule/state and physical relay wiring, explicitly enable live control:
 ```bash
 sudo systemctl enable --now aquacore-relays.service
