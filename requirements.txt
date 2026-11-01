@@ -7,3 +7,4 @@ aiogram>=3.20,<4
 matplotlib>=3.8,<4
 gpiod>=2.2,<3; platform_system == "Linux"
 smbus2>=0.5,<1; platform_system == "Linux"
+psutil>=6,<8; platform_system == "Linux"
