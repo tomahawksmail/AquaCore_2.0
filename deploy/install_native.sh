@@ -37,7 +37,7 @@ fi
 info "Installing project Python dependencies"
 runuser -u aquacore -- "$DEST/.venv/bin/python" -m pip install -r "$DEST/requirements.txt"
 info "Installing systemd unit files (NOT starting or enabling them)"
-for name in aquacore aquacore-telegram aquacore-scheduler aquacore-relays; do
+for name in aquacore aquacore-telegram aquacore-scheduler aquacore-system aquacore-tds aquacore-relays; do
   install -m 0644 "$DEST/deploy/systemd/$name.service" "/etc/systemd/system/$name.service"
 done
 systemctl daemon-reload
