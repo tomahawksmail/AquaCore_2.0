@@ -33,20 +33,21 @@ def thermal(prefixes):
 def values():
     per_cpu=psutil.cpu_percent(interval=0.3, percpu=True)
     memory=psutil.virtual_memory()
+    mb = 1024 * 1024  # Existing AquaCore dashboard stores and displays RAM in MB.
     disk=psutil.disk_usage("/")
     net=psutil.net_io_counters()
     io=psutil.disk_io_counters()
     freq=psutil.cpu_freq()
     d={
         "scpufreq_cur":freq.current if freq else None,
-        "RAM_total":memory.total, "RAM_available":memory.available,
-        "RAM_percent":memory.percent, "RAM_used":memory.used, "RAM_free":memory.free,
-        "RAM_active":getattr(memory,"active",None),
-        "RAM_inactive":getattr(memory,"inactive",None),
-        "RAM_buffers":getattr(memory,"buffers",None),
-        "RAM_cached":getattr(memory,"cached",None),
-        "RAM_shared":getattr(memory,"shared",None),
-        "RAM_slab":getattr(memory,"slab",None),
+        "RAM_total":round(memory.total / mb, 2), "RAM_available":round(memory.available / mb, 2),
+        "RAM_percent":memory.percent, "RAM_used":round(memory.used / mb, 2), "RAM_free":round(memory.free / mb, 2),
+        "RAM_active":round(getattr(memory,"active") / mb, 2) if getattr(memory,"active",None) is not None else None,
+        "RAM_inactive":round(getattr(memory,"inactive") / mb, 2) if getattr(memory,"inactive",None) is not None else None,
+        "RAM_buffers":round(getattr(memory,"buffers") / mb, 2) if getattr(memory,"buffers",None) is not None else None,
+        "RAM_cached":round(getattr(memory,"cached") / mb, 2) if getattr(memory,"cached",None) is not None else None,
+        "RAM_shared":round(getattr(memory,"shared") / mb, 2) if getattr(memory,"shared",None) is not None else None,
+        "RAM_slab":round(getattr(memory,"slab") / mb, 2) if getattr(memory,"slab",None) is not None else None,
         "cpu_thermal_cur":thermal(("cpu","soc","sunxi")),
         "ddr_thermal_cur":thermal(("ddr","dram")),
         "disk_usage_total":disk.total, "disk_usage_used":disk.used,
