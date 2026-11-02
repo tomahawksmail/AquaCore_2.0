@@ -189,3 +189,35 @@ sudo systemctl restart aquacore.service aquacore-telegram.service aquacore-sched
 
 ## Testing criteria
 Verify SSH, MariaDB connectivity/schema, login and CSRF, scheduler mode, Telegram owner and additional users, relay input polarity, relay behavior during DB outage, Tailscale certificate/access, reboot persistence and power-loss/recovery **before connecting mains equipment**.
+
+## ADS1115 TDS database collector (provisional ppm)
+
+The ADS1115 ADC has been detected at **I2C bus 2, address 0x48**, with the analog TDS transmitter connected to **A3**. `tds_collector.py` samples A3, applies the same temperature-compensated DFRobot-style polynomial as `sensorstest.py`, and multiplies by the **provisional 0.2626 factor** derived by assuming boiled Primo water was 13 ppm. **This is not a true calibration.** Default water temperature is **22 C**, manually estimated; change `--temperature` when water temperature changes.
+
+Only `data.tds` receives a measured value; `data.temp` and `data.ph` are inserted as `NULL`, because those probes have not been configured. One row is written every 30 seconds, using MariaDB `NOW()`; errors do not insert fake TDS readings. The scheduler's missing-data zero fallback still applies after 60s without any rows.
+
+### One-time test before enabling service
+```bash
+sudo -u aquacore git -C /opt/aquacore pull --ff-only origin master
+sudo usermod -aG i2c aquacore
+sudo bash -c '
+set -a
+. /etc/aquacore/web.env
+set +a
+cd /opt/aquacore
+exec runuser -u aquacore -- .venv/bin/python tds_collector.py --bus 2 --temperature 22 --once
+'
+sudo mariadb _AquaCore_ -e 'SELECT Id,Datetime,temp,ph,tds FROM data ORDER BY Id DESC LIMIT 3;'
+```
+
+### Enable native service
+```bash
+sudo cp /opt/aquacore/deploy/systemd/aquacore-tds.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now aquacore-tds.service
+sudo journalctl -u aquacore-tds.service -n 30 --no-pager
+```
+
+If I2C is denied, verify `getent group i2c`, `ls -l /dev/i2c-2` and the service's `SupplementaryGroups=i2c`. Do not start an additional copy of the collector manually while the service runs.
+
+**Electrical caution:** The ADC was earlier powered at 5 V while its I2C pins directly connected to the Orange Pi's 3.3 V GPIO. Use a proper level shifter or power ADS1115 at 3.3 V with analog voltage in range before running continuously. The TDS transmitter can remain at 5 V if its actual analog output stays within the ADC supply and input limits.
