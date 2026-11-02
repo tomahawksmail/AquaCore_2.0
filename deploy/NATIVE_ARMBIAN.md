@@ -116,7 +116,7 @@ sudo bash -c '
   exec .venv/bin/python relay_controller.py
 '
 ```
-This prints desired aquarium and cooler states without changing GPIO. When ready to test with aquarium and mains loads disconnected, explicitly use `--apply`. The fan output is active-low; GPIO 231 LOW means relay closed. Cooler activates above 70 C, deactivates at/below 65 C; intermediate values retain previous cooler state. On missing/invalid CPU temperature it requests cooler ON as a precaution. Temperature is read from `/sys/class/thermal/thermal_zone0/temp`; verify your actual CPU sensor before trusting this automated control. Cooler motor must have its own appropriately rated power source, not draw motor power from Orange Pi GPIO.
+This prints desired aquarium and cooler states without changing GPIO. When ready to test with aquarium and mains loads disconnected, explicitly use `--apply`. The fan output is active-low; GPIO 232 LOW means relay closed. Cooler activates above 70 C, deactivates at/below 65 C; intermediate values retain previous cooler state. On missing/invalid CPU temperature it requests cooler ON as a precaution. Temperature is read from `/sys/class/thermal/thermal_zone0/temp`; verify your actual CPU sensor before trusting this automated control. Cooler motor must have its own appropriately rated power source, not draw motor power from Orange Pi GPIO.
 
 Stop each manually launched process with Ctrl+C. Do not start duplicate copies of the same application or GPIO controller.
 
@@ -133,28 +133,28 @@ curl -I http://127.0.0.1:5001/login
 ```
 Do **not** enable `aquacore-relays.service` yet.
 
-## Relay channel assignment (verified wiring)
+## Relay GPIO assignment (user-tested)
 
 | Relay channel | Equipment | SoC pin | gpiochip1 offset | Physical header pin |
 | --- | --- | --- | ---: | ---: |
 | 1 | CO2 | PH4 | 228 | 18 |
 | 2 | Oxygen | PI6 | 262 | 22 |
-| 3 | Main light | PH9 | 233 | 26 |
-| 4 | Unused | PH5 | 229 | 24 |
+| 3 | Main light | PH5 | 229 | 24 |
+| 4 | Unused | PH9 | 233 | 26 |
 | 5 | Backlight | PI16 | 272 | 37 |
 | 6 | Plant light | PC12 | 76 | 36 |
 | 7 | UV | PI0 | 256 | 29 |
 | 8 | Reserved | PH6 | 230 | 23 |
-| 9 | Reserved | PH8 | 232 | 21 |
-| 10 | CPU cooler (ON above 70 C; OFF at/below 65 C) | PH7 | 231 | 19 |
+| 9 | CPU cooler (ON above 70 C; OFF at/below 65 C) | PH8 | 232 | 21 |
+| 10 | Reserved | PH7 | 231 | 19 |
 
 ## 6. Validate relays safely
 Stop any manual `gpioset` tests and physically disconnect mains/aquarium loads. Verify that offsets match your actual header wiring and that outputs are active-low:
 ```bash
-gpioinfo -c gpiochip1 | grep -E 'line +(228|262|233|272|76|256):'
+gpioinfo -c gpiochip1 | grep -E 'line +(228|262|229|272|76|256|232):'
 sudo /opt/aquacore/.venv/bin/python /opt/aquacore/relay_controller.py --interval 1
 ```
-This is dry-run mode. It reads DB states and logs requested outputs without touching GPIO. Ctrl+C to end. The relay worker now uses persistent `libgpiod 2` line ownership in `--apply` mode; six channels are CO2 PH4(228), Oxygen PI6(262), Main PH9(233), Backlight PI16(272), Plant PC12(76), UV PI0(256). Three other relay lines remain unclaimed (4, 8, 9); channel 10 is an independent CPU cooler. **On startup the active-low relay lines initialize HIGH/OFF, and switch based on DB state.** Releasing lines on exit may not preserve voltage; use external hardware fail-safe arrangements.
+This is dry-run mode. It reads DB states and logs requested outputs without touching GPIO. Ctrl+C to end. The relay worker now uses persistent `libgpiod 2` line ownership in `--apply` mode; six channels are CO2 PH4(228), Oxygen PI6(262), Main PH5(229), Backlight PI16(272), Plant PC12(76), UV PI0(256). Three other lines remain unclaimed (PH9/233, PH6/230, PH7/231); the CPU cooler uses PH8/232. **On startup the active-low relay lines initialize HIGH/OFF, and switch based on DB state.** Releasing lines on exit may not preserve voltage; use external hardware fail-safe arrangements.
 After verifying the database schedule/state and physical relay wiring, explicitly enable live control:
 ```bash
 sudo systemctl enable --now aquacore-relays.service
