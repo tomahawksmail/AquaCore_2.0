@@ -9,7 +9,7 @@ User=aquacore
 Group=aquacore
 WorkingDirectory=/opt/aquacore
 Environment=PYTHONUNBUFFERED=1
-EnvironmentFile=-/etc/aquacore/web.env
+EnvironmentFile=/etc/aquacore/web.env
 ExecStart=/opt/aquacore/.venv/bin/python /opt/aquacore/telegram_bot.py
 Restart=on-failure
 RestartSec=10
