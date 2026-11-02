@@ -20,14 +20,15 @@ LOG = logging.getLogger("aquacore.relay")
 RUNNING = True
 
 # Orange Pi Zero 2W relay layout, by physical relay channel:
-# 1 CO2=PH4; 2 Oxygen=PI6; 3 Main Light=PH9; 4 unused=PH5;
-# 5 Backlight=PI16; 6 Plant Light=PC12; 7 UV=PI0.
+# CO2=PH4(228); Oxygen=PI6(262); Main Light=PH5(229);
+# Backlight=PI16(272); Plant Light=PC12(76); UV=PI0(256);
+# CPU cooler=PH8(232). Unassigned: PH9(233), PH6(230), PH7(231).
 # Each pair is (PHYSICAL_HEADER_PIN, SUNXI_GPIO_NUMBER).
 # Controlled using libgpiod v2 on gpiochip1.
 PIN_MAP = {
     "co2_status": (18, 228),         # 1 PH4
     "o2_status": (22, 262),          # 2 PI6
-    "MasterL_status": (26, 233),     # 3 PH9
+    "MasterL_status": (24, 229),     # PH5
     "Backlight_status": (37, 272),   # 5 PI16
     "PlantL_status": (36, 76),       # 6 PC12
     "UV_status": (29, 256),          # 7 PI0 (moved from PH5)
@@ -35,13 +36,12 @@ PIN_MAP = {
 
 # Unused relay channels: kept unconfigured/uncontrolled.
 SPARE_PIN_MAP = {
-    "spare_4": (24, 229),  # 4 PH5 — intentionally skipped
-    "spare_8": (23, 230),  # 8 PH6 / SPI clock
-    "spare_9": (21, 232),  # 9 PH8 / SPI MISO
-    # Channel 10 is reserved for the CPU cooler (PH7 / physical pin 19).
+    "spare_ph9": (26, 233),  # PH9 / physical 26
+    "spare_ph6": (23, 230),  # PH6 / physical 23
+    "spare_ph7": (19, 231),  # PH7 / physical 19
 }
 
-COOLER_PIN = (19, 231)  # Relay channel 10, PH7
+COOLER_PIN = (21, 232)  # PH8 / physical pin 21
 CPU_TEMP_PATH = "/sys/class/thermal/thermal_zone0/temp"
 COOLER_ON_C = 70.0
 COOLER_OFF_C = 65.0
