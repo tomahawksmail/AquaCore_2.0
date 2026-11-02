@@ -27,6 +27,13 @@ def adc_read(bus, address, channel):
     return raw, raw * 4.096 / 32768.0
 
 
+def estimate_tds_ppm(voltage, temperature_c):
+    """DFRobot-style approximation, not a measured calibration."""
+    corrected = max(0.0, voltage) / (1.0 + 0.02 * (temperature_c - 25.0))
+    return max(0.0, (133.42 * corrected**3 - 255.86 * corrected**2
+                     + 857.39 * corrected) * 0.5)
+
+
 def main():
     p = argparse.ArgumentParser(description="Read-only AquaCore sensor tester (ADS1115 TDS A3)")
     p.add_argument("--bus", type=int, help="Linux I2C bus number; e.g. 1 for /dev/i2c-1")
@@ -34,14 +41,18 @@ def main():
                    help="ADS1115 7-bit address (default 0x48)")
     p.add_argument("--interval", type=float, default=2.0)
     p.add_argument("--once", action="store_true")
+    p.add_argument("--temperature", type=float, default=25.0,
+                   help="Measured water temperature C for estimate (default 25)")
     args = p.parse_args()
     if args.interval < 0.05 or args.bus is not None and args.bus < 0:
         p.error("Invalid bus or interval")
+    if not (-2 <= args.temperature <= 55):
+        p.error("--temperature must be between -2 and 55 C")
 
     print("AquaCore SENSOR TEST — read-only, no DB writes or relay changes", flush=True)
     print("Temperature: not configured in project; no hardware reader available")
     print("pH:          not configured in project; no hardware reader available")
-    print("TDS:         ADS1115 analog channel A3; raw voltage only (NOT calibrated ppm)")
+    print(f"TDS:         ADS1115 A3; estimated ppm at {args.temperature:.1f} C (NOT calibrated)")
     buses = glob.glob("/dev/i2c-*")
     print("Detected I2C bus devices:", ", ".join(sorted(buses)) or "none")
     if args.bus is None:
@@ -62,7 +73,8 @@ def main():
         while True:
             try:
                 raw, volts = adc_read(args.bus, args.address, 3)
-                print(f"{time.strftime('%Y-%m-%d %H:%M:%S')}  TDS A3: {volts:.5f} V  raw={raw}  ppm=UNAVAILABLE (calibration required)", flush=True)
+                ppm = estimate_tds_ppm(volts, args.temperature)
+                print(f"{time.strftime('%Y-%m-%d %H:%M:%S')}  TDS A3: {volts:.5f} V  raw={raw}  estimated={ppm:.1f} ppm ({args.temperature:.1f} C, UNCALIBRATED)", flush=True)
             except (OSError, ValueError) as exc:
                 print(f"{time.strftime('%Y-%m-%d %H:%M:%S')}  SENSOR ERROR: {exc}", flush=True)
                 if args.once:
