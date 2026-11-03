@@ -71,15 +71,6 @@
     } else if (validCap) {
       el('rect', {x:L, y:y(maxLimit), width:W-L-R, height:y(low)-y(maxLimit), class:'acceptable-zone'}, svg);
     }
-    function limitLine(value, caption) {
-      const py=y(value);
-      el('line',{x1:L,y1:py,x2:W-R,y2:py,class:'limit-line'},svg);
-      el('text',{x:W-R-5,y:Math.max(T+12,py-5),'text-anchor':'end',class:'limit-label'},svg,caption);
-    }
-    if (validRange) {
-      limitLine(minLimit, 'MIN ' + minLimit);
-      limitLine(maxLimit, 'MAX ' + maxLimit);
-    } else if (validCap) limitLine(maxLimit, 'MAX ' + maxLimit + ' ppm');
     const count=Math.round((high-low)/step);
     for (let i=0;i<=count;i++) {
       const val=low+i*step, py=y(val);
