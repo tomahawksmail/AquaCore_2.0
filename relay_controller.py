@@ -173,6 +173,7 @@ class FertilizerPump:
         self.timer = None
         self.active = False
         self.pulse_request_id = None
+        self.generation = 0  # invalidate callbacks from an older pump pulse
         if apply:
             # The freshly claimed line is initialized HIGH/OFF. A previous
             # interrupted run must never display as still running.
@@ -191,14 +192,22 @@ class FertilizerPump:
                 cursor.execute(
                     "UPDATE fertilizer_pump SET pulse_state=%s,"
                     "pulse_finished_at=NOW(3) "
-                    "WHERE id=1 AND pulse_request_id=%s AND pulse_state='running'",
+                    "WHERE id=1 AND pulse_request_id=%s "
+                    "AND pulse_state IN ('running','stop_requested')",
                     (status, request_id)
                 )
 
-    def off(self, completed=True):
+    def off(self, completed=True, status=None, expected_generation=None):
+        """Switch OFF; an old timer can never stop a newer pump run."""
         request_id = None
-        state = "completed" if completed else "interrupted"
+        state = status or ("completed" if completed else "interrupted")
         with self.lock:
+            if expected_generation is not None and expected_generation != self.generation:
+                return
+            self.generation += 1
+            if self.timer is not None:
+                self.timer.cancel()
+                self.timer = None
             on_before = self.active
             request_id = self.pulse_request_id
             try:
@@ -251,7 +260,10 @@ class FertilizerPump:
                 self.request.set_value(PUMP_PIN[1], Value.INACTIVE)  # LOW=ON
                 self.active = True
                 self.pulse_request_id = request_id
-                timer = threading.Timer(duration, self.off)
+                self.generation += 1
+                timer = threading.Timer(
+                    duration, self.off, kwargs={"expected_generation": self.generation}
+                )
                 timer.daemon = True
                 self.timer = timer
                 timer.start()
@@ -280,7 +292,7 @@ class FertilizerPump:
             with connection.cursor() as cursor:
                 cursor.execute(
                     "SELECT manual_request_id,manual_processed_id,manual_requested_at,"
-                    "manual_duration_seconds,manual_kind,NOW() AS db_now "
+                    "manual_duration_seconds,manual_kind,pulse_state,NOW() AS db_now "
                     "FROM fertilizer_pump WHERE id=1"
                 )
                 row = cursor.fetchone()
@@ -293,6 +305,17 @@ class FertilizerPump:
                        if row["manual_requested_at"] else 9999)
                 duration = float(row["manual_duration_seconds"])
                 kind = row["manual_kind"]
+                if row["pulse_state"] == "stop_requested":
+                    if self.apply:
+                        cursor.execute(
+                            "UPDATE fertilizer_pump SET manual_processed_id=%s,"
+                            "pulse_state='stopped',pulse_finished_at=NOW(3) "
+                            "WHERE id=1 AND manual_request_id=%s "
+                            "AND pulse_state='stop_requested'",
+                            (request_id, request_id)
+                        )
+                    LOG.info("Manual pump request %s canceled before GPIO ON", request_id)
+                    return True
                 if not self.apply:
                     LOG.info("DRY RUN: pending %s fertilizer pulse %.2fs (age %.1fs)",
                              kind,duration,age)
@@ -306,7 +329,7 @@ class FertilizerPump:
                 if cursor.rowcount != 1:
                     return False
         if (not 0 <= age <= 15 or not 0.25 <= duration <= PUMP_MAX_SECONDS
-                or kind not in ("dose","calibration")):
+                or kind not in ("dose","calibration","manual")):
             LOG.warning("Skipped stale/invalid fertilizer request %s (age %.1fs)",
                         request_id,age)
             with database() as connection:
@@ -321,7 +344,38 @@ class FertilizerPump:
         self.activate(duration,kind,request_id)
         return True
 
+    def poll_stop(self):
+        """Honor OFF within the normal 1s worker cycle; no web GPIO access."""
+        if not self.apply:
+            return False
+        with database() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT pulse_request_id,pulse_kind,pulse_state "
+                    "FROM fertilizer_pump WHERE id=1"
+                )
+                row = cursor.fetchone()
+                if not row or row["pulse_kind"] != "manual" or row["pulse_state"] != "stop_requested":
+                    return False
+                request_id = int(row["pulse_request_id"])
+        if self.active and self.pulse_request_id == request_id:
+            self.off(status="stopped")
+        elif not self.active:
+            # This covers an OFF request arriving after DB claim but before GPIO ON.
+            with database() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "UPDATE fertilizer_pump SET manual_processed_id=GREATEST("
+                        "manual_processed_id,%s),pulse_state='stopped',"
+                        "pulse_finished_at=NOW(3) WHERE id=1 "
+                        "AND pulse_request_id=%s AND pulse_state='stop_requested'",
+                        (request_id,request_id)
+                    )
+        return True
+
     def poll(self):
+        if self.poll_stop():
+            return
         if self.active:
             return
         if self.poll_manual():
