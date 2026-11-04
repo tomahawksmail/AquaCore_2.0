@@ -163,7 +163,25 @@
             </label>
           </div>
         </div>
+        <div id="fertilizer-test-progress" class="fertilizer-test-progress" hidden>
+          <div class="fertilizer-progress-heading">
+            <span id="fertilizer-progress-label" role="status">Waiting for relay worker…</span>
+            <span id="fertilizer-progress-time">0 / 10 s</span>
+          </div>
+          <progress id="fertilizer-progress-meter" max="100" value="0" aria-label="Calibration pump test progress">0%</progress>
+        </div>
       </div>
+      <p id="fertilizer-manual-help" class="fertilizer-manual-help" role="status">
+        {% if session.get('role')|int != 1 %}
+          Manual dosing requires administrator access.
+        {% elif not fertilizer.ml_per_second %}
+          Manual dose disabled — run calibration, measure the collected volume, and save the calibration.
+        {% elif not fertilizer.dose_ml %}
+          Manual dose disabled — save a dose greater than 0 ml first.
+        {% else %}
+          Manual dose ready — uses your saved ml amount.
+        {% endif %}
+      </p>
       <p class="control-disclaimer" id="fertilizer-dose-status" role="status">
         Manual switches request a single timed pulse, then return to OFF.
         For calibration, prime the pump, collect water outside the aquarium for 10 seconds,
@@ -177,5 +195,5 @@
 <script>window.AQUACORE_CSRF = {{ csrf_token()|tojson }};</script>
 <script defer src="{{ url_for('static', filename='controls.js') }}"></script>
 <script defer src="{{ url_for('static', filename='settings-autosave.js', v='20261104-ml-calibration') }}"></script>
-<script defer src="{{ url_for('static', filename='fertilizer-manual.js', v='20261104-switch-rows') }}"></script>
+<script defer src="{{ url_for('static', filename='fertilizer-manual.js', v='20261104-relay-progress') }}"></script>
 {% endblock %}
