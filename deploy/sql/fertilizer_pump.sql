@@ -1,3 +1,6 @@
+-- LEGACY ONLY: for historical installations using the old fertilizer_pump table.
+-- Do NOT run on unified options/status installations.
+-- Use fertilizer_options.sql; optionally copy the old data via fertilizer_options_copy.sql.
 -- AquaCore fertilizer dosing pump (inactive until a nonzero duration is configured).
 -- GPIO: gpiochip1 offset 233 (PH9 / Orange Pi header pin 26).
 -- Execute once: sudo mariadb _AquaCore_ < /opt/aquacore/deploy/sql/fertilizer_pump.sql
