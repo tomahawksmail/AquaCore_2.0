@@ -305,11 +305,23 @@ def _fertilizer_request(kind):
                     duration=calibrated_seconds(row['dose_ml'],row['ml_per_second'])
                     if duration is None:
                         return jsonify(error='Calibrate the pump and set an achievable dose (1–60 seconds runtime) first'),409
-                if row['manual_request_id'] != row['manual_processed_id']:
-                    return jsonify(error='Another pump request is pending'),409
                 last=row['manual_requested_at']
-                if last is not None and (row['now_time']-last).total_seconds() < 120:
+                age=(row['now_time']-last).total_seconds() if last is not None else None
+                if age is not None and age < 120:
                     return jsonify(error='Wait 2 minutes between pump requests'),429
+                if row['manual_request_id'] != row['manual_processed_id']:
+                    # Expired, unprocessed requests must never run late.
+                    # This row is locked, so the relay worker cannot claim it
+                    # while we retire it. Only do this after the cooldown.
+                    if age is None or age < 18:
+                        return jsonify(error='Another pump request is pending'),409
+                    cur.execute(
+                        "UPDATE fertilizer_pump SET "
+                        "manual_processed_id=manual_request_id,"
+                        "pulse_state=IF(pulse_state='queued','skipped',pulse_state),"
+                        "pulse_finished_at=IF(pulse_state='queued',NOW(3),pulse_finished_at) "
+                        "WHERE id=1 AND manual_processed_id<manual_request_id"
+                    )
                 new_id=int(row['manual_request_id'])+1
                 cur.execute(
                     'UPDATE fertilizer_pump SET manual_request_id=%s,'
