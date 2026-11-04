@@ -140,7 +140,7 @@ Do **not** enable `aquacore-relays.service` yet.
 | 1 | CO2 | PH4 | 228 | 18 |
 | 2 | Oxygen | PI6 | 262 | 22 |
 | 3 | Main light | PH5 | 229 | 24 |
-| 4 | Unused | PH9 | 233 | 26 |
+| 4 | Fertilizer dosing pump | PH9 | 233 | 26 |
 | 5 | Backlight | PI16 | 272 | 37 |
 | 6 | Plant light | PC12 | 76 | 36 |
 | 7 | UV | PI0 | 256 | 29 |
@@ -154,7 +154,7 @@ Stop any manual `gpioset` tests and physically disconnect mains/aquarium loads. 
 gpioinfo -c gpiochip1 | grep -E 'line +(228|262|229|272|76|256|232):'
 sudo /opt/aquacore/.venv/bin/python /opt/aquacore/relay_controller.py --interval 1
 ```
-This is dry-run mode. It reads DB states and logs requested outputs without touching GPIO. Ctrl+C to end. The relay worker now uses persistent `libgpiod 2` line ownership in `--apply` mode; six channels are CO2 PH4(228), Oxygen PI6(262), Main PH5(229), Backlight PI16(272), Plant PC12(76), UV PI0(256). Three other lines remain unclaimed (PH9/233, PH6/230, PH7/231); the CPU cooler uses PH8/232. **On startup the active-low relay lines initialize HIGH/OFF, and switch based on DB state.** Releasing lines on exit may not preserve voltage; use external hardware fail-safe arrangements.
+This is dry-run mode. It reads DB states and logs requested outputs without touching GPIO. Ctrl+C to end. The relay worker now uses persistent `libgpiod 2` line ownership in `--apply` mode; six channels are CO2 PH4(228), Oxygen PI6(262), Main PH5(229), Backlight PI16(272), Plant PC12(76), UV PI0(256). Two other lines remain unclaimed (PH6/230, PH7/231); the CPU cooler uses PH8/232 and the fertilizer pump uses PH9/233. **On startup the active-low relay lines initialize HIGH/OFF, and switch based on DB state.** Releasing lines on exit may not preserve voltage; use external hardware fail-safe arrangements.
 After verifying the database schedule/state and physical relay wiring, explicitly enable live control:
 ```bash
 sudo systemctl enable --now aquacore-relays.service
@@ -221,3 +221,29 @@ sudo journalctl -u aquacore-tds.service -n 30 --no-pager
 If I2C is denied, verify `getent group i2c`, `ls -l /dev/i2c-2` and the service's `SupplementaryGroups=i2c`. Do not start an additional copy of the collector manually while the service runs.
 
 **Electrical caution:** The ADC was earlier powered at 5 V while its I2C pins directly connected to the Orange Pi's 3.3 V GPIO. Use a proper level shifter or power ADS1115 at 3.3 V with analog voltage in range before running continuously. The TDS transmitter can remain at 5 V if its actual analog output stays within the ADC supply and input limits.
+
+## Fertilizer pump — once-daily timed pulse
+
+Dedicated GPIO: **gpiochip1 offset 233 / PH9 / physical header pin 26** (active-low; LOW energizes relay).
+
+The relay worker already runs as `aquacore-relays.service`; no separate process is required. The Settings page provides two auto-saved fields: **Activation time (HH:MM)** and **Run duration in seconds (0–60)**. Default is **12:00 with 0 seconds**, meaning **OFF/disabled** until explicitly configured.
+
+**Database migration — required before deploying the updated web application and relay worker:**
+```bash
+sudo systemctl stop aquacore-relays.service aquacore.service
+sudo -u aquacore git -C /opt/aquacore pull --ff-only origin master
+sudo mariadb _AquaCore_ < /opt/aquacore/deploy/sql/fertilizer_pump.sql
+sudo mariadb _AquaCore_ -e 'SELECT * FROM fertilizer_pump;'
+sudo systemctl start aquacore.service
+# Only after checking dosing settings and disconnected pump:
+sudo systemctl start aquacore-relays.service
+```
+
+The relay worker checks the DB-local clock during the first 10 seconds of the scheduled minute, atomically records the date as consumed **before** switching the pump ON, and switches OFF via a timer after the duration. Missed schedules are not replayed; a restart after a claimed dose will not repeat it. A dose may be skipped if the process fails between claiming and activating. Stopping the service requests pump OFF, but no software can guarantee an output level during loss of power; use a normally-open relay with a safe de-energized default.
+
+**Testing:** keep pump and aquarium loads disconnected while setting a 1–2 second duration and a time a few minutes ahead. Watch:
+```bash
+sudo journalctl -u aquacore-relays.service -f
+sudo mariadb _AquaCore_ -e 'SELECT * FROM fertilizer_pump;'
+```
+Confirm GPIO 233 switches only once and returns OFF promptly, including after relay-worker restart. Change duration back to 0 until the pump has been calibrated for delivered milliliters. Use appropriate external pump supply and protect against siphoning and unintended dosing; don't power the pump motor from the Orange Pi GPIO.
