@@ -233,6 +233,7 @@ The relay worker already runs as `aquacore-relays.service`; no separate process 
 sudo systemctl stop aquacore-relays.service aquacore.service
 sudo -u aquacore git -C /opt/aquacore pull --ff-only origin master
 sudo mariadb _AquaCore_ < /opt/aquacore/deploy/sql/fertilizer_pump.sql
+sudo mariadb _AquaCore_ < /opt/aquacore/deploy/sql/fertilizer_manual.sql
 sudo mariadb _AquaCore_ -e 'SELECT * FROM fertilizer_pump;'
 sudo systemctl start aquacore.service
 # Only after checking dosing settings and disconnected pump:
@@ -247,3 +248,17 @@ sudo journalctl -u aquacore-relays.service -f
 sudo mariadb _AquaCore_ -e 'SELECT * FROM fertilizer_pump;'
 ```
 Confirm GPIO 233 switches only once and returns OFF promptly, including after relay-worker restart. Change duration back to 0 until the pump has been calibrated for delivered milliliters. Use appropriate external pump supply and protect against siphoning and unintended dosing; don't power the pump motor from the Orange Pi GPIO.
+
+### Manual fertilizer dose (Settings → Equipment & lighting)
+
+The fertilizer pump now appears under the **Equipment & lighting** card alongside the scheduled relays. Set **Activation time** and **Run duration (0–60 seconds)** there. **Dose now** requests one additional pulse using the saved duration; it does not replace or consume the scheduled daily dose.
+
+- Requires the admin role, authenticated session, confirmation dialog, and CSRF token.
+- Requests are placed in MariaDB; only the existing `aquacore-relays.service` energizes GPIO 233.
+- The endpoint allows one pending request and applies a **120-second cooldown** between manual requests. The relay worker marks a request processed **before** output activation, preventing repeat dosing after a restart.
+- Any pending request older than 15 seconds is discarded rather than executed late.
+- Manual and scheduled pulses cannot overlap in the same worker. If a scheduled dose falls while the pump is busy, that day's scheduled dose may be skipped.
+- Button success means **queued**, not verified delivered. Confirm via `sudo journalctl -u aquacore-relays.service -f`.
+- Manual dose requests add fertilizer **on top of** automatic dosing, so use short test durations with the pump disconnected until the measured delivered volume is established.
+
+If upgrading an existing database, run the new `fertilizer_manual.sql` migration **before starting the new Flask and relay code**. The SQL script can be rerun safely on MariaDB supporting `ADD COLUMN IF NOT EXISTS`.
