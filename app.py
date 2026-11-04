@@ -371,6 +371,8 @@ def fertilizer_pulse_status():
         state='unconfirmed'  # Worker may have crashed; never report completion.
     if state == 'queued' and age > 18:
         state='stale'
+    if state == 'stop_requested' and age > duration+5:
+        state='unconfirmed'  # OFF acknowledgement missing; physical state unknown.
     response=jsonify(
         request_id=int(row['pulse_request_id']),
         kind=row['pulse_kind'],
