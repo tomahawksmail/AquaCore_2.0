@@ -191,8 +191,64 @@ class FertilizerPump:
                 self.timer = None
         self.off()
 
+    def activate(self, duration, source):
+        """Run one short pulse, then de-energize the relay from timer thread."""
+        with self.lock:
+            if self.active:
+                return
+            try:
+                self.request.set_value(PUMP_PIN[1], Value.INACTIVE)  # LOW=ON
+                self.active = True
+                self.timer = threading.Timer(duration, self.off)
+                self.timer.daemon = True
+                self.timer.start()
+            except Exception:
+                self.active = False
+                self.request.set_value(PUMP_PIN[1], Value.ACTIVE)
+                raise
+        LOG.info("Fertilizer pump ON for %s seconds (%s)", duration, source)
+
+    def poll_manual(self):
+        """At-most-once manual request; reject stale requests after restart."""
+        with database() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT manual_request_id,manual_processed_id,manual_requested_at,"
+                    "manual_duration_seconds,NOW() AS db_now "
+                    "FROM fertilizer_pump WHERE id=1"
+                )
+                row = cursor.fetchone()
+                if row is None:
+                    raise RuntimeError("Missing fertilizer_pump row")
+                request_id = int(row["manual_request_id"])
+                if request_id <= int(row["manual_processed_id"]):
+                    return False
+                age = ((row["db_now"]-row["manual_requested_at"]).total_seconds()
+                       if row["manual_requested_at"] else 9999)
+                duration = int(row["manual_duration_seconds"])
+                if not self.apply:
+                    LOG.info("DRY RUN: pending manual fertilizer dose %s seconds (age %.1fs)",
+                             duration, age)
+                    return True
+                # Claim before switching; prevents replay even after a restart.
+                cursor.execute(
+                    "UPDATE fertilizer_pump SET manual_processed_id=%s "
+                    "WHERE id=1 AND manual_request_id=%s AND manual_processed_id<%s",
+                    (request_id,request_id,request_id)
+                )
+                if cursor.rowcount != 1:
+                    return False
+        if not 0 <= age <= 15 or not 1 <= duration <= PUMP_MAX_SECONDS:
+            LOG.warning("Skipped expired/invalid manual fertilizer request %s (age %.1fs)",
+                        request_id,age)
+            return True
+        self.activate(duration,"manual")
+        return True
+
     def poll(self):
         if self.active:
+            return
+        if self.poll_manual():
             return
         # Only accept a dose in the first ten seconds of its scheduled minute.
         # Never catch up a missed dose after a restart or clock change.
@@ -234,13 +290,7 @@ class FertilizerPump:
                  duration, "LIVE" if self.apply else "DRY RUN")
         if not self.apply:
             return
-        with self.lock:
-            self.request.set_value(PUMP_PIN[1], Value.INACTIVE)  # LOW = ON
-            self.active = True
-            self.timer = threading.Timer(duration, self.off)
-            self.timer.daemon = True
-            self.timer.start()
-        LOG.info("Fertilizer pump ON for %s seconds", duration)
+        self.activate(duration,"scheduled")
 
 
 def stop(_signum, _frame):
