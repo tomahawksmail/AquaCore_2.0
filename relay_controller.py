@@ -8,6 +8,8 @@ import argparse
 import logging
 import os
 import signal
+import threading
+from datetime import datetime
 import gpiod
 from gpiod.line import Direction, Value
 import time
@@ -22,7 +24,8 @@ RUNNING = True
 # Orange Pi Zero 2W relay layout, by physical relay channel:
 # CO2=PH4(228); Oxygen=PI6(262); Main Light=PH5(229);
 # Backlight=PI16(272); Plant Light=PC12(76); UV=PI0(256);
-# CPU cooler=PH8(232). Unassigned: PH9(233), PH6(230), PH7(231).
+# CPU cooler=PH8(232); fertilizer pump=PH9(233).
+# Unassigned: PH6(230), PH7(231).
 # Each pair is (PHYSICAL_HEADER_PIN, SUNXI_GPIO_NUMBER).
 # Controlled using libgpiod v2 on gpiochip1.
 PIN_MAP = {
@@ -36,12 +39,13 @@ PIN_MAP = {
 
 # Unused relay channels: kept unconfigured/uncontrolled.
 SPARE_PIN_MAP = {
-    "spare_ph9": (26, 233),  # PH9 / physical 26
     "spare_ph6": (23, 230),  # PH6 / physical 23
     "spare_ph7": (19, 231),  # PH7 / physical 19
 }
 
 COOLER_PIN = (21, 232)  # PH8 / physical pin 21
+PUMP_PIN = (26, 233)    # PH9 / physical pin 26; active-low
+PUMP_MAX_SECONDS = 60
 CPU_TEMP_PATH = "/sys/class/thermal/thermal_zone0/temp"
 COOLER_ON_C = 70.0
 COOLER_OFF_C = 65.0
@@ -87,7 +91,7 @@ def update_cooler(request, previous_on, apply):
 
 def load_config():
     load_dotenv(os.getenv("AQUACORE_ENV", "/home/orangepi/AquaCore/.env"))
-    all_pins = [physical for physical, _ in (*PIN_MAP.values(), *SPARE_PIN_MAP.values(), COOLER_PIN)]
+    all_pins = [physical for physical, _ in (*PIN_MAP.values(), *SPARE_PIN_MAP.values(), COOLER_PIN, PUMP_PIN)]
     if len(set(all_pins)) != len(all_pins):
         raise ValueError('Duplicate physical header pins across relay modules')
     return dict(PIN_MAP)
@@ -120,7 +124,7 @@ def get_status(pins):
 
 def request_relay_lines(pins):
     """Claim aquarium and cooler GPIO lines in one persistent request."""
-    line_ids=[number for _,number in pins.values()] + [COOLER_PIN[1]]
+    line_ids=[number for _,number in pins.values()] + [COOLER_PIN[1], PUMP_PIN[1]]
     settings=gpiod.LineSettings(direction=Direction.OUTPUT,output_value=Value.ACTIVE)
     # No active_low flag: ACTIVE means physical HIGH; on the relay module HIGH = OFF.
     request=gpiod.request_lines("/dev/gpiochip1",consumer="aquacore-relays",
@@ -132,6 +136,7 @@ def setup_pins(pins, apply):
     for field,(physical,pin) in pins.items():
         LOG.info("%s => physical pin %s / chip1 offset %s",field,physical,pin)
     LOG.info("CPU cooler => physical pin %s / chip1 offset %s", *COOLER_PIN)
+    LOG.info("Fertilizer pump => physical pin %s / chip1 offset %s", *PUMP_PIN)
     return request_relay_lines(pins) if apply else None
 
 
@@ -152,6 +157,87 @@ def apply_states(rows,pins,previous,apply,request=None):
         LOG.info("%s -> %s, pin %s / line %s (%s)",field,state,physical,pin,
                  "APPLIED" if apply else "DRY RUN")
         previous[field]=state
+
+
+class FertilizerPump:
+    """A single daily dose with a thread-timed OFF, even during DB latency.
+
+    A successful DB claim is recorded BEFORE energizing. This prevents a
+    restart from repeating a dose, at the cost of potentially skipping one
+    if the process crashes after claiming but before switching GPIO.
+    """
+    def __init__(self, request, apply):
+        self.request = request
+        self.apply = apply
+        self.lock = threading.Lock()
+        self.timer = None
+        self.active = False
+
+    def off(self):
+        with self.lock:
+            if self.apply and self.request is not None:
+                try:
+                    self.request.set_value(PUMP_PIN[1], Value.ACTIVE)
+                except OSError:
+                    LOG.exception("Fertilizer pump GPIO OFF failed")
+            if self.active:
+                LOG.info("Fertilizer pump OFF")
+            self.active = False
+
+    def close(self):
+        with self.lock:
+            if self.timer is not None:
+                self.timer.cancel()
+                self.timer = None
+        self.off()
+
+    def poll(self):
+        if self.active:
+            return
+        # Only accept a dose in the first ten seconds of its scheduled minute.
+        # Never catch up a missed dose after a restart or clock change.
+        with database() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT start_time,duration_seconds,last_run_date,"
+                    "NOW() AS db_now FROM fertilizer_pump WHERE id=1"
+                )
+                config = cursor.fetchone()
+                if not config:
+                    raise RuntimeError("Missing fertilizer_pump id=1; run SQL migration")
+                now = config["db_now"]
+                duration = int(config["duration_seconds"])
+                start = config["start_time"]
+                if isinstance(start, str):
+                    hour, minute = map(int, start.split(":")[:2])
+                else:
+                    hour = start.seconds // 3600
+                    minute = (start.seconds // 60) % 60
+                if not 1 <= duration <= PUMP_MAX_SECONDS:
+                    return
+                if (now.hour != hour or now.minute != minute or
+                        now.second >= 10 or config["last_run_date"] == now.date()):
+                    return
+                # Atomic at-most-once claim; never re-dose after a process restart.
+                cursor.execute(
+                    "UPDATE fertilizer_pump SET last_run_date=CURDATE() "
+                    "WHERE id=1 AND (last_run_date IS NULL OR last_run_date<CURDATE()) "
+                    "AND duration_seconds=%s AND start_time=%s",
+                    (duration, start)
+                )
+                if cursor.rowcount != 1:
+                    return
+        LOG.info("Fertilizer scheduled dose claimed: %s seconds (%s)",
+                 duration, "LIVE" if self.apply else "DRY RUN")
+        if not self.apply:
+            return
+        with self.lock:
+            self.request.set_value(PUMP_PIN[1], Value.INACTIVE)  # LOW = ON
+            self.active = True
+            self.timer = threading.Timer(duration, self.off)
+            self.timer.daemon = True
+            self.timer.start()
+        LOG.info("Fertilizer pump ON for %s seconds", duration)
 
 
 def stop(_signum, _frame):
@@ -180,8 +266,13 @@ def main():
     previous = {}
     request=setup_pins(pins,args.apply)
     cooler_on = None
+    pump = FertilizerPump(request, args.apply)
     try:
       while RUNNING:
+        try:
+            pump.poll()
+        except (pymysql.MySQLError,OSError,RuntimeError,ValueError,KeyError):
+            LOG.exception('Fertilizer pump scheduling failed')
         try:
             cooler_on = update_cooler(request, cooler_on, args.apply)
         except (OSError, RuntimeError, ValueError):
@@ -193,6 +284,7 @@ def main():
             LOG.exception("Relay cycle failed; retaining previous output")
         time.sleep(args.interval)
     finally:
+        pump.close()
         if request is not None:
             # Before releasing, ask for OFF. Released line levels still are not
             # guaranteed by the kernel; use external hardware failsafes.
