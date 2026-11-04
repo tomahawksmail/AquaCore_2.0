@@ -161,11 +161,10 @@ def apply_states(rows,pins,previous,apply,request=None):
 
 
 class FertilizerPump:
-    """A single daily dose with a thread-timed OFF, even during DB latency.
+    """At-most-once manual and scheduled pulses, with bounded GPIO runtime.
 
-    A successful DB claim is recorded BEFORE energizing. This prevents a
-    restart from repeating a dose, at the cost of potentially skipping one
-    if the process crashes after claiming but before switching GPIO.
+    Progress records describe GPIO commands, not measured liquid movement.
+    The OFF timer runs independently of database and UI polling.
     """
     def __init__(self, request, apply):
         self.request = request
@@ -173,41 +172,101 @@ class FertilizerPump:
         self.lock = threading.Lock()
         self.timer = None
         self.active = False
+        self.pulse_request_id = None
+        if apply:
+            # The freshly claimed line is initialized HIGH/OFF. A previous
+            # interrupted run must never display as still running.
+            with database() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "UPDATE fertilizer_pump SET pulse_state='interrupted',"
+                        "pulse_finished_at=NOW(3) WHERE id=1 AND pulse_state='running'"
+                    )
 
-    def off(self):
+    def record_pulse_end(self, request_id, status):
+        if request_id is None or not self.apply:
+            return
+        with database() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE fertilizer_pump SET pulse_state=%s,"
+                    "pulse_finished_at=NOW(3) "
+                    "WHERE id=1 AND pulse_request_id=%s AND pulse_state='running'",
+                    (status, request_id)
+                )
+
+    def off(self, completed=True):
+        request_id = None
+        state = "completed" if completed else "interrupted"
         with self.lock:
-            if self.apply and self.request is not None:
-                try:
-                    self.request.set_value(PUMP_PIN[1], Value.ACTIVE)
-                except OSError:
-                    LOG.exception("Fertilizer pump GPIO OFF failed")
-            if self.active:
-                LOG.info("Fertilizer pump OFF")
-            self.active = False
+            on_before = self.active
+            request_id = self.pulse_request_id
+            try:
+                if self.apply and self.request is not None:
+                    self.request.set_value(PUMP_PIN[1], Value.ACTIVE)  # HIGH=OFF
+            except OSError:
+                LOG.exception("Fertilizer GPIO OFF failed")
+                state = "failed"
+            finally:
+                self.active = False
+                self.pulse_request_id = None
+            if on_before:
+                LOG.info("Fertilizer pump OFF (%s)",state)
+        if request_id is not None:
+            try:
+                self.record_pulse_end(request_id,state)
+            except pymysql.MySQLError:
+                LOG.exception("Unable to record pump stop: physical OFF was attempted")
 
     def close(self):
         with self.lock:
             if self.timer is not None:
                 self.timer.cancel()
                 self.timer = None
-        self.off()
+        self.off(completed=False)
 
-    def activate(self, duration, source):
-        """Run one short pulse, then de-energize the relay from timer thread."""
-        with self.lock:
-            if self.active:
-                return
-            try:
+    def activate(self, duration, source, request_id=None):
+        """Start one GPIO pulse after recording the relay worker's start."""
+        if not self.apply:
+            return
+        if not 0.25 <= float(duration) <= PUMP_MAX_SECONDS:
+            raise ValueError("Unsafe fertilizer pulse duration")
+        if request_id is not None:
+            with database() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "UPDATE fertilizer_pump SET pulse_state='running',"
+                        "pulse_started_at=NOW(3),pulse_finished_at=NULL,"
+                        "pulse_duration_seconds=%s WHERE id=1 AND pulse_request_id=%s "
+                        "AND manual_processed_id=%s AND pulse_state='queued'",
+                        (duration,request_id,request_id)
+                    )
+                    if cursor.rowcount != 1:
+                        LOG.warning("Fertilizer pulse %s is not in queued state",request_id)
+                        return
+        try:
+            with self.lock:
+                if self.active:
+                    raise RuntimeError("Fertilizer pulse already active")
                 self.request.set_value(PUMP_PIN[1], Value.INACTIVE)  # LOW=ON
                 self.active = True
-                self.timer = threading.Timer(duration, self.off)
-                self.timer.daemon = True
-                self.timer.start()
-            except Exception:
-                self.active = False
-                self.request.set_value(PUMP_PIN[1], Value.ACTIVE)
-                raise
-        LOG.info("Fertilizer pump ON for %s seconds (%s)", duration, source)
+                self.pulse_request_id = request_id
+                timer = threading.Timer(duration, self.off)
+                timer.daemon = True
+                self.timer = timer
+                timer.start()
+        except Exception:
+            try:
+                self.request.set_value(PUMP_PIN[1], Value.ACTIVE)  # best-effort OFF
+            except OSError:
+                LOG.exception("Unable to deactivate fertilizer relay after start error")
+            if request_id is not None:
+                try:
+                    self.record_pulse_end(request_id,"failed")
+                except pymysql.MySQLError:
+                    LOG.exception("Unable to record failed fertilizer activation")
+            raise
+        LOG.info("Fertilizer pump ON for %.2f seconds (%s)",float(duration),source)
 
     def poll_manual(self):
         """At-most-once manual request; reject stale requests after restart."""
@@ -229,10 +288,10 @@ class FertilizerPump:
                 duration = float(row["manual_duration_seconds"])
                 kind = row["manual_kind"]
                 if not self.apply:
-                    LOG.info("DRY RUN: pending manual fertilizer dose %s seconds (age %.1fs)",
-                             duration, age)
+                    LOG.info("DRY RUN: pending %s fertilizer pulse %.2fs (age %.1fs)",
+                             kind,duration,age)
                     return True
-                # Claim before switching; prevents replay even after a restart.
+                # Claim before physical activation to prevent accidental re-doses.
                 cursor.execute(
                     "UPDATE fertilizer_pump SET manual_processed_id=%s "
                     "WHERE id=1 AND manual_request_id=%s AND manual_processed_id<%s",
@@ -240,11 +299,20 @@ class FertilizerPump:
                 )
                 if cursor.rowcount != 1:
                     return False
-        if not 0 <= age <= 15 or not 1 <= duration <= PUMP_MAX_SECONDS:
-            LOG.warning("Skipped expired/invalid manual fertilizer request %s (age %.1fs)",
+        if (not 0 <= age <= 15 or not 0.25 <= duration <= PUMP_MAX_SECONDS
+                or kind not in ("dose","calibration")):
+            LOG.warning("Skipped stale/invalid fertilizer request %s (age %.1fs)",
                         request_id,age)
+            with database() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "UPDATE fertilizer_pump SET pulse_state='skipped',"
+                        "pulse_finished_at=NOW(3) WHERE id=1 AND pulse_request_id=%s "
+                        "AND pulse_state='queued'",
+                        (request_id,)
+                    )
             return True
-        self.activate(duration,kind)
+        self.activate(duration,kind,request_id)
         return True
 
     def poll(self):
@@ -277,21 +345,17 @@ class FertilizerPump:
                         now.second >= 10 or config["last_run_date"] == now.date()):
                     return
                 if not self.apply:
-                    LOG.info('DRY RUN: would activate fertilizer pump for %s seconds', duration)
+                    LOG.info("DRY RUN: would dose fertilizer for %.2f seconds",duration)
                     return
-                # Atomic at-most-once claim; never re-dose after a process restart.
                 cursor.execute(
                     "UPDATE fertilizer_pump SET last_run_date=CURDATE() "
                     "WHERE id=1 AND (last_run_date IS NULL OR last_run_date<CURDATE()) "
                     "AND dose_ml=%s AND ml_per_second=%s AND start_time=%s",
-                    (config["dose_ml"], config["ml_per_second"], start)
+                    (config["dose_ml"],config["ml_per_second"],start)
                 )
                 if cursor.rowcount != 1:
                     return
-        LOG.info("Fertilizer scheduled dose claimed: %s seconds (%s)",
-                 duration, "LIVE" if self.apply else "DRY RUN")
-        if not self.apply:
-            return
+        LOG.info("Fertilizer scheduled dose claimed: %.2f seconds",duration)
         self.activate(duration,"scheduled")
 
 
