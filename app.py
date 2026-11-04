@@ -273,6 +273,52 @@ def save_option_field():
     response.headers['Cache-Control']='no-store'
     return response
 
+@app.post('/api/fertilizer/dose')
+@logged_in
+def manual_fertilizer_dose():
+    """Request one bounded extra dose; GPIO is controlled only by the relay worker."""
+    if int(session.get('role', 0)) != 1:
+        abort(403)
+    with db() as con:
+        try:
+            with con.cursor() as cur:
+                cur.execute('SELECT duration_seconds,manual_request_id,manual_processed_id,'
+                            'manual_requested_at,NOW() AS now_time '
+                            'FROM fertilizer_pump WHERE id=1 FOR UPDATE')
+                row=cur.fetchone()
+                if row is None:
+                    con.rollback()
+                    return jsonify(error='Fertilizer pump is not configured'),409
+                duration=int(row['duration_seconds'])
+                if not 1 <= duration <= 60:
+                    con.rollback()
+                    return jsonify(error='Set a run duration from 1 to 60 seconds first'),409
+                if row['manual_request_id'] != row['manual_processed_id']:
+                    con.rollback()
+                    return jsonify(error='A manual dose is already pending'),409
+                last=row['manual_requested_at']
+                if last is not None and (row['now_time']-last).total_seconds() < 120:
+                    con.rollback()
+                    return jsonify(error='Wait 2 minutes before requesting another dose'),429
+                cur.execute(
+                    'UPDATE fertilizer_pump SET manual_request_id=manual_request_id+1,'
+                    'manual_duration_seconds=%s,manual_requested_at=NOW() WHERE id=1',
+                    (duration,)
+                )
+                cur.execute('INSERT INTO loging (`User`,`Event`,`Datetime`) '
+                            'VALUES (%s,%s,NOW())',
+                            (session['user'],
+                             f'Manual fertilizer dose requested: {duration} seconds'))
+            con.commit()
+        except Exception:
+            con.rollback()
+            raise
+    response=jsonify(queued=True,duration_seconds=duration,
+                     note='Request queued; actual GPIO activation is not yet verified')
+    response.headers['Cache-Control']='no-store'
+    return response,202
+
+
 @app.route('/options',methods=['GET','POST'])
 @logged_in
 def options():
