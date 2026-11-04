@@ -26,13 +26,16 @@ def calibrated_seconds(volume_ml, ml_per_second):
         return None
 
 
-def calibrate_rate(measured_ml):
-    """Ten-second calibration; require a physical measurement of delivered liquid."""
+def calibrate_rate(measured_ml, duration_seconds=CALIBRATION_SECONDS):
+    """Calculate flow from measured ml and the completed, measured test duration."""
     try:
         measured = Decimal(str(measured_ml))
-        if not measured.is_finite() or not Decimal("0.10") <= measured <= Decimal("500"):
+        duration = Decimal(str(duration_seconds))
+        if (not measured.is_finite() or not duration.is_finite()
+                or not Decimal("0.10") <= measured <= Decimal("500")
+                or not Decimal("2") <= duration <= MAX_PULSE_SECONDS):
             return None
-        rate = (measured / CALIBRATION_SECONDS).quantize(Decimal("0.00001"), rounding=ROUND_HALF_UP)
+        rate = (measured / duration).quantize(Decimal("0.00001"), rounding=ROUND_HALF_UP)
         return rate if Decimal("0.01") <= rate <= Decimal("50") else None
     except (TypeError, ValueError, ArithmeticError, InvalidOperation):
         return None
