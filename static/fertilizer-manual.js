@@ -11,7 +11,7 @@
   // Jinja renders current flow rate; this UI never assumes an uncalibrated pump.
   let calibrated=rateLabel.textContent.includes('Calibrated:');
   let busy=false, queued=false;
-  const mlInput=document.getElementById('fertilizer-seconds');
+  const mlInput=document.getElementById('fertilizer-ml');
   const refresh=()=>{
     const ml=Number(mlInput.dataset.saved ?? mlInput.value);
     doseBtn.disabled=busy||queued||mlInput.disabled||!calibrated||
