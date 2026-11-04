@@ -84,5 +84,5 @@ Orange Pi Zero 2W are:
 
 Unassigned GPIO lines: PH6/230, PH7/231.
 
-Fertilizer pump: configured under **Settings → Equipment & lighting**, with a daily activation time, 0–60 second pulse duration, and a guarded **Dose now** button for an extra manual pulse. Run `deploy/sql/fertilizer_pump.sql` and `deploy/sql/fertilizer_manual.sql` before deploying updated code. Manual requests have a 120-second cooldown and expire after 15 seconds if the worker is unavailable; they do not replace the daily dose. The existing relay worker owns GPIO 233 and stops each pulse using a timer. No separate systemd unit is needed.
+Fertilizer pump: Settings → Equipment & lighting includes **Daily dose (ml)**, a guarded **Dose now** button, and **Run 10-second test / Save calibration** controls. Collected volume (mL) / 10 seconds determines pump flow in mL/s; AquaCore then converts dose volume to a maximum 60-second GPIO 233 pulse. Default dose is zero and calibration is absent, so dosing stays OFF until calibrated. For existing databases run `deploy/sql/fertilizer_ml.sql` after the previous fertilizer migration; see `deploy/NATIVE_ARMBIAN.md`. The existing relay worker controls the pump; no extra service.
 See `deploy/NATIVE_ARMBIAN.md` for native systemd deployment.
