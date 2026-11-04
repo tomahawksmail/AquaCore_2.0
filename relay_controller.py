@@ -182,8 +182,9 @@ class FertilizerPump:
             with database() as connection:
                 with connection.cursor() as cursor:
                     cursor.execute(
-                        "UPDATE fertilizer_pump SET pulse_state='interrupted',"
-                        "pulse_finished_at=NOW(3) WHERE id=1 AND pulse_state='running'"
+                        "UPDATE options SET fertilizer_pulse_state='interrupted',"
+                        "fertilizer_pulse_finished_at=NOW(3) "
+                        "WHERE fertilizer_pulse_state='running'"
                     )
 
     def sync_status(self):
@@ -218,10 +219,10 @@ class FertilizerPump:
         with database() as connection:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    "UPDATE fertilizer_pump SET pulse_state=%s,"
-                    "pulse_finished_at=NOW(3) "
-                    "WHERE id=1 AND pulse_request_id=%s "
-                    "AND pulse_state IN ('running','stop_requested')",
+                    "UPDATE options SET fertilizer_pulse_state=%s,"
+                    "fertilizer_pulse_finished_at=NOW(3) "
+                    "WHERE fertilizer_pulse_request_id=%s "
+                    "AND fertilizer_pulse_state IN ('running','stop_requested')",
                     (status, request_id)
                 )
 
@@ -272,10 +273,13 @@ class FertilizerPump:
             with database() as connection:
                 with connection.cursor() as cursor:
                     cursor.execute(
-                        "UPDATE fertilizer_pump SET pulse_state='running',"
-                        "pulse_started_at=NOW(3),pulse_finished_at=NULL,"
-                        "pulse_duration_seconds=%s WHERE id=1 AND pulse_request_id=%s "
-                        "AND manual_processed_id=%s AND pulse_state='queued'",
+                        "UPDATE options SET fertilizer_pulse_state='running',"
+                        "fertilizer_pulse_started_at=NOW(3),"
+                        "fertilizer_pulse_finished_at=NULL,"
+                        "fertilizer_pulse_duration_seconds=%s "
+                        "WHERE fertilizer_pulse_request_id=%s "
+                        "AND fertilizer_manual_processed_id=%s "
+                        "AND fertilizer_pulse_state='queued'",
                         (duration,request_id,request_id)
                     )
                     if cursor.rowcount != 1:
@@ -319,13 +323,17 @@ class FertilizerPump:
         with database() as connection:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    "SELECT manual_request_id,manual_processed_id,manual_requested_at,"
-                    "manual_duration_seconds,manual_kind,pulse_state,NOW() AS db_now "
-                    "FROM fertilizer_pump WHERE id=1"
+                    "SELECT fertilizer_manual_request_id AS manual_request_id,"
+                    "fertilizer_manual_processed_id AS manual_processed_id,"
+                    "fertilizer_manual_requested_at AS manual_requested_at,"
+                    "fertilizer_manual_duration_seconds AS manual_duration_seconds,"
+                    "fertilizer_manual_kind AS manual_kind,"
+                    "fertilizer_pulse_state AS pulse_state,NOW() AS db_now "
+                    "FROM options LIMIT 1"
                 )
                 row = cursor.fetchone()
                 if row is None:
-                    raise RuntimeError("Missing fertilizer_pump row")
+                    raise RuntimeError("Missing options row")
                 request_id = int(row["manual_request_id"])
                 if request_id <= int(row["manual_processed_id"]):
                     return False
@@ -336,10 +344,11 @@ class FertilizerPump:
                 if row["pulse_state"] == "stop_requested":
                     if self.apply:
                         cursor.execute(
-                            "UPDATE fertilizer_pump SET manual_processed_id=%s,"
-                            "pulse_state='stopped',pulse_finished_at=NOW(3) "
-                            "WHERE id=1 AND manual_request_id=%s "
-                            "AND pulse_state='stop_requested'",
+                            "UPDATE options SET fertilizer_manual_processed_id=%s,"
+                            "fertilizer_pulse_state='stopped',"
+                            "fertilizer_pulse_finished_at=NOW(3) "
+                            "WHERE fertilizer_manual_request_id=%s "
+                            "AND fertilizer_pulse_state='stop_requested'",
                             (request_id, request_id)
                         )
                     LOG.info("Manual pump request %s canceled before GPIO ON", request_id)
@@ -350,8 +359,9 @@ class FertilizerPump:
                     return True
                 # Claim before physical activation to prevent accidental re-doses.
                 cursor.execute(
-                    "UPDATE fertilizer_pump SET manual_processed_id=%s "
-                    "WHERE id=1 AND manual_request_id=%s AND manual_processed_id<%s",
+                    "UPDATE options SET fertilizer_manual_processed_id=%s "
+                    "WHERE fertilizer_manual_request_id=%s "
+                    "AND fertilizer_manual_processed_id<%s",
                     (request_id,request_id,request_id)
                 )
                 if cursor.rowcount != 1:
@@ -363,9 +373,10 @@ class FertilizerPump:
             with database() as connection:
                 with connection.cursor() as cursor:
                     cursor.execute(
-                        "UPDATE fertilizer_pump SET pulse_state='skipped',"
-                        "pulse_finished_at=NOW(3) WHERE id=1 AND pulse_request_id=%s "
-                        "AND pulse_state='queued'",
+                        "UPDATE options SET fertilizer_pulse_state='skipped',"
+                        "fertilizer_pulse_finished_at=NOW(3) "
+                        "WHERE fertilizer_pulse_request_id=%s "
+                        "AND fertilizer_pulse_state='queued'",
                         (request_id,)
                     )
             return True
@@ -379,8 +390,10 @@ class FertilizerPump:
         with database() as connection:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    "SELECT pulse_request_id,pulse_kind,pulse_state "
-                    "FROM fertilizer_pump WHERE id=1"
+                    "SELECT fertilizer_pulse_request_id AS pulse_request_id,"
+                    "fertilizer_pulse_kind AS pulse_kind,"
+                    "fertilizer_pulse_state AS pulse_state "
+                    "FROM options LIMIT 1"
                 )
                 row = cursor.fetchone()
                 if not row or row["pulse_kind"] != "manual" or row["pulse_state"] != "stop_requested":
@@ -393,10 +406,12 @@ class FertilizerPump:
             with database() as connection:
                 with connection.cursor() as cursor:
                     cursor.execute(
-                        "UPDATE fertilizer_pump SET manual_processed_id=GREATEST("
-                        "manual_processed_id,%s),pulse_state='stopped',"
-                        "pulse_finished_at=NOW(3) WHERE id=1 "
-                        "AND pulse_request_id=%s AND pulse_state='stop_requested'",
+                        "UPDATE options SET fertilizer_manual_processed_id=GREATEST("
+                        "fertilizer_manual_processed_id,%s),"
+                        "fertilizer_pulse_state='stopped',"
+                        "fertilizer_pulse_finished_at=NOW(3) "
+                        "WHERE fertilizer_pulse_request_id=%s "
+                        "AND fertilizer_pulse_state='stop_requested'",
                         (request_id,request_id)
                     )
         return True
@@ -413,12 +428,15 @@ class FertilizerPump:
         with database() as connection:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    "SELECT start_time,dose_ml,ml_per_second,last_run_date,"
-                    "NOW() AS db_now FROM fertilizer_pump WHERE id=1"
+                    "SELECT fertilizer_start_time AS start_time,"
+                    "fertilizer_dose_ml AS dose_ml,"
+                    "fertilizer_ml_per_second AS ml_per_second,"
+                    "fertilizer_last_run_date AS last_run_date,"
+                    "NOW() AS db_now FROM options LIMIT 1"
                 )
                 config = cursor.fetchone()
                 if not config:
-                    raise RuntimeError("Missing fertilizer_pump id=1; run SQL migration")
+                    raise RuntimeError("Missing options row; run fertilizer_options.sql")
                 now = config["db_now"]
                 duration = calibrated_seconds(config["dose_ml"],config["ml_per_second"])
                 start = config["start_time"]
@@ -436,9 +454,11 @@ class FertilizerPump:
                     LOG.info("DRY RUN: would dose fertilizer for %.2f seconds",duration)
                     return
                 cursor.execute(
-                    "UPDATE fertilizer_pump SET last_run_date=CURDATE() "
-                    "WHERE id=1 AND (last_run_date IS NULL OR last_run_date<CURDATE()) "
-                    "AND dose_ml=%s AND ml_per_second=%s AND start_time=%s",
+                    "UPDATE options SET fertilizer_last_run_date=CURDATE() "
+                    "WHERE (fertilizer_last_run_date IS NULL "
+                    "OR fertilizer_last_run_date<CURDATE()) "
+                    "AND fertilizer_dose_ml=%s "
+                    "AND fertilizer_ml_per_second=%s AND fertilizer_start_time=%s",
                     (config["dose_ml"],config["ml_per_second"],start)
                 )
                 if cursor.rowcount != 1:
