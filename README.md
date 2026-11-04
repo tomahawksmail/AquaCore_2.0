@@ -80,6 +80,9 @@ Orange Pi Zero 2W are:
 | Plant light | 76 | PC12 | 36 |
 | UV | 256 | PI0 | 29 |
 | CPU cooler (>70°C ON, <=65°C OFF) | 232 | PH8 | 21 |
+| Fertilizer dosing pump (timed daily pulse) | 233 | PH9 | 26 |
 
-Unassigned GPIO lines: PH9/233, PH6/230, PH7/231.
+Unassigned GPIO lines: PH6/230, PH7/231.
+
+Fertilizer pump schedule: `fertilizer_pump` table (see `deploy/sql/fertilizer_pump.sql`), configured under Settings. Default duration 0 seconds (disabled), maximum duration 60 seconds, one daily run only. The relay worker owns this output; no additional process or systemd unit is needed.
 See `deploy/NATIVE_ARMBIAN.md` for native systemd deployment.
