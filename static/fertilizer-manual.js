@@ -13,7 +13,7 @@
       !Number.isInteger(seconds) || seconds < 1 || seconds > 60;
   };
   document.addEventListener('aquacore:setting-saved', event => {
-    if (event.detail?.field === 'fertilizer_duration_seconds') refresh();
+    if (event.detail?.field === 'fertilizer_duration_seconds') queueMicrotask(refresh);
   });
   button.addEventListener('click', async () => {
     if (busy || queued || button.disabled) return;
