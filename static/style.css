@@ -1437,3 +1437,67 @@ status trends preserved */
 @media (prefers-reduced-motion:reduce) {
   #fertilizer-progress-meter:indeterminate { animation:none; }
 }
+
+/* Fertilizer calibration: one dosing row plus an accessible compact modal. */
+.fertilizer-dose-heading { min-width:0; gap:11px; }
+.fertilizer-dose-heading .fertilizer-open-calibration {
+  margin-left:auto;
+  flex:none;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:9px 12px;
+  border-radius:10px;
+  border:1px solid #366276;
+  color:#c2f3e8;
+  background:#153447;
+  font-size:12px;
+  line-height:1.2;
+  font-weight:650;
+}
+.fertilizer-open-calibration:hover { background:#20495b; border-color:#4b9a94; }
+.fertilizer-open-calibration .mdi { font-size:16px; }
+.fertilizer-modal {
+  width:min(520px,calc(100vw - 28px));
+  max-height:calc(100vh - 32px);
+  padding:0;
+  overflow:auto;
+  margin:auto;
+  color:#e8f3fc;
+  background:#142c3e;
+  border:1px solid #315467;
+  border-radius:17px;
+  box-shadow:0 25px 70px #0009;
+}
+.fertilizer-modal::backdrop { background:rgba(1,11,20,.78); }
+.fertilizer-modal-content { padding:24px; display:grid; gap:16px; }
+.fertilizer-modal-heading { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
+.fertilizer-modal-heading h2 { margin:0 0 6px; display:flex; align-items:center; gap:9px; font-size:19px; }
+.fertilizer-modal-heading h2 .mdi { color:#5eead4; font-size:23px; }
+.fertilizer-modal-heading .control-state { display:block; margin:0; }
+.fertilizer-modal-heading > button { flex:none; padding:6px 9px; }
+.fertilizer-modal-help { margin:0; font-size:13px; line-height:1.55; color:#afc9d5; }
+.fertilizer-modal-help strong { color:#e5f2f7; }
+.fertilizer-modal-inputs { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.fertilizer-modal-inputs label { font-size:12px; color:#a7cedd; font-weight:600; min-width:0; }
+.fertilizer-modal-inputs input {
+  margin-top:8px; width:100%; min-width:0; padding:12px; font-size:15px;
+  color-scheme:dark; background:#0b1c2c; border:1px solid #35576c;
+}
+.fertilizer-modal-inputs input:disabled { opacity:.55; }
+.fertilizer-modal .fertilizer-test-progress { display:grid; grid-column:auto; }
+.fertilizer-modal .fertilizer-test-progress[hidden] { display:none; }
+.fertilizer-modal-status { min-height:20px; margin:0; color:#b5d1df; font-size:12px; line-height:1.5; }
+.fertilizer-modal-actions { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:10px; }
+.fertilizer-modal-actions button { margin:0; display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:41px; padding:10px 15px; border-radius:10px; font-weight:650; font-size:13px; }
+.fertilizer-modal-actions .primary:disabled, .fertilizer-modal-actions .outline:disabled { opacity:.45; cursor:not-allowed; }
+.fertilizer-modal-actions .mdi { font-size:18px; }
+@media(max-width:700px) {
+  .fertilizer-dose-heading { flex-wrap:wrap; }
+  .fertilizer-dose-heading .fertilizer-open-calibration { margin-left:auto; }
+  .fertilizer-modal-content { padding:18px; }
+}
+@media(max-width:390px) {
+  .fertilizer-modal-inputs { grid-template-columns:1fr; }
+  .fertilizer-modal-actions { display:grid; grid-template-columns:1fr; }
+}
