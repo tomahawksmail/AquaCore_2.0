@@ -17,6 +17,7 @@ import time
 import pymysql
 from pymysql.cursors import DictCursor
 from dotenv import load_dotenv
+from fertilizer_math import calibrated_seconds
 
 LOG = logging.getLogger("aquacore.relay")
 RUNNING = True
@@ -214,7 +215,7 @@ class FertilizerPump:
             with connection.cursor() as cursor:
                 cursor.execute(
                     "SELECT manual_request_id,manual_processed_id,manual_requested_at,"
-                    "manual_duration_seconds,NOW() AS db_now "
+                    "manual_duration_seconds,manual_kind,NOW() AS db_now "
                     "FROM fertilizer_pump WHERE id=1"
                 )
                 row = cursor.fetchone()
@@ -225,7 +226,8 @@ class FertilizerPump:
                     return False
                 age = ((row["db_now"]-row["manual_requested_at"]).total_seconds()
                        if row["manual_requested_at"] else 9999)
-                duration = int(row["manual_duration_seconds"])
+                duration = float(row["manual_duration_seconds"])
+                kind = row["manual_kind"]
                 if not self.apply:
                     LOG.info("DRY RUN: pending manual fertilizer dose %s seconds (age %.1fs)",
                              duration, age)
@@ -242,7 +244,7 @@ class FertilizerPump:
             LOG.warning("Skipped expired/invalid manual fertilizer request %s (age %.1fs)",
                         request_id,age)
             return True
-        self.activate(duration,"manual")
+        self.activate(duration,kind)
         return True
 
     def poll(self):
@@ -255,21 +257,21 @@ class FertilizerPump:
         with database() as connection:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    "SELECT start_time,duration_seconds,last_run_date,"
+                    "SELECT start_time,dose_ml,ml_per_second,last_run_date,"
                     "NOW() AS db_now FROM fertilizer_pump WHERE id=1"
                 )
                 config = cursor.fetchone()
                 if not config:
                     raise RuntimeError("Missing fertilizer_pump id=1; run SQL migration")
                 now = config["db_now"]
-                duration = int(config["duration_seconds"])
+                duration = calibrated_seconds(config["dose_ml"],config["ml_per_second"])
                 start = config["start_time"]
                 if isinstance(start, str):
                     hour, minute = map(int, start.split(":")[:2])
                 else:
                     hour = start.seconds // 3600
                     minute = (start.seconds // 60) % 60
-                if not 1 <= duration <= PUMP_MAX_SECONDS:
+                if duration is None:
                     return
                 if (now.hour != hour or now.minute != minute or
                         now.second >= 10 or config["last_run_date"] == now.date()):
@@ -281,8 +283,8 @@ class FertilizerPump:
                 cursor.execute(
                     "UPDATE fertilizer_pump SET last_run_date=CURDATE() "
                     "WHERE id=1 AND (last_run_date IS NULL OR last_run_date<CURDATE()) "
-                    "AND duration_seconds=%s AND start_time=%s",
-                    (duration, start)
+                    "AND dose_ml=%s AND ml_per_second=%s AND start_time=%s",
+                    (config["dose_ml"], config["ml_per_second"], start)
                 )
                 if cursor.rowcount != 1:
                     return
