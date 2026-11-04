@@ -256,10 +256,16 @@ class FertilizerPump:
                 self.timer = timer
                 timer.start()
         except Exception:
-            try:
-                self.request.set_value(PUMP_PIN[1], Value.ACTIVE)  # best-effort OFF
-            except OSError:
-                LOG.exception("Unable to deactivate fertilizer relay after start error")
+            with self.lock:
+                self.active = False
+                self.pulse_request_id = None
+                if self.timer is not None:
+                    self.timer.cancel()
+                    self.timer = None
+                try:
+                    self.request.set_value(PUMP_PIN[1], Value.ACTIVE)  # best-effort OFF
+                except OSError:
+                    LOG.exception("Unable to deactivate fertilizer relay after start error")
             if request_id is not None:
                 try:
                     self.record_pulse_end(request_id,"failed")
