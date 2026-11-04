@@ -5,7 +5,11 @@ CREATE TABLE IF NOT EXISTS `fertilizer_pump` (
   `id` TINYINT UNSIGNED NOT NULL PRIMARY KEY,
   `start_time` TIME NOT NULL DEFAULT '12:00:00',
   `duration_seconds` TINYINT UNSIGNED NOT NULL DEFAULT 0,
-  `last_run_date` DATE DEFAULT NULL
+  `last_run_date` DATE DEFAULT NULL,
+  `manual_request_id` BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  `manual_processed_id` BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  `manual_requested_at` DATETIME DEFAULT NULL,
+  `manual_duration_seconds` TINYINT UNSIGNED NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 INSERT IGNORE INTO `fertilizer_pump` (`id`,`start_time`,`duration_seconds`)
 VALUES (1,'12:00:00',0);
