@@ -335,7 +335,8 @@ def fertilizer_pulse_status():
     """Progress reported from relay worker GPIO commands (not flow feedback)."""
     row=query(
         "SELECT dose_ml,ml_per_second,manual_request_id,manual_processed_id,"
-        "manual_requested_at,pulse_request_id,pulse_kind,pulse_state,"
+        "manual_requested_at,calibration_saved_request_id,"
+        "pulse_request_id,pulse_kind,pulse_state,"
         "pulse_duration_seconds,pulse_started_at,pulse_finished_at,"
         "TIMESTAMPDIFF(MICROSECOND,pulse_started_at,NOW(3))/1000000.0 "
         "AS elapsed_seconds,"
@@ -361,6 +362,7 @@ def fertilizer_pulse_status():
         elapsed_seconds=max(0,elapsed),
         request_age_seconds=max(0,age),
         calibrated=row['ml_per_second'] is not None,
+        calibration_saved_request_id=int(row['calibration_saved_request_id']),
         dose_ml=float(row['dose_ml'] or 0),
         # 'completed' means the worker issued OFF, not that liquid flowed.
         note='Relay command status only; pumped volume is not measured'
