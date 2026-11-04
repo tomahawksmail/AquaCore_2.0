@@ -6,6 +6,12 @@ from fertilizer_math import calibrated_seconds, calibrate_rate
 class FertilizerVolumeTests(unittest.TestCase):
     def test_calibration(self):
         self.assertEqual(str(calibrate_rate("20")), "2.00000")
+        self.assertEqual(str(calibrate_rate("20", "5")), "4.00000")
+        self.assertEqual(str(calibrate_rate("6", "30")), "0.20000")
+        self.assertIsNone(calibrate_rate("20", "1"))
+        self.assertIsNone(calibrate_rate("20", "61"))
+        self.assertIsNone(calibrate_rate("20", "0"))
+        self.assertIsNone(calibrate_rate("20", "nan"))
         self.assertIsNone(calibrate_rate("0"))
         self.assertIsNone(calibrate_rate("nan"))
 
