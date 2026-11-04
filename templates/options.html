@@ -90,18 +90,23 @@
       <h3 class="device-group-heading"><i class="mdi mdi-water-pump" aria-hidden="true"></i> Fertilizer pump</h3>
       <div class="device-rows">
         <div class="device-settings-row control-row fertilizer-control-row">
-          <div class="device-settings-name">
+          <div class="device-settings-name fertilizer-dose-heading">
             <span class="settings-device-icon"><i class="mdi mdi-flask-outline" aria-hidden="true"></i></span>
             <div>
               <strong>Fertilizer dosing</strong>
               <span class="control-state" id="fertilizer-dose-state">
-                {% if fertilizer.dose_ml and fertilizer.ml_per_second %}
-                  Scheduled · {{fertilizer.start_time|string|truncate(5,True,'')}} · {{fertilizer.dose_ml}} ml
-                {% else %}
+                {% if not fertilizer.ml_per_second %}
+                  Calibration required
+                {% elif not fertilizer.dose_ml %}
                   Scheduled · OFF
+                {% else %}
+                  Scheduled · {{fertilizer.start_time|string|truncate(5,True,'')}} · {{fertilizer.dose_ml}} ml
                 {% endif %}
               </span>
             </div>
+            <button type="button" id="fertilizer-open-calibration" class="outline small fertilizer-open-calibration">
+              <i class="mdi mdi-tune-variant" aria-hidden="true"></i> Calibration
+            </button>
           </div>
           <label class="device-time" for="fertilizer-time">
             <span>Activation time</span>
@@ -125,75 +130,69 @@
             </label>
           </div>
         </div>
-
-        <div class="device-settings-row control-row fertilizer-control-row">
-          <div class="device-settings-name">
-            <span class="settings-device-icon"><i class="mdi mdi-test-tube" aria-hidden="true"></i></span>
-            <div>
-              <strong>Pump calibration</strong>
-              <span class="control-state" id="fertilizer-calibration-rate">
-                {% if fertilizer.ml_per_second %}
-                  Calibrated: {{'%.3f'|format(fertilizer.ml_per_second|float)}} ml/sec
-                {% else %}
-                  Not calibrated
-                {% endif %}
-              </span>
-            </div>
-          </div>
-          <label class="device-time" for="fertilizer-calibration-seconds">
-            <span>Test duration</span>
-            <input id="fertilizer-calibration-seconds" type="text" value="10 seconds" readonly>
-          </label>
-          <div class="device-time">
-            <label class="fertilizer-field-label" for="fertilizer-measured-ml">Collected volume (ml)</label>
-            <div class="fertilizer-measure-control">
-              <input id="fertilizer-measured-ml" type="number" min="0.1" max="500" step="0.1"
-                     placeholder="Measured ml" aria-label="Milliliters collected during test"
-                     {% if session.get('role')|int != 1 %}disabled{% endif %}>
-              <button id="fertilizer-calibrate-save" type="button" class="outline small fertilizer-calibration-save"
-                      {% if session.get('role')|int != 1 %}disabled{% endif %}>Save</button>
-            </div>
-          </div>
-          <div class="device-manual">
-            <span>Run test</span>
-            <label class="ios-switch" aria-label="Request one 10-second pump calibration test">
-              <input id="fertilizer-calibrate-start" type="checkbox"
-                     {% if session.get('role')|int != 1 %}disabled{% endif %}>
-              <span class="switch-track" aria-hidden="true"></span>
-            </label>
-          </div>
-        <div id="fertilizer-test-progress" class="fertilizer-test-progress" hidden>
-          <div class="fertilizer-progress-heading">
-            <span id="fertilizer-progress-label" role="status">Waiting for relay worker…</span>
-            <span id="fertilizer-progress-time">0 / 10 s</span>
-          </div>
-          <progress id="fertilizer-progress-meter" max="100" value="0" aria-label="Calibration pump test progress">0%</progress>
-        </div>
-        </div>
       </div>
-      <p id="fertilizer-manual-help" class="fertilizer-manual-help" role="status">
-        {% if session.get('role')|int != 1 %}
-          Manual dosing requires administrator access.
-        {% elif not fertilizer.ml_per_second %}
-          Manual dose disabled — run calibration, measure the collected volume, and save the calibration.
-        {% elif not fertilizer.dose_ml %}
-          Manual dose disabled — save a dose greater than 0 ml first.
-        {% else %}
-          Manual dose ready — uses your saved ml amount.
-        {% endif %}
-      </p>
-      <p class="control-disclaimer" id="fertilizer-dose-status" role="status">
-        Manual switches request a single timed pulse, then return to OFF.
-        For calibration, prime the pump, collect water outside the aquarium for 10 seconds,
-        enter the measured ml and select Save. Maximum dosing runtime: 60 seconds.
-      </p>
     </div>
     <p class="control-disclaimer"><i class="mdi mdi-information-outline" aria-hidden="true"></i> Changes to times and water parameters save automatically. Manual switches take effect immediately and last until the next scheduled transition.</p>
   </section>
 
 </form>
+<dialog id="fertilizer-calibration-dialog" class="fertilizer-modal"
+        aria-labelledby="fertilizer-dialog-title" aria-describedby="fertilizer-dialog-help">
+  <div class="fertilizer-modal-content">
+    <div class="fertilizer-modal-heading">
+      <div>
+        <h2 id="fertilizer-dialog-title"><i class="mdi mdi-flask-outline" aria-hidden="true"></i> Pump calibration</h2>
+        <p id="fertilizer-calibration-rate" class="control-state">
+          {% if fertilizer.ml_per_second %}
+            Calibrated: {{'%.3f'|format(fertilizer.ml_per_second|float)}} ml/sec
+          {% else %}
+            Not calibrated
+          {% endif %}
+        </p>
+      </div>
+      <button type="button" id="fertilizer-dialog-close" class="outline small"
+              aria-label="Close pump calibration window"><i class="mdi mdi-close"></i></button>
+    </div>
+    <p id="fertilizer-dialog-help" class="fertilizer-modal-help">
+      Prime the pump and direct its outlet into a measuring cup, <strong>not the aquarium</strong>.
+      Run the test, then enter the collected volume. Never save an uncompleted test.
+    </p>
+    <div class="fertilizer-modal-inputs">
+      <label for="fertilizer-calibration-seconds">
+        Test duration (seconds)
+        <input id="fertilizer-calibration-seconds" type="number" min="2" max="60" step="1" value="10"
+               {% if session.get('role')|int != 1 %}disabled{% endif %}>
+      </label>
+      <label for="fertilizer-measured-ml">
+        Collected volume (ml)
+        <input id="fertilizer-measured-ml" type="number" min="0.1" max="500" step="0.1"
+               placeholder="Measured ml"
+               {% if session.get('role')|int != 1 %}disabled{% endif %}>
+      </label>
+    </div>
+    <div id="fertilizer-test-progress" class="fertilizer-test-progress" hidden>
+      <div class="fertilizer-progress-heading">
+        <span id="fertilizer-progress-label">Waiting for relay worker…</span>
+        <span id="fertilizer-progress-time">0 / 10 s</span>
+      </div>
+      <progress id="fertilizer-progress-meter" max="100" value="0"
+                aria-label="Calibration pump test progress">0%</progress>
+    </div>
+    <p id="fertilizer-dose-status" class="fertilizer-modal-status" role="status" aria-live="polite"></p>
+    <div class="fertilizer-modal-actions">
+      <button type="button" id="fertilizer-calibrate-start" class="outline"
+              {% if session.get('role')|int != 1 %}disabled{% endif %}>
+        <i class="mdi mdi-play-outline" aria-hidden="true"></i> Run test
+      </button>
+      <button type="button" id="fertilizer-calibrate-save" class="primary"
+              {% if session.get('role')|int != 1 %}disabled{% endif %}>
+        Save calibration
+      </button>
+    </div>
+  </div>
+</dialog>
 <script>window.AQUACORE_CSRF = {{ csrf_token()|tojson }};</script>
 <script defer src="{{ url_for('static', filename='controls.js') }}"></script>
-<script defer src="{{ url_for('static', filename='settings-autosave.js', v='20261104-relay-progress') }}"></script>
+<script defer src="{{ url_for('static', filename='settings-autosave.js', v='20261104-calibration-modal') }}"></script>
 <script defer src="{{ url_for('static', filename='fertilizer-manual.js', v='20261104-relay-progress') }}"></script>
 {% endblock %}
