@@ -84,5 +84,5 @@ Orange Pi Zero 2W are:
 
 Unassigned GPIO lines: PH6/230, PH7/231.
 
-Fertilizer pump schedule: `fertilizer_pump` table (see `deploy/sql/fertilizer_pump.sql`), configured under Settings. Default duration 0 seconds (disabled), maximum duration 60 seconds, one daily run only. The relay worker owns this output; no additional process or systemd unit is needed.
+Fertilizer pump: configured under **Settings → Equipment & lighting**, with a daily activation time, 0–60 second pulse duration, and a guarded **Dose now** button for an extra manual pulse. Run `deploy/sql/fertilizer_pump.sql` and `deploy/sql/fertilizer_manual.sql` before deploying updated code. Manual requests have a 120-second cooldown and expire after 15 seconds if the worker is unavailable; they do not replace the daily dose. The existing relay worker owns GPIO 233 and stops each pulse using a timer. No separate systemd unit is needed.
 See `deploy/NATIVE_ARMBIAN.md` for native systemd deployment.
