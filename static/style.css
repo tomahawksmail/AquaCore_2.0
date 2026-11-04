@@ -1327,3 +1327,40 @@ status trends preserved */
 .system-network-card .system-network-unit{display:none}
 .system-disk-grid .system-network-card{min-height:230px}
 @media(max-width:600px){.system-network-card{min-height:195px}.system-disk-grid .system-network-card{min-height:210px}}
+
+
+/* Fertilizer dosing and calibration reuse exactly the Equipment & Lighting
+   device-settings-row + control-row cards and ios-switch controls. */
+.fertilizer-control-row .fertilizer-field-label {
+  display:block;
+  margin-bottom:5px;
+  color:#96b9c9;
+  font-size:12px;
+}
+.fertilizer-measure-control {
+  display:flex;
+  align-items:stretch;
+  gap:7px;
+  width:100%;
+  min-width:0;
+}
+.fertilizer-measure-control input {
+  flex:1 1 auto;
+  width:100%;
+  min-width:0;
+  margin:0;
+  padding:10px 11px;
+  color-scheme:dark;
+  font-size:14px;
+}
+.fertilizer-measure-control .fertilizer-calibration-save {
+  flex:none;
+  min-width:54px;
+  padding:9px 10px;
+  border-radius:10px;
+  font-size:12px;
+}
+.fertilizer-control-row .device-time input[readonly] {
+  color:#b6cbd8;
+  cursor:default;
+}
