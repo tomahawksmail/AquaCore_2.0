@@ -231,13 +231,20 @@ def save_option_field():
     if not isinstance(payload,dict):
         return jsonify(error='Expected JSON object'),400
     field=payload.get('field')
-    if not isinstance(field,str) or field not in SETTINGS and field not in TIME_FIELDS:
+    pump_fields=('fertilizer_time','fertilizer_duration_seconds')
+    if not isinstance(field,str) or field not in SETTINGS and field not in TIME_FIELDS and field not in pump_fields:
         return jsonify(error='Unknown setting'),400
     raw=str(payload.get('value') if payload.get('value') is not None else '').strip()
     if not raw:
         return jsonify(error='A value is required'),400
     try:
-        if field in SETTINGS:
+        if field == 'fertilizer_duration_seconds':
+            parsed=int(raw)
+            if str(parsed)!=raw or not 0 <= parsed <= 60:
+                raise ValueError('Duration must be 0–60 seconds')
+        elif field == 'fertilizer_time':
+            parsed=datetime.strptime(raw,'%H:%M').strftime('%H:%M:%S')
+        elif field in SETTINGS:
             cast,low,high=SETTINGS[field]
             parsed=cast(raw)
             if not __import__('math').isfinite(parsed) or not low<=parsed<=high:
@@ -257,7 +264,11 @@ def save_option_field():
             parsed=datetime.strptime(raw,'%H:%M').strftime('%H:%M:%S')
     except (ValueError,OverflowError,TypeError):
         return jsonify(error='Invalid value'),400
-    mutate('UPDATE options SET `'+field+'`=%s LIMIT 1',(parsed,))
+    if field in pump_fields:
+        column='start_time' if field=='fertilizer_time' else 'duration_seconds'
+        mutate('UPDATE fertilizer_pump SET `'+column+'`=%s WHERE id=1',(parsed,))
+    else:
+        mutate('UPDATE options SET `'+field+'`=%s LIMIT 1',(parsed,))
     response=jsonify(ok=True,field=field,value=parsed)
     response.headers['Cache-Control']='no-store'
     return response
@@ -298,8 +309,9 @@ def options():
     statuses=query('SELECT * FROM `status` LIMIT 1',one=True) or {}
     overrides=query('SELECT device,until_at FROM manual_overrides WHERE until_at > NOW()')
     manual={r['device']:r['until_at'] for r in overrides}
+    fertilizer=query('SELECT start_time,duration_seconds,last_run_date FROM fertilizer_pump WHERE id=1',one=True) or {}
     return render_template('options.html', options=current,devices=DEVICES,settings=SETTINGS,
-                           statuses=statuses,manual=manual)
+                           statuses=statuses,manual=manual,fertilizer=fertilizer)
 
 @app.get('/loging')
 @logged_in
