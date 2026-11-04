@@ -328,3 +328,22 @@ sudo -u aquacore git -C /opt/aquacore pull --ff-only origin master
 sudo systemctl restart aquacore.service
 ```
 If relay worker code is also behind the revision adding pump progress, restart `aquacore-relays.service` after ensuring its database migration is applied.
+
+## Manual fertilizer pump ON/OFF (max 30 seconds) and calibration progress
+
+The **Manual dose** switch is now a manual pump ON/OFF control, independent of any saved pump calibration and of the configured daily dose. **It controls time, not measured mL.** As an administrator, switch ON to request a manually timed pump run; switch OFF to request early shutdown. The relay worker automatically turns the pump OFF after **30 seconds maximum** even if the browser disconnects. Both requests require authenticated, CSRF-protected API calls; only the existing `aquacore-relays.service` commands GPIO 233.
+
+When starting with an uncalibrated pump, collect into a measured container **outside the aquarium**. Do not interpret the manual switch as a calibrated fertilizer dose. A manual start uses the same 120-second minimum interval between starts as other pump requests, and cannot overlap a calibration test. The switch remains ON while the worker reports the manual pulse queued/running; switching OFF sends a stop request, with worker acknowledgment expected within its normal 1-second polling loop. If the relay service is down, a manual request can expire without activating.
+
+The calibration popup displays an indeterminate bar for queued requests and an increasing 0–99% bar only after the relay service has recorded the pump ON command. It shows 100% and unlocks **Save calibration** only when the relay service records the OFF command and the measured volume has been entered. **Stale** means the relay worker did not confirm a run; no flow rate can safely be saved. If a request is stale, confirm the worker was restarted after applying `fertilizer_progress.sql` and inspect:
+```bash
+sudo systemctl status aquacore-relays.service --no-pager
+sudo journalctl -u aquacore-relays.service -n 80 --no-pager
+sudo mariadb _AquaCore_ -e "SELECT manual_request_id,manual_processed_id,manual_kind,pulse_kind,pulse_state,pulse_started_at,pulse_finished_at FROM fertilizer_pump WHERE id=1;"
+```
+
+**Deployment:** This update uses existing progress-state columns: no *new* migration is necessary if `fertilizer_progress.sql` was applied earlier. Restart both the web service and relay worker to activate the new manual ON/OFF endpoints and relay logic:
+```bash
+sudo -u aquacore git -C /opt/aquacore pull --ff-only origin master
+sudo systemctl restart aquacore.service aquacore-relays.service
+```
