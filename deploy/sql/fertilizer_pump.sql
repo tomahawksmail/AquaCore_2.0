@@ -9,7 +9,11 @@ CREATE TABLE IF NOT EXISTS `fertilizer_pump` (
   `manual_request_id` BIGINT UNSIGNED NOT NULL DEFAULT 0,
   `manual_processed_id` BIGINT UNSIGNED NOT NULL DEFAULT 0,
   `manual_requested_at` DATETIME DEFAULT NULL,
-  `manual_duration_seconds` TINYINT UNSIGNED NOT NULL DEFAULT 0
+  `manual_duration_seconds` DECIMAL(6,2) NOT NULL DEFAULT 0,
+  `dose_ml` DECIMAL(7,2) NOT NULL DEFAULT 0,
+  `ml_per_second` DECIMAL(10,5) DEFAULT NULL,
+  `manual_kind` VARCHAR(16) NOT NULL DEFAULT 'dose',
+  `calibration_saved_request_id` BIGINT UNSIGNED NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 INSERT IGNORE INTO `fertilizer_pump` (`id`,`start_time`,`duration_seconds`)
 VALUES (1,'12:00:00',0);
