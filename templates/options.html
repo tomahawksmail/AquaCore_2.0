@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}Settings · AquaCore<script defer src="{{ url_for('static', filename='fertilizer-manual.js', v='20261104-manual-dose') }}"></script>
+{% block title %}Settings · AquaCore<script defer src="{{ url_for('static', filename='fertilizer-manual.js', v='20261104-ml-calibration') }}"></script>
 {% endblock %}
 {% block content %}
 <div class="heading settings-heading">
@@ -93,7 +93,7 @@
       <div class="device-settings-row">
         <div class="device-settings-name">
           <span class="settings-device-icon"><i class="mdi mdi-flask-outline" aria-hidden="true"></i></span>
-          <div><strong>Fertilizer dosing</strong><span class="control-state">Daily timed pulse; 0 seconds disables dosing</span></div>
+          <div><strong>Fertilizer dosing</strong><span class="control-state">Daily calibrated dose; 0 ml disables dosing</span></div>
         </div>
         <label class="device-time" for="fertilizer-time">
           <span>Activation time</span>
@@ -102,24 +102,47 @@
                  {% if session.get('role')|int != 1 %}disabled{% endif %}>
         </label>
         <label class="device-time" for="fertilizer-seconds">
-          <span>Run duration (seconds)</span>
-          <input id="fertilizer-seconds" name="fertilizer_duration_seconds" type="number"
-                 min="0" max="60" step="1"
-                 value="{{ fertilizer.duration_seconds if fertilizer.duration_seconds is not none else 0 }}"
+          <span>Daily dose (ml)</span>
+          <input id="fertilizer-seconds" name="fertilizer_dose_ml" type="number"
+                 min="0" max="100" step="0.1"
+                 value="{{ fertilizer.dose_ml if fertilizer.dose_ml is not none else 0 }}"
                  {% if session.get('role')|int != 1 %}disabled{% endif %}>
         </label>
         <div class="device-manual">
           <span>Manual</span>
           <button type="button" class="outline small" id="fertilizer-dose-now"
-                  {% if session.get('role')|int != 1 or not fertilizer.duration_seconds %}disabled{% endif %}>
+                  {% if session.get('role')|int != 1 or not fertilizer.dose_ml or not fertilizer.ml_per_second %}disabled{% endif %}>
             Dose now
           </button>
         </div>
       </div>
     </div>
-    <p class="control-disclaimer" id="fertilizer-dose-status" role="status"><i class="mdi mdi-information-outline" aria-hidden="true"></i>
-      Set 0 seconds to disable. Maximum 60 seconds per dose. Scheduled dosing occurs once daily; manual dosing is an additional dose, limited to once every 2 minutes.
-      Pump duration is not a guaranteed liquid volume; calibrate delivered mL separately.
+    <div class="settings-history settings-history-inline">
+      <div class="settings-field">
+        <span class="settings-field-title"><i class="mdi mdi-flask-outline" aria-hidden="true"></i> Pump calibration</span>
+        <span class="settings-field-description">Direct the outlet into a measuring cup, not the aquarium. Run a 10-second test, then enter the measured ml. Prime the tubing first.</span>
+        <span class="settings-field-description" id="fertilizer-calibration-rate">
+          {% if fertilizer.ml_per_second %}
+            Calibrated: {{'%.3f'|format(fertilizer.ml_per_second|float)}} ml/sec
+          {% else %}
+            Not calibrated — scheduled and manual doses are disabled.
+          {% endif %}
+        </span>
+        <button type="button" class="outline small" id="fertilizer-calibrate-start"
+                {% if session.get('role')|int != 1 %}disabled{% endif %}>Run 10-second test</button>
+        <label for="fertilizer-measured-ml" class="settings-field-description">Collected volume (ml)</label>
+        <span class="settings-input-wrap">
+          <input type="number" id="fertilizer-measured-ml" min="0.1" max="500" step="0.1" placeholder="Measured ml"
+                 {% if session.get('role')|int != 1 %}disabled{% endif %}>
+          <span class="settings-unit">ml</span>
+        </span>
+        <button type="button" class="outline small" id="fertilizer-calibrate-save"
+                {% if session.get('role')|int != 1 %}disabled{% endif %}>Save calibration</button>
+      </div>
+    </div>
+    <p class="control-disclaimer" id="fertilizer-dose-status" role="status">
+      Dose amount is in ml, converted using calibration. Maximum 60 seconds of pump runtime per dose.
+      Manual Dose now adds an extra dose to the scheduled daily dose; a 2-minute cooldown applies.
     </p>
     </div>
     <p class="control-disclaimer"><i class="mdi mdi-information-outline" aria-hidden="true"></i> Changes to times and water parameters save automatically. Manual switches take effect immediately and last until the next scheduled transition.</p>
@@ -128,5 +151,5 @@
 </form>
 <script>window.AQUACORE_CSRF = {{ csrf_token()|tojson }};</script>
 <script defer src="{{ url_for('static', filename='controls.js') }}"></script>
-<script defer src="{{ url_for('static', filename='settings-autosave.js', v='20261104-fertilizer-autosave') }}"></script>
+<script defer src="{{ url_for('static', filename='settings-autosave.js', v='20261104-ml-calibration') }}"></script>
 {% endblock %}
