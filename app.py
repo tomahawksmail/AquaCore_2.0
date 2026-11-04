@@ -267,6 +267,10 @@ def save_option_field():
             parsed=datetime.strptime(raw,'%H:%M').strftime('%H:%M:%S')
     except (ValueError,OverflowError,TypeError,__import__('decimal').InvalidOperation):
         return jsonify(error='Invalid value'),400
+    if field == 'fertilizer_dose_ml' and float(parsed) > 0:
+        config=query('SELECT ml_per_second FROM fertilizer_pump WHERE id=1',one=True)
+        if config and config['ml_per_second'] is not None and calibrated_seconds(parsed,config['ml_per_second']) is None:
+            return jsonify(error='Dose exceeds the 60-second pump limit for current calibration'),400
     if field in pump_fields:
         column='start_time' if field=='fertilizer_time' else 'dose_ml'
         mutate('UPDATE fertilizer_pump SET `'+column+'`=%s WHERE id=1',(parsed,))
@@ -360,7 +364,7 @@ def finish_fertilizer_calibration():
                 if (row['manual_kind'] != 'calibration'
                         or row['manual_request_id'] != row['manual_processed_id']
                         or row['manual_request_id'] == row['calibration_saved_request_id']
-                        or not 12 <= age <= 900):
+                        or not 28 <= age <= 900):
                     return jsonify(error='No completed, recent 10-second calibration test to save'),409
                 cur.execute(
                     'UPDATE fertilizer_pump SET ml_per_second=%s,'
