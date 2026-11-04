@@ -284,7 +284,8 @@
         setNotice('Manual pump OFF requested — awaiting relay confirmation…');
         readStatus(false);
       }catch(error){
-        setNotice('OFF request failed: '+error.message+'; automatic cutoff remains 30s.');
+        stopping=false; // Allow an immediate OFF retry if the request did not reach MariaDB.
+        setNotice('OFF request failed: '+error.message+'; retry OFF. Automatic cutoff remains 30s.');
       }finally{busy=false;updateUI();}
     }
   });
