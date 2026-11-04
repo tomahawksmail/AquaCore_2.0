@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
-{% block title %}Settings · AquaCore{% endblock %}
+{% block title %}Settings · AquaCore<script defer src="{{ url_for('static', filename='fertilizer-manual.js', v='20261104-manual-dose') }}"></script>
+{% endblock %}
 {% block content %}
 <div class="heading settings-heading">
   <div>
@@ -86,16 +87,8 @@
       </div>
     </div>
     {% endfor %}
-    <p class="control-disclaimer"><i class="mdi mdi-information-outline" aria-hidden="true"></i> Changes to times and water parameters save automatically. Manual switches take effect immediately and last until the next scheduled transition.</p>
-  </section>
-  <section class="card settings-card">
-    <div class="settings-section-head">
-      <span class="settings-section-icon"><i class="mdi mdi-water-pump" aria-hidden="true"></i></span>
-      <div>
-        <h2>Plant fertilizer pump</h2>
-        <p>One automatic dose per day. GPIO 233 (PH9, physical pin 26). The pump stops automatically after the selected duration.</p>
-      </div>
-    </div>
+    <div class="device-group">
+      <h3 class="device-group-heading"><i class="mdi mdi-water-pump" aria-hidden="true"></i> Fertilizer pump</h3>
     <div class="device-rows">
       <div class="device-settings-row">
         <div class="device-settings-name">
@@ -115,13 +108,23 @@
                  value="{{ fertilizer.duration_seconds if fertilizer.duration_seconds is not none else 0 }}"
                  {% if session.get('role')|int != 1 %}disabled{% endif %}>
         </label>
+        <div class="device-manual">
+          <span>Manual</span>
+          <button type="button" class="outline small" id="fertilizer-dose-now"
+                  {% if session.get('role')|int != 1 or not fertilizer.duration_seconds %}disabled{% endif %}>
+            Dose now
+          </button>
+        </div>
       </div>
     </div>
-    <p class="control-disclaimer"><i class="mdi mdi-information-outline" aria-hidden="true"></i>
-      Set 0 seconds to disable. Maximum 60 seconds per day. Missed dosing times are skipped, not replayed after reboot.
+    <p class="control-disclaimer" id="fertilizer-dose-status" role="status"><i class="mdi mdi-information-outline" aria-hidden="true"></i>
+      Set 0 seconds to disable. Maximum 60 seconds per dose. Scheduled dosing occurs once daily; manual dosing is an additional dose, limited to once every 2 minutes.
       Pump duration is not a guaranteed liquid volume; calibrate delivered mL separately.
     </p>
+    </div>
+    <p class="control-disclaimer"><i class="mdi mdi-information-outline" aria-hidden="true"></i> Changes to times and water parameters save automatically. Manual switches take effect immediately and last until the next scheduled transition.</p>
   </section>
+
 </form>
 <script>window.AQUACORE_CSRF = {{ csrf_token()|tojson }};</script>
 <script defer src="{{ url_for('static', filename='controls.js') }}"></script>
