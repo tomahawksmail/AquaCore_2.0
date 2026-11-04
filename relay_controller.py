@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """AquaCore Orange Pi: apply database-requested equipment states to relays.
 
-Run scheduler.py separately. This worker NEVER changes MariaDB status.
+Run scheduler.py separately. Existing equipment status fields are read-only.
+Only fertilizer_pump_status is published as the worker's commanded ON/OFF state.
 Default mode is DRY RUN; pass --apply after testing pin assignments.
 """
 import argparse
@@ -174,6 +175,7 @@ class FertilizerPump:
         self.active = False
         self.pulse_request_id = None
         self.generation = 0  # invalidate callbacks from an older pump pulse
+        self.last_published = None  # status.fertilizer_pump_status, only in LIVE mode
         if apply:
             # The freshly claimed line is initialized HIGH/OFF. A previous
             # interrupted run must never display as still running.
@@ -183,6 +185,32 @@ class FertilizerPump:
                         "UPDATE fertilizer_pump SET pulse_state='interrupted',"
                         "pulse_finished_at=NOW(3) WHERE id=1 AND pulse_state='running'"
                     )
+
+    def sync_status(self):
+        """Mirror commanded GPIO pump state to the existing status singleton.
+
+        Never read this field as a command to energize the pump. GPIO is driven
+        only by calibrated schedules and guarded manual requests.
+        Database I/O occurs OUTSIDE the relay lock so it cannot delay the
+        timer-driven automatic OFF. A sub-second run can be momentarily stale.
+        """
+        if not self.apply:
+            return
+        with self.lock:
+            desired = "checked" if self.active else "unchecked"
+        if self.last_published == desired:
+            return
+        with database() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT COUNT(*) AS n FROM `status`")
+                if cursor.fetchone()["n"] != 1:
+                    raise RuntimeError("Expected one status row for pump sync")
+                cursor.execute(
+                    "UPDATE `status` SET `fertilizer_pump_status`=%s",
+                    (desired,)
+                )
+        self.last_published = desired
+        LOG.info("fertilizer_pump_status => %s (GPIO requested; not flow feedback)",desired)
 
     def record_pulse_end(self, request_id, status):
         if request_id is None or not self.apply:
@@ -453,6 +481,10 @@ def main():
         except (pymysql.MySQLError,OSError,RuntimeError,ValueError,KeyError):
             LOG.exception('Fertilizer pump scheduling failed')
         try:
+            pump.sync_status()
+        except (pymysql.MySQLError,OSError,RuntimeError,ValueError,KeyError):
+            LOG.exception("Unable to synchronize fertilizer_pump_status")
+        try:
             cooler_on = update_cooler(request, cooler_on, args.apply)
         except (OSError, RuntimeError, ValueError):
             LOG.exception("Cooler update failed")
@@ -464,6 +496,10 @@ def main():
         time.sleep(args.interval)
     finally:
         pump.close()
+        try:
+            pump.sync_status()
+        except (pymysql.MySQLError,OSError,RuntimeError,ValueError,KeyError):
+            LOG.exception("Could not record fertilizer pump OFF during shutdown")
         if request is not None:
             # Before releasing, ask for OFF. Released line levels still are not
             # guaranteed by the kernel; use external hardware failsafes.
