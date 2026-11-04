@@ -316,10 +316,7 @@ def _fertilizer_request(kind):
                     if age is None or age < 18:
                         return jsonify(error='Another pump request is pending'),409
                     cur.execute(
-                        "UPDATE fertilizer_pump SET "
-                        "manual_processed_id=manual_request_id,"
-                        "pulse_state=IF(pulse_state='queued','skipped',pulse_state),"
-                        "pulse_finished_at=IF(pulse_state='queued',NOW(3),pulse_finished_at) "
+                        "UPDATE fertilizer_pump SET manual_processed_id=manual_request_id "
                         "WHERE id=1 AND manual_processed_id<manual_request_id"
                     )
                 new_id=int(row['manual_request_id'])+1
