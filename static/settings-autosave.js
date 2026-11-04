@@ -42,6 +42,7 @@
         const data=await response.json().catch(()=>({}));
         if(!response.ok)throw new Error(data.error||'HTTP '+response.status);
         input.dataset.saved=value;
+        document.dispatchEvent(new CustomEvent('aquacore:setting-saved',{detail:{field,value}}));
         say('Saved '+field.replaceAll('_',' '),'saved');
       }catch(e){
         input.value=old;
