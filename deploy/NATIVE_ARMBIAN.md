@@ -288,3 +288,21 @@ sudo systemctl start aquacore.service aquacore-relays.service
 Example: 20 mL in 10 seconds = 2 mL/s; a 6 mL dose runs for 3 seconds.
 
 Manual **Dose now** and automatic daily dosing both convert mL to seconds using the saved calibration. The runtime must be between 0.25 and 60 seconds; doses over 100 mL are rejected. A test pulse is always 10 seconds. Manual dosing is an **extra** dose; cooldown is 2 minutes across manual and calibration requests. If the pump, tubing, liquid viscosity, reservoir height or power supply changes, recalibrate. Volume accuracy depends on pump/tube priming and real-world flow. Do not use this as a safety-critical dosing system; add physical safeguards against siphoning and unexpected output.
+
+## Live pump calibration progress bar (relay-worker status)
+
+The Settings page displays **Waiting for relay worker** (indeterminate) when a calibration request is queued, an animated **0–100% / 10-second** progress bar after the relay worker writes the running state and activates its GPIO output, and **Completed** only after the relay worker has requested relay OFF. A status result is not physical proof that liquid was delivered. Interrupted, skipped, failed or unconfirmed pulses never count as calibration.
+
+**Upgrade existing installations** (requires the earlier `fertilizer_pump.sql`, `fertilizer_manual.sql`, and `fertilizer_ml.sql` migrations):
+```bash
+sudo systemctl stop aquacore.service aquacore-relays.service
+sudo -u aquacore git -C /opt/aquacore pull --ff-only origin master
+sudo mariadb _AquaCore_ < /opt/aquacore/deploy/sql/fertilizer_progress.sql
+sudo mariadb _AquaCore_ -e 'SELECT pulse_state,pulse_kind,pulse_duration_seconds FROM fertilizer_pump WHERE id=1;'
+sudo systemctl start aquacore.service aquacore-relays.service
+sudo journalctl -u aquacore-relays.service -n 30 --no-pager
+```
+
+**Why Manual dose is unavailable:** calibration must have been saved (`ml_per_second` exists) and `dose_ml` must be greater than 0; an admin login is required. The button is also briefly blocked during the cooldown and while a pending manual request is being processed. You can use **Run test** without a prior calibration. Saving a new daily dose automatically refreshes the manual switch once the save request completes.
+
+The new progress endpoint is `GET /api/fertilizer/status` (login required), using DB-server timestamps and relay worker states. The bar is not started when HTTP merely accepts a queued request. The flow-calibration Save button requires a completed, unused test recorded by the worker. The progress UI can reconnect after reloading the page within the calibration validation window.
