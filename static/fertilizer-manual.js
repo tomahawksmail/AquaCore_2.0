@@ -167,7 +167,8 @@
       stopTicker();
       showProgress('10-second test finished — measure the collected liquid',100,runDuration,false);
       wrapper.dataset.state='complete';
-      calibrationReady = result.request_age_seconds <= 900;
+      calibrationReady = result.request_age_seconds <= 900 &&
+        result.calibration_saved_request_id !== result.request_id;
       finishRequest('Calibration test completed by relay worker. Enter the collected ml and Save.');
     } else if (result.state === 'completed') {
       finishRequest('Manual dose finished (GPIO OFF command recorded).');
