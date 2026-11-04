@@ -1,3 +1,6 @@
+-- LEGACY ONLY: for historical installations using the old fertilizer_pump table.
+-- Do NOT run on unified options/status installations.
+-- Use fertilizer_options.sql; optionally copy the old data via fertilizer_options_copy.sql.
 -- Upgrade the existing fertilizer pump to volume-based dosing.
 -- Apply with aquacore.service and aquacore-relays.service STOPPED.
 -- Existing duration_seconds is retained for backward compatibility but IGNORED.
