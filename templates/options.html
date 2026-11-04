@@ -123,9 +123,10 @@
           </label>
           <div class="device-manual">
             <span>Manual dose</span>
-            <label class="ios-switch" aria-label="Request one extra fertilizer dose">
+            <label class="ios-switch" aria-label="Manually start or stop fertilizer pump (30-second safety cutoff)"
+                   title="Manual ON/OFF; automatic OFF after 30 seconds. Volume is not measured.">
               <input id="fertilizer-dose-now" type="checkbox"
-                     {% if session.get('role')|int != 1 or not fertilizer.dose_ml or not fertilizer.ml_per_second %}disabled{% endif %}>
+                     {% if session.get('role')|int != 1 %}disabled{% endif %}>
               <span class="switch-track" aria-hidden="true"></span>
             </label>
           </div>
@@ -194,5 +195,5 @@
 <script>window.AQUACORE_CSRF = {{ csrf_token()|tojson }};</script>
 <script defer src="{{ url_for('static', filename='controls.js') }}"></script>
 <script defer src="{{ url_for('static', filename='settings-autosave.js', v='20261104-calibration-modal') }}"></script>
-<script defer src="{{ url_for('static', filename='fertilizer-manual.js', v='20261104-calibration-modal') }}"></script>
+<script defer src="{{ url_for('static', filename='fertilizer-manual.js', v='20261104-manual-onoff-progress') }}"></script>
 {% endblock %}
