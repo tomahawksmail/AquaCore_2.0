@@ -268,12 +268,12 @@ def save_option_field():
     except (ValueError,OverflowError,TypeError,__import__('decimal').InvalidOperation):
         return jsonify(error='Invalid value'),400
     if field == 'fertilizer_dose_ml' and float(parsed) > 0:
-        config=query('SELECT ml_per_second FROM fertilizer_pump WHERE id=1',one=True)
+        config=query('SELECT fertilizer_ml_per_second AS ml_per_second FROM options LIMIT 1',one=True)
         if config and config['ml_per_second'] is not None and calibrated_seconds(parsed,config['ml_per_second']) is None:
             return jsonify(error='Dose exceeds the 60-second pump limit for current calibration'),400
     if field in pump_fields:
-        column='start_time' if field=='fertilizer_time' else 'dose_ml'
-        mutate('UPDATE fertilizer_pump SET `'+column+'`=%s WHERE id=1',(parsed,))
+        column='fertilizer_start_time' if field=='fertilizer_time' else 'fertilizer_dose_ml'
+        mutate('UPDATE options SET `'+column+'`=%s LIMIT 1',(parsed,))
     else:
         mutate('UPDATE options SET `'+field+'`=%s LIMIT 1',(parsed,))
     response=jsonify(ok=True,field=field,value=parsed)
@@ -288,9 +288,12 @@ def _fertilizer_request(kind):
         try:
             with con.cursor() as cur:
                 cur.execute(
-                    'SELECT dose_ml,ml_per_second,manual_request_id,manual_processed_id,'
-                    'manual_requested_at,NOW() AS now_time '
-                    'FROM fertilizer_pump WHERE id=1 FOR UPDATE'
+                    'SELECT fertilizer_dose_ml AS dose_ml,'
+                    'fertilizer_ml_per_second AS ml_per_second,'
+                    'fertilizer_manual_request_id AS manual_request_id,'
+                    'fertilizer_manual_processed_id AS manual_processed_id,'
+                    'fertilizer_manual_requested_at AS manual_requested_at,'
+                    'NOW() AS now_time FROM options LIMIT 1 FOR UPDATE'
                 )
                 row=cur.fetchone()
                 if row is None:
@@ -320,16 +323,20 @@ def _fertilizer_request(kind):
                     if age is None or age < 18:
                         return jsonify(error='Another pump request is pending'),409
                     cur.execute(
-                        "UPDATE fertilizer_pump SET manual_processed_id=manual_request_id "
-                        "WHERE id=1 AND manual_processed_id<manual_request_id"
+                        "UPDATE options SET "
+                        "fertilizer_manual_processed_id=fertilizer_manual_request_id "
+                        "WHERE fertilizer_manual_processed_id<fertilizer_manual_request_id"
                     )
                 new_id=int(row['manual_request_id'])+1
                 cur.execute(
-                    'UPDATE fertilizer_pump SET manual_request_id=%s,'
-                    'manual_duration_seconds=%s,manual_requested_at=NOW(),manual_kind=%s,'
-                    "pulse_request_id=%s,pulse_kind=%s,pulse_state='queued',"
-                    'pulse_started_at=NULL,pulse_finished_at=NULL,pulse_duration_seconds=%s '
-                    'WHERE id=1',
+                    'UPDATE options SET fertilizer_manual_request_id=%s,'
+                    'fertilizer_manual_duration_seconds=%s,'
+                    'fertilizer_manual_requested_at=NOW(),fertilizer_manual_kind=%s,'
+                    "fertilizer_pulse_request_id=%s,fertilizer_pulse_kind=%s,"
+                    "fertilizer_pulse_state='queued',"
+                    'fertilizer_pulse_started_at=NULL,'
+                    'fertilizer_pulse_finished_at=NULL,'
+                    'fertilizer_pulse_duration_seconds=%s ',
                     (new_id,duration,kind,new_id,kind,duration)
                 )
                 cur.execute(
@@ -351,15 +358,23 @@ def _fertilizer_request(kind):
 def fertilizer_pulse_status():
     """Progress reported from relay worker GPIO commands (not flow feedback)."""
     row=query(
-        "SELECT dose_ml,ml_per_second,manual_request_id,manual_processed_id,"
-        "manual_requested_at,calibration_saved_request_id,"
-        "pulse_request_id,pulse_kind,pulse_state,"
-        "pulse_duration_seconds,pulse_started_at,pulse_finished_at,"
-        "TIMESTAMPDIFF(MICROSECOND,pulse_started_at,NOW(3))/1000000.0 "
+        "SELECT fertilizer_dose_ml AS dose_ml,"
+        "fertilizer_ml_per_second AS ml_per_second,"
+        "fertilizer_manual_request_id AS manual_request_id,"
+        "fertilizer_manual_processed_id AS manual_processed_id,"
+        "fertilizer_manual_requested_at AS manual_requested_at,"
+        "fertilizer_calibration_saved_request_id AS calibration_saved_request_id,"
+        "fertilizer_pulse_request_id AS pulse_request_id,"
+        "fertilizer_pulse_kind AS pulse_kind,"
+        "fertilizer_pulse_state AS pulse_state,"
+        "fertilizer_pulse_duration_seconds AS pulse_duration_seconds,"
+        "fertilizer_pulse_started_at AS pulse_started_at,"
+        "fertilizer_pulse_finished_at AS pulse_finished_at,"
+        "TIMESTAMPDIFF(MICROSECOND,fertilizer_pulse_started_at,NOW(3))/1000000.0 "
         "AS elapsed_seconds,"
-        "TIMESTAMPDIFF(MICROSECOND,manual_requested_at,NOW(3))/1000000.0 "
+        "TIMESTAMPDIFF(MICROSECOND,fertilizer_manual_requested_at,NOW(3))/1000000.0 "
         "AS request_age_seconds "
-        "FROM fertilizer_pump WHERE id=1",one=True
+        "FROM options LIMIT 1",one=True
     )
     if row is None:
         return jsonify(error='Fertilizer configuration missing'),404
@@ -415,8 +430,11 @@ def manual_pump_stop():
         try:
             with con.cursor() as cur:
                 cur.execute(
-                    'SELECT manual_request_id,pulse_request_id,pulse_kind,'
-                    'pulse_state FROM fertilizer_pump WHERE id=1 FOR UPDATE'
+                    'SELECT fertilizer_manual_request_id AS manual_request_id,'
+                    'fertilizer_pulse_request_id AS pulse_request_id,'
+                    'fertilizer_pulse_kind AS pulse_kind,'
+                    'fertilizer_pulse_state AS pulse_state '
+                    'FROM options LIMIT 1 FOR UPDATE'
                 )
                 row=cur.fetchone()
                 if not row:
@@ -426,9 +444,9 @@ def manual_pump_stop():
                     return jsonify(error='No manual pump session to stop'),409
                 if row['pulse_state'] in ('queued','running'):
                     cur.execute(
-                        "UPDATE fertilizer_pump SET pulse_state='stop_requested' "
-                        "WHERE id=1 AND pulse_request_id=%s "
-                        "AND pulse_state IN ('queued','running')",
+                        "UPDATE options SET fertilizer_pulse_state='stop_requested' "
+                        "WHERE fertilizer_pulse_request_id=%s "
+                        "AND fertilizer_pulse_state IN ('queued','running')",
                         (row['pulse_request_id'],)
                     )
                 elif row['pulse_state'] not in ('stop_requested','stopped','completed'):
@@ -460,11 +478,17 @@ def finish_fertilizer_calibration():
         try:
             with con.cursor() as cur:
                 cur.execute(
-                    'SELECT manual_request_id,manual_processed_id,manual_kind,'
-                    'manual_requested_at,calibration_saved_request_id,'
-                    'pulse_state,pulse_kind,pulse_request_id,pulse_finished_at,'
-                    'pulse_duration_seconds,NOW() AS now_time '
-                    'FROM fertilizer_pump WHERE id=1 FOR UPDATE'
+                    'SELECT fertilizer_manual_request_id AS manual_request_id,'
+                    'fertilizer_manual_processed_id AS manual_processed_id,'
+                    'fertilizer_manual_kind AS manual_kind,'
+                    'fertilizer_manual_requested_at AS manual_requested_at,'
+                    'fertilizer_calibration_saved_request_id AS calibration_saved_request_id,'
+                    'fertilizer_pulse_state AS pulse_state,'
+                    'fertilizer_pulse_kind AS pulse_kind,'
+                    'fertilizer_pulse_request_id AS pulse_request_id,'
+                    'fertilizer_pulse_finished_at AS pulse_finished_at,'
+                    'fertilizer_pulse_duration_seconds AS pulse_duration_seconds,'
+                    'NOW() AS now_time FROM options LIMIT 1 FOR UPDATE'
                 )
                 row=cur.fetchone()
                 if row is None:
@@ -486,8 +510,8 @@ def finish_fertilizer_calibration():
                 if rate is None:
                     return jsonify(error='Enter measured 0.1–500 ml for the completed test'),400
                 cur.execute(
-                    'UPDATE fertilizer_pump SET ml_per_second=%s,'
-                    'calibration_saved_request_id=%s WHERE id=1',
+                    'UPDATE options SET fertilizer_ml_per_second=%s,'
+                    'fertilizer_calibration_saved_request_id=%s',
                     (str(rate),row['manual_request_id'])
                 )
                 cur.execute(
@@ -539,7 +563,12 @@ def options():
     statuses=query('SELECT * FROM `status` LIMIT 1',one=True) or {}
     overrides=query('SELECT device,until_at FROM manual_overrides WHERE until_at > NOW()')
     manual={r['device']:r['until_at'] for r in overrides}
-    fertilizer=query('SELECT start_time,duration_seconds,last_run_date FROM fertilizer_pump WHERE id=1',one=True) or {}
+    fertilizer={
+        'start_time':current.get('fertilizer_start_time'),
+        'dose_ml':current.get('fertilizer_dose_ml'),
+        'ml_per_second':current.get('fertilizer_ml_per_second'),
+        'last_run_date':current.get('fertilizer_last_run_date')
+    }
     return render_template('options.html', options=current,devices=DEVICES,settings=SETTINGS,
                            statuses=statuses,manual=manual,fertilizer=fertilizer)
 
