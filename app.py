@@ -296,7 +296,11 @@ def _fertilizer_request(kind):
                 if row is None:
                     return jsonify(error='Fertilizer pump is not configured'),409
                 if kind == 'calibration':
-                    duration=float(CALIBRATION_SECONDS)
+                    payload=request.get_json(silent=True)
+                    requested=payload.get('duration_seconds') if isinstance(payload,dict) else None
+                    if type(requested) is not int or not 2 <= requested <= 60:
+                        return jsonify(error='Test duration must be 2–60 whole seconds'),400
+                    duration=float(requested)
                 else:
                     duration=calibrated_seconds(row['dose_ml'],row['ml_per_second'])
                     if duration is None:
@@ -391,16 +395,14 @@ def finish_fertilizer_calibration():
     payload=request.get_json(silent=True)
     if not isinstance(payload,dict):
         return jsonify(error='Expected measured_ml'),400
-    rate=calibrate_rate(payload.get('measured_ml'))
-    if rate is None:
-        return jsonify(error='Enter measured volume 0.1–500 ml from the 10-second test'),400
     with db() as con:
         try:
             with con.cursor() as cur:
                 cur.execute(
                     'SELECT manual_request_id,manual_processed_id,manual_kind,'
                     'manual_requested_at,calibration_saved_request_id,'
-                    'pulse_state,pulse_kind,pulse_request_id,pulse_finished_at,NOW() AS now_time '
+                    'pulse_state,pulse_kind,pulse_request_id,pulse_finished_at,'
+                    'pulse_duration_seconds,NOW() AS now_time '
                     'FROM fertilizer_pump WHERE id=1 FOR UPDATE'
                 )
                 row=cur.fetchone()
@@ -417,6 +419,11 @@ def finish_fertilizer_calibration():
                         or row['manual_request_id'] == row['calibration_saved_request_id']
                         or not 0 <= age <= 900):
                     return jsonify(error='No completed, recent 10-second calibration test to save'),409
+                # Use the DB-recorded completed test duration, never a
+                # client-supplied divisor or the old fixed 10-second value.
+                rate=calibrate_rate(payload.get('measured_ml'),row['pulse_duration_seconds'])
+                if rate is None:
+                    return jsonify(error='Enter measured 0.1–500 ml for the completed test'),400
                 cur.execute(
                     'UPDATE fertilizer_pump SET ml_per_second=%s,'
                     'calibration_saved_request_id=%s WHERE id=1',
@@ -424,7 +431,7 @@ def finish_fertilizer_calibration():
                 )
                 cur.execute(
                     'INSERT INTO loging (`User`,`Event`,`Datetime`) VALUES (%s,%s,NOW())',
-                    (session['user'],f'Pump calibrated: {rate} ml/s (10-second test)')
+                    (session['user'],f"Pump calibrated: {rate} ml/s ({row['pulse_duration_seconds']}s test)")
                 )
             con.commit()
         except Exception:
