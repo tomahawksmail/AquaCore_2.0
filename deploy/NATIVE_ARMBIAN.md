@@ -306,3 +306,25 @@ sudo journalctl -u aquacore-relays.service -n 30 --no-pager
 **Why Manual dose is unavailable:** calibration must have been saved (`ml_per_second` exists) and `dose_ml` must be greater than 0; an admin login is required. The button is also briefly blocked during the cooldown and while a pending manual request is being processed. You can use **Run test** without a prior calibration. Saving a new daily dose automatically refreshes the manual switch once the save request completes.
 
 The new progress endpoint is `GET /api/fertilizer/status` (login required), using DB-server timestamps and relay worker states. The bar is not started when HTTP merely accepts a queued request. The flow-calibration Save button requires a completed, unused test recorded by the worker. The progress UI can reconnect after reloading the page within the calibration validation window.
+
+## Compact fertilizer calibration window (Nov 2026)
+
+Under **Settings → Equipment & lighting → Fertilizer pump**, there is now **one** fertilizer dosing row, styled like the other devices. Click **Calibration** beside the fertilizer name to open a compact modal. The separate pump-calibration device row has been removed.
+
+In the window:
+1. Prime the pump; route water to a graduated measuring cup **outside the aquarium**.
+2. Select **Test duration** (2–60 whole seconds; 10 seconds is the suggested default).
+3. Click **Run test**. The bar waits until the relay worker reports GPIO activation, counts the selected duration, and reaches 100% only after the worker records the OFF command.
+4. Enter **Collected volume (ml)**, then **Save calibration**. The backend calculates `ml_per_second = measured_ml / actual_completed_pulse_duration_seconds` from the database record, not from a client guess.
+5. Validate with a second measured dose before attaching the aquarium fertilizer feed.
+
+Previously queued or stale tests cannot be saved and are not automatically displayed when reopening the modal. A failed/stale test means the relay worker likely did not confirm that pulse: check `sudo systemctl status aquacore-relays.service` and `sudo journalctl -u aquacore-relays.service -n 60 --no-pager`.
+
+This user-interface/calibration calculation update uses **existing** `fertilizer_pump` columns and requires **no additional SQL migration**, provided that `fertilizer_progress.sql` has already been applied.
+
+**Update**:
+```bash
+sudo -u aquacore git -C /opt/aquacore pull --ff-only origin master
+sudo systemctl restart aquacore.service
+```
+If relay worker code is also behind the revision adding pump progress, restart `aquacore-relays.service` after ensuring its database migration is applied.
