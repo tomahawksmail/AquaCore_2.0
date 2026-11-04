@@ -96,7 +96,7 @@
               <strong>Fertilizer dosing</strong>
               <span class="control-state" id="fertilizer-dose-state">
                 {% if not fertilizer.ml_per_second %}
-                  Calibration required
+                  Auto dose needs calibration · Manual pump available
                 {% elif not fertilizer.dose_ml %}
                   Scheduled · OFF
                 {% else %}
