@@ -1,3 +1,55 @@
+## Fertilizer database consolidation — use options + status (November 2026)
+
+**This section supersedes the older fertilizer_pump-table installation and migration examples later in this document. The running application and relay worker no longer read that old table.**
+
+- `options.fertilizer_start_time`, `options.fertilizer_dose_ml`, `options.fertilizer_ml_per_second` store schedule and flow.
+- Remaining `options.fertilizer_*` columns keep request IDs, completion dates, pulse state and calibration progress.
+- `status.fertilizer_pump_status` is the relay worker's requested ON/OFF state: `checked` when commanded ON, `unchecked` when commanded OFF. This is **not** a hardware feedback signal or verified flow measurement.
+
+### Safe upgrade (with existing fertilizer_pump data)
+
+1. Keep the pump's outlet disconnected from the aquarium. Stop both services before migrating.
+2. Make a database backup, pull the new code and add the new options columns.
+3. Copy the old table's values **once** while stopped. This intentionally marks old queued requests as processed, so they cannot replay.
+4. Verify the copied columns and service logs. Only after successful testing should you drop the legacy table.
+
+```bash
+sudo systemctl stop aquacore.service aquacore-relays.service
+sudo mariadb-dump _AquaCore_ > ~/aquacore-before-fertilizer-options.sql
+sudo -u aquacore git -C /opt/aquacore pull --ff-only origin master
+
+# Run even if the previous fertilizer_pump table was already dropped:
+sudo mariadb _AquaCore_ < /opt/aquacore/deploy/sql/fertilizer_options.sql
+
+# ONLY if old fertilizer_pump still exists; do this once before deleting it:
+sudo mariadb _AquaCore_ < /opt/aquacore/deploy/sql/fertilizer_options_copy.sql
+
+sudo mariadb _AquaCore_ -e "
+  SELECT fertilizer_start_time,fertilizer_dose_ml,
+         fertilizer_ml_per_second,fertilizer_manual_request_id,
+         fertilizer_manual_processed_id,fertilizer_pulse_state
+    FROM options;"
+sudo mariadb _AquaCore_ -e "
+  SELECT fertilizer_pump_status FROM status;"
+
+sudo systemctl start aquacore.service aquacore-relays.service
+sudo systemctl status aquacore.service aquacore-relays.service --no-pager
+sudo journalctl -u aquacore-relays.service -n 60 --no-pager
+```
+
+**If the old table was already deleted**, omit `fertilizer_options_copy.sql`. New columns default to a disabled 0 mL daily dose and no saved pump calibration, so re-calibrate after confirming the relay worker works. The Manual ON/OFF switch remains available independently of calibration, with a 30-second automatic cutoff. **Never** run the legacy `fertilizer_pump.sql`, `fertilizer_manual.sql`, `fertilizer_ml.sql` or `fertilizer_progress.sql` migrations on new installations.
+
+After verifying the web Settings page, a short manual ON/OFF test with a water-filled measuring cup, and the new calibration progress, **you may remove the old table**:
+
+```bash
+# Only after copying/backing up data and confirming both services work:
+sudo mariadb _AquaCore_ -e 'DROP TABLE IF EXISTS `fertilizer_pump`;'
+```
+
+No new service is needed. The relay controller owns GPIO 233 and publishes its commanded state to `status`. The settings popup and `/api/fertilizer/status` now read `options`. The old SQL files remain in GitHub only as historical references.
+
+---
+
 # AquaCore 2.0 — Native Armbian deployment (NO Docker)
 
 **Status: deployment instructions in testing; validate on Orange Pi Zero 2W / Armbian 26.11 before controlling powered loads.**
