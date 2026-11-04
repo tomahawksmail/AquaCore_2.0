@@ -101,9 +101,9 @@
                  value="{{ fertilizer.start_time|string|truncate(5, True, '') if fertilizer.start_time is not none else '12:00' }}"
                  {% if session.get('role')|int != 1 %}disabled{% endif %}>
         </label>
-        <label class="device-time" for="fertilizer-seconds">
+        <label class="device-time" for="fertilizer-ml">
           <span>Daily dose (ml)</span>
-          <input id="fertilizer-seconds" name="fertilizer_dose_ml" type="number"
+          <input id="fertilizer-ml" name="fertilizer_dose_ml" type="number"
                  min="0" max="100" step="0.1"
                  value="{{ fertilizer.dose_ml if fertilizer.dose_ml is not none else 0 }}"
                  {% if session.get('role')|int != 1 %}disabled{% endif %}>
