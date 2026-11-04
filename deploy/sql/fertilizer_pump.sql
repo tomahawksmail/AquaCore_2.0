@@ -1,0 +1,11 @@
+-- AquaCore fertilizer dosing pump (inactive until a nonzero duration is configured).
+-- GPIO: gpiochip1 offset 233 (PH9 / Orange Pi header pin 26).
+-- Execute once: sudo mariadb _AquaCore_ < /opt/aquacore/deploy/sql/fertilizer_pump.sql
+CREATE TABLE IF NOT EXISTS `fertilizer_pump` (
+  `id` TINYINT UNSIGNED NOT NULL PRIMARY KEY,
+  `start_time` TIME NOT NULL DEFAULT '12:00:00',
+  `duration_seconds` TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  `last_run_date` DATE DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+INSERT IGNORE INTO `fertilizer_pump` (`id`,`start_time`,`duration_seconds`)
+VALUES (1,'12:00:00',0);

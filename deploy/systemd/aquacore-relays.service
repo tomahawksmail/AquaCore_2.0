@@ -1,0 +1,25 @@
+[Unit]
+Description=AquaCore hardware relays using libgpiod 2
+Wants=network-online.target
+After=network-online.target mariadb.service
+
+[Service]
+# Tested GPIO mapping (gpiochip1): CO2=228, Oxygen=262, Main=229,
+# Backlight=272, Plant=76, UV=256, cooler=232, fertilizer pump=233.
+# Relay inputs are active-low. No mains load until verified.
+Type=simple
+User=root
+WorkingDirectory=/opt/aquacore
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=/etc/aquacore/web.env
+ExecStart=/opt/aquacore/.venv/bin/python /opt/aquacore/relay_controller.py --apply
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

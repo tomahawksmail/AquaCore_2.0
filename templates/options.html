@@ -88,8 +88,42 @@
     {% endfor %}
     <p class="control-disclaimer"><i class="mdi mdi-information-outline" aria-hidden="true"></i> Changes to times and water parameters save automatically. Manual switches take effect immediately and last until the next scheduled transition.</p>
   </section>
+  <section class="card settings-card">
+    <div class="settings-section-head">
+      <span class="settings-section-icon"><i class="mdi mdi-water-pump" aria-hidden="true"></i></span>
+      <div>
+        <h2>Plant fertilizer pump</h2>
+        <p>One automatic dose per day. GPIO 233 (PH9, physical pin 26). The pump stops automatically after the selected duration.</p>
+      </div>
+    </div>
+    <div class="device-rows">
+      <div class="device-settings-row">
+        <div class="device-settings-name">
+          <span class="settings-device-icon"><i class="mdi mdi-flask-outline" aria-hidden="true"></i></span>
+          <div><strong>Fertilizer dosing</strong><span class="control-state">Daily timed pulse; 0 seconds disables dosing</span></div>
+        </div>
+        <label class="device-time" for="fertilizer-time">
+          <span>Activation time</span>
+          <input id="fertilizer-time" name="fertilizer_time" type="time"
+                 value="{{ fertilizer.start_time|string|truncate(5, True, '') if fertilizer.start_time is not none else '12:00' }}"
+                 {% if session.get('role')|int != 1 %}disabled{% endif %}>
+        </label>
+        <label class="device-time" for="fertilizer-seconds">
+          <span>Run duration (seconds)</span>
+          <input id="fertilizer-seconds" name="fertilizer_duration_seconds" type="number"
+                 min="0" max="60" step="1"
+                 value="{{ fertilizer.duration_seconds if fertilizer.duration_seconds is not none else 0 }}"
+                 {% if session.get('role')|int != 1 %}disabled{% endif %}>
+        </label>
+      </div>
+    </div>
+    <p class="control-disclaimer"><i class="mdi mdi-information-outline" aria-hidden="true"></i>
+      Set 0 seconds to disable. Maximum 60 seconds per day. Missed dosing times are skipped, not replayed after reboot.
+      Pump duration is not a guaranteed liquid volume; calibrate delivered mL separately.
+    </p>
+  </section>
 </form>
 <script>window.AQUACORE_CSRF = {{ csrf_token()|tojson }};</script>
 <script defer src="{{ url_for('static', filename='controls.js') }}"></script>
-<script defer src="{{ url_for('static', filename='settings-autosave.js', v='20261023-status3s') }}"></script>
+<script defer src="{{ url_for('static', filename='settings-autosave.js', v='20261104-fertilizer-autosave') }}"></script>
 {% endblock %}

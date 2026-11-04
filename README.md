@@ -65,3 +65,24 @@ Validate against your real MariaDB schema (`SHOW CREATE TABLE options; SHOW CREA
 The aquarium overview now includes **temperature, pH and TDS** charts with 24h / 7d / 30d / 90d selectors. Data comes from the existing `data` table via the authenticated `GET /api/history?period=24h` endpoint. MariaDB performs time-bucket aggregation (up to ~300 chart points per series), so it does not need to send the full raw history to a phone. Missing sensor readings are not filled with invented values. Charts update every minute while the tab is visible. They use local SVG/JavaScript (no CDN or additional pip dependencies), and they adapt to screen width.
 
 **Update an existing installation:** replace `app.py`, `templates/dashboard.html`, and `static/style.css`, and add `static/charts.js`. No database migration is needed. Restart Flask. Testing requires a running MariaDB with real measurements.
+
+## Verified Orange Pi relay GPIO mapping (gpiochip1)
+
+AquaCore relay hardware uses active-low outputs. The GPIO assignments verified on
+Orange Pi Zero 2W are:
+
+| Equipment | gpiochip1 line | SoC pin | Physical header pin |
+| --- | ---: | --- | ---: |
+| CO₂ | 228 | PH4 | 18 |
+| Oxygen | 262 | PI6 | 22 |
+| Main light | 229 | PH5 | 24 |
+| Backlight | 272 | PI16 | 37 |
+| Plant light | 76 | PC12 | 36 |
+| UV | 256 | PI0 | 29 |
+| CPU cooler (>70°C ON, <=65°C OFF) | 232 | PH8 | 21 |
+| Fertilizer dosing pump (timed daily pulse) | 233 | PH9 | 26 |
+
+Unassigned GPIO lines: PH6/230, PH7/231.
+
+Fertilizer pump schedule: `fertilizer_pump` table (see `deploy/sql/fertilizer_pump.sql`), configured under Settings. Default duration 0 seconds (disabled), maximum duration 60 seconds, one daily run only. The relay worker owns this output; no additional process or systemd unit is needed.
+See `deploy/NATIVE_ARMBIAN.md` for native systemd deployment.
