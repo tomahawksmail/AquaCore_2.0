@@ -1,5 +1,5 @@
 -- Run with aquacore.service and aquacore-relays.service STOPPED.
--- Requires the existing options singleton and status.fertilizer_pump_status.
+-- Requires the existing options singleton and status table.
 -- Safe to rerun. New installations default to OFF and uncalibrated.
 -- Does not read or drop the old fertilizer_pump table.
 ALTER TABLE `options`
@@ -19,3 +19,8 @@ ALTER TABLE `options`
   ADD COLUMN IF NOT EXISTS `fertilizer_pulse_started_at` DATETIME(3) DEFAULT NULL,
   ADD COLUMN IF NOT EXISTS `fertilizer_pulse_finished_at` DATETIME(3) DEFAULT NULL,
   ADD COLUMN IF NOT EXISTS `fertilizer_pulse_duration_seconds` DECIMAL(6,2) NOT NULL DEFAULT 0;
+
+-- This already exists in your installation; IF NOT EXISTS keeps it idempotent.
+ALTER TABLE `status`
+  ADD COLUMN IF NOT EXISTS `fertilizer_pump_status`
+  VARCHAR(10) NOT NULL DEFAULT 'unchecked';
