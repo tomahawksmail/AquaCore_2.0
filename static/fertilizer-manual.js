@@ -43,7 +43,7 @@
   }
   function updateUI() {
     const time=timeInput.dataset.saved ?? timeInput.value;
-    const schedule=!calibrated?'Calibration required':
+    const schedule=!calibrated?'Auto dose needs calibration · Manual pump available':
       !doseValid()?'Scheduled · OFF':
       'Scheduled · '+(time||'--:--')+' · '+valueMl()+' ml';
     doseLabel.textContent=notice || schedule;
