@@ -50,6 +50,7 @@
       }finally{
         input.disabled=false;
         pending--;
+        document.dispatchEvent(new CustomEvent('aquacore:setting-settled',{detail:{field}}));
       }
     });
   }
