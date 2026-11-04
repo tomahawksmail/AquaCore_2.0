@@ -262,3 +262,29 @@ The fertilizer pump now appears under the **Equipment & lighting** card alongsid
 - Manual dose requests add fertilizer **on top of** automatic dosing, so use short test durations with the pump disconnected until the measured delivered volume is established.
 
 If upgrading an existing database, run the new `fertilizer_manual.sql` migration **before starting the new Flask and relay code**. The SQL script can be rerun safely on MariaDB supporting `ADD COLUMN IF NOT EXISTS`.
+
+## Calibrated fertilizer dosing in milliliters (replaces seconds)
+
+**Existing installations:** Stop both `aquacore.service` and `aquacore-relays.service`, update the checkout, then run this migration before restarting either unit:
+```bash
+sudo systemctl stop aquacore.service aquacore-relays.service
+sudo -u aquacore git -C /opt/aquacore pull --ff-only origin master
+sudo mariadb _AquaCore_ < /opt/aquacore/deploy/sql/fertilizer_ml.sql
+sudo mariadb _AquaCore_ -e 'SELECT start_time,dose_ml,ml_per_second FROM fertilizer_pump;'
+sudo systemctl start aquacore.service aquacore-relays.service
+```
+
+**Important:** After migration, `dose_ml=0` and `ml_per_second=NULL` (disabled until calibration). The old `duration_seconds` setting is **ignored**. If starting from an empty DB instead, use the updated `fertilizer_pump.sql` schema. Existing installations must already have `fertilizer_manual.sql` fields.
+
+### Calibrate with a measuring cup
+
+1. Prime the pump and route its tube into a measuring cup **outside the aquarium**.
+2. Open **Settings → Equipment & lighting → Fertilizer pump → Pump calibration**.
+3. Click **Run 10-second test**, then confirm. The request is queued and expires if relay service does not handle it within 15 seconds.
+4. Inspect `sudo journalctl -u aquacore-relays.service -f` to confirm a real 10-second ON/OFF cycle. Wait 28 seconds from request before saving calibration (covers the queue window and pump runtime).
+5. Measure how many mL were collected. Enter that value in **Collected volume (ml)** and click **Save calibration** within 15 minutes of the request.
+6. AquaCore stores `ml_per_second = measured_ml / 10`. Set **Daily dose (ml)**, then do an independent short test into a measuring cup and verify delivery before routing fertilizer into the aquarium.
+
+Example: 20 mL in 10 seconds = 2 mL/s; a 6 mL dose runs for 3 seconds.
+
+Manual **Dose now** and automatic daily dosing both convert mL to seconds using the saved calibration. The runtime must be between 0.25 and 60 seconds; doses over 100 mL are rejected. A test pulse is always 10 seconds. Manual dosing is an **extra** dose; cooldown is 2 minutes across manual and calibration requests. If the pump, tubing, liquid viscosity, reservoir height or power supply changes, recalibrate. Volume accuracy depends on pump/tube priming and real-world flow. Do not use this as a safety-critical dosing system; add physical safeguards against siphoning and unexpected output.
