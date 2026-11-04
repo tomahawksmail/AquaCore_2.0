@@ -301,6 +301,10 @@ def _fertilizer_request(kind):
                     if type(requested) is not int or not 2 <= requested <= 60:
                         return jsonify(error='Test duration must be 2–60 whole seconds'),400
                     duration=float(requested)
+                elif kind == 'manual':
+                    # Priming/maintenance independent of calibration and dose_ml.
+                    # Always capped at 30s; operator can switch OFF sooner.
+                    duration=30.0
                 else:
                     duration=calibrated_seconds(row['dose_ml'],row['ml_per_second'])
                     if duration is None:
@@ -377,6 +381,8 @@ def fertilizer_pulse_status():
         calibrated=row['ml_per_second'] is not None,
         calibration_saved_request_id=int(row['calibration_saved_request_id']),
         dose_ml=float(row['dose_ml'] or 0),
+        manual_on=row['pulse_kind']=='manual' and state in
+            ('queued','running','stop_requested'),
         # 'completed' means the worker issued OFF, not that liquid flowed.
         note='Relay command status only; pumped volume is not measured'
     )
@@ -388,6 +394,50 @@ def fertilizer_pulse_status():
 @logged_in
 def manual_fertilizer_dose():
     return _fertilizer_request('dose')
+
+
+@app.post('/api/fertilizer/manual/start')
+@logged_in
+def manual_pump_start():
+    """Start a bounded 30-second maximum pulse; independent of calibration."""
+    return _fertilizer_request('manual')
+
+
+@app.post('/api/fertilizer/manual/stop')
+@logged_in
+def manual_pump_stop():
+    """Request early OFF for the currently pending/running manual pump."""
+    if int(session.get('role', 0)) != 1:
+        abort(403)
+    with db() as con:
+        try:
+            with con.cursor() as cur:
+                cur.execute(
+                    'SELECT manual_request_id,pulse_request_id,pulse_kind,'
+                    'pulse_state FROM fertilizer_pump WHERE id=1 FOR UPDATE'
+                )
+                row=cur.fetchone()
+                if not row:
+                    return jsonify(error='Fertilizer configuration missing'),409
+                if (row['pulse_kind']!='manual' or
+                        row['manual_request_id']!=row['pulse_request_id']):
+                    return jsonify(error='No manual pump session to stop'),409
+                if row['pulse_state'] in ('queued','running'):
+                    cur.execute(
+                        "UPDATE fertilizer_pump SET pulse_state='stop_requested' "
+                        "WHERE id=1 AND pulse_request_id=%s "
+                        "AND pulse_state IN ('queued','running')",
+                        (row['pulse_request_id'],)
+                    )
+                elif row['pulse_state'] not in ('stop_requested','stopped','completed'):
+                    return jsonify(error='Manual pump is not running'),409
+            con.commit()
+        except Exception:
+            con.rollback()
+            raise
+    response=jsonify(ok=True,note='Relay stop requested; waiting for worker acknowledgment')
+    response.headers['Cache-Control']='no-store'
+    return response
 
 
 @app.post('/api/fertilizer/calibration/start')
