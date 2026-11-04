@@ -10,6 +10,7 @@ from flask import Flask, render_template, request, redirect, url_for, session, f
 from werkzeug.security import check_password_hash, generate_password_hash
 from dotenv import load_dotenv
 from scheduler import next_transition, scheduled_state, SCHEDULE_MAP
+from fertilizer_math import calibrated_seconds, calibrate_rate, CALIBRATION_SECONDS
 
 load_dotenv()
 def local_commit():
@@ -231,17 +232,19 @@ def save_option_field():
     if not isinstance(payload,dict):
         return jsonify(error='Expected JSON object'),400
     field=payload.get('field')
-    pump_fields=('fertilizer_time','fertilizer_duration_seconds')
+    pump_fields=('fertilizer_time','fertilizer_dose_ml')
     if not isinstance(field,str) or field not in SETTINGS and field not in TIME_FIELDS and field not in pump_fields:
         return jsonify(error='Unknown setting'),400
     raw=str(payload.get('value') if payload.get('value') is not None else '').strip()
     if not raw:
         return jsonify(error='A value is required'),400
     try:
-        if field == 'fertilizer_duration_seconds':
-            parsed=int(raw)
-            if str(parsed)!=raw or not 0 <= parsed <= 60:
-                raise ValueError('Duration must be 0–60 seconds')
+        if field == 'fertilizer_dose_ml':
+            from decimal import Decimal
+            parsed=Decimal(raw)
+            if not parsed.is_finite() or not 0 <= parsed <= 100 or parsed.as_tuple().exponent < -2:
+                raise ValueError('Dose must be 0–100 ml with at most two decimals')
+            parsed=str(parsed)
         elif field == 'fertilizer_time':
             parsed=datetime.strptime(raw,'%H:%M').strftime('%H:%M:%S')
         elif field in SETTINGS:
@@ -262,10 +265,10 @@ def save_option_field():
                     return jsonify(error='Minimum must be below maximum'),400
         else:
             parsed=datetime.strptime(raw,'%H:%M').strftime('%H:%M:%S')
-    except (ValueError,OverflowError,TypeError):
+    except (ValueError,OverflowError,TypeError,__import__('decimal').InvalidOperation):
         return jsonify(error='Invalid value'),400
     if field in pump_fields:
-        column='start_time' if field=='fertilizer_time' else 'duration_seconds'
+        column='start_time' if field=='fertilizer_time' else 'dose_ml'
         mutate('UPDATE fertilizer_pump SET `'+column+'`=%s WHERE id=1',(parsed,))
     else:
         mutate('UPDATE options SET `'+field+'`=%s LIMIT 1',(parsed,))
@@ -273,50 +276,108 @@ def save_option_field():
     response.headers['Cache-Control']='no-store'
     return response
 
-@app.post('/api/fertilizer/dose')
-@logged_in
-def manual_fertilizer_dose():
-    """Request one bounded extra dose; GPIO is controlled only by the relay worker."""
+def _fertilizer_request(kind):
+    """Queue a time-bounded GPIO pulse (the Flask process never touches GPIO)."""
     if int(session.get('role', 0)) != 1:
         abort(403)
     with db() as con:
         try:
             with con.cursor() as cur:
-                cur.execute('SELECT duration_seconds,manual_request_id,manual_processed_id,'
-                            'manual_requested_at,NOW() AS now_time '
-                            'FROM fertilizer_pump WHERE id=1 FOR UPDATE')
+                cur.execute(
+                    'SELECT dose_ml,ml_per_second,manual_request_id,manual_processed_id,'
+                    'manual_requested_at,NOW() AS now_time '
+                    'FROM fertilizer_pump WHERE id=1 FOR UPDATE'
+                )
                 row=cur.fetchone()
                 if row is None:
-                    con.rollback()
                     return jsonify(error='Fertilizer pump is not configured'),409
-                duration=int(row['duration_seconds'])
-                if not 1 <= duration <= 60:
-                    con.rollback()
-                    return jsonify(error='Set a run duration from 1 to 60 seconds first'),409
+                if kind == 'calibration':
+                    duration=float(CALIBRATION_SECONDS)
+                else:
+                    duration=calibrated_seconds(row['dose_ml'],row['ml_per_second'])
+                    if duration is None:
+                        return jsonify(error='Calibrate the pump and set an achievable dose (1–60 seconds runtime) first'),409
                 if row['manual_request_id'] != row['manual_processed_id']:
-                    con.rollback()
-                    return jsonify(error='A manual dose is already pending'),409
+                    return jsonify(error='Another pump request is pending'),409
                 last=row['manual_requested_at']
                 if last is not None and (row['now_time']-last).total_seconds() < 120:
-                    con.rollback()
-                    return jsonify(error='Wait 2 minutes before requesting another dose'),429
+                    return jsonify(error='Wait 2 minutes between pump requests'),429
                 cur.execute(
                     'UPDATE fertilizer_pump SET manual_request_id=manual_request_id+1,'
-                    'manual_duration_seconds=%s,manual_requested_at=NOW() WHERE id=1',
-                    (duration,)
+                    'manual_duration_seconds=%s,manual_requested_at=NOW(),manual_kind=%s WHERE id=1',
+                    (duration,kind)
                 )
-                cur.execute('INSERT INTO loging (`User`,`Event`,`Datetime`) '
-                            'VALUES (%s,%s,NOW())',
-                            (session['user'],
-                             f'Manual fertilizer dose requested: {duration} seconds'))
+                cur.execute(
+                    'INSERT INTO loging (`User`,`Event`,`Datetime`) VALUES (%s,%s,NOW())',
+                    (session['user'],f'Fertilizer {kind} pulse requested: {duration:.2f} seconds')
+                )
             con.commit()
         except Exception:
             con.rollback()
             raise
     response=jsonify(queued=True,duration_seconds=duration,
-                     note='Request queued; actual GPIO activation is not yet verified')
+                     note='Queued, not verified delivered. Check relay logs.')
     response.headers['Cache-Control']='no-store'
     return response,202
+
+
+@app.post('/api/fertilizer/dose')
+@logged_in
+def manual_fertilizer_dose():
+    return _fertilizer_request('dose')
+
+
+@app.post('/api/fertilizer/calibration/start')
+@logged_in
+def start_fertilizer_calibration():
+    return _fertilizer_request('calibration')
+
+
+@app.post('/api/fertilizer/calibration/finish')
+@logged_in
+def finish_fertilizer_calibration():
+    if int(session.get('role',0)) != 1:
+        abort(403)
+    payload=request.get_json(silent=True)
+    if not isinstance(payload,dict):
+        return jsonify(error='Expected measured_ml'),400
+    rate=calibrate_rate(payload.get('measured_ml'))
+    if rate is None:
+        return jsonify(error='Enter measured volume 0.1–500 ml from the 10-second test'),400
+    with db() as con:
+        try:
+            with con.cursor() as cur:
+                cur.execute(
+                    'SELECT manual_request_id,manual_processed_id,manual_kind,'
+                    'manual_requested_at,calibration_saved_request_id,NOW() AS now_time '
+                    'FROM fertilizer_pump WHERE id=1 FOR UPDATE'
+                )
+                row=cur.fetchone()
+                if row is None:
+                    return jsonify(error='Missing pump configuration'),409
+                age=((row['now_time']-row['manual_requested_at']).total_seconds()
+                     if row['manual_requested_at'] else -1)
+                if (row['manual_kind'] != 'calibration'
+                        or row['manual_request_id'] != row['manual_processed_id']
+                        or row['manual_request_id'] == row['calibration_saved_request_id']
+                        or not 12 <= age <= 900):
+                    return jsonify(error='No completed, recent 10-second calibration test to save'),409
+                cur.execute(
+                    'UPDATE fertilizer_pump SET ml_per_second=%s,'
+                    'calibration_saved_request_id=%s WHERE id=1',
+                    (str(rate),row['manual_request_id'])
+                )
+                cur.execute(
+                    'INSERT INTO loging (`User`,`Event`,`Datetime`) VALUES (%s,%s,NOW())',
+                    (session['user'],f'Pump calibrated: {rate} ml/s (10-second test)')
+                )
+            con.commit()
+        except Exception:
+            con.rollback()
+            raise
+    response=jsonify(ok=True,ml_per_second=float(rate))
+    response.headers['Cache-Control']='no-store'
+    return response
 
 
 @app.route('/options',methods=['GET','POST'])
