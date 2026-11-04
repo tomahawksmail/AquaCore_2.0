@@ -51,7 +51,7 @@
     const cooling=Date.now()<cooldownUntil;
     manual.checked=manualActive && !stopping;
     // OFF must remain possible even during cooldown while the manual pump runs.
-    manual.disabled=readonly || busy ||
+    manual.disabled=readonly || busy || stopping ||
       (!manualActive && (cooling || activeId!==null));
     manual.title=readonly?'Admin access required':
       manualActive?'Switch OFF to stop; automatic cutoff at 30 seconds':
