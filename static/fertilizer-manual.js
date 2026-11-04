@@ -28,6 +28,7 @@
   let calibrated=rateLabel.textContent.includes('Calibrated:');
   let busy=false;
   let cooldownUntil=0;
+  let cooldownTimer=null;
   let activeId=null;
   let activeKind=null;
   let completedAvailable=false;
@@ -65,6 +66,15 @@
     durationInput.disabled=readonly || busy || activeId !== null;
     saveBtn.disabled=readonly || busy || !completedAvailable ||
       !measuredInput.value || !measuredInput.checkValidity();
+  }
+  function setCooldown(seconds) {
+    const ms=Math.max(0,seconds*1000);
+    cooldownUntil=Date.now()+ms;
+    if(cooldownTimer!==null)clearTimeout(cooldownTimer);
+    if(ms>0)cooldownTimer=setTimeout(()=>{
+      cooldownUntil=0;
+      updateControls();
+    },ms+100);
   }
   function showMessage(message) {
     status.textContent=message;
@@ -128,7 +138,7 @@
     }
     lastResponse=data;
     if(data.request_id>0 && data.request_age_seconds<120){
-      cooldownUntil=Date.now()+Math.max(0,120-data.request_age_seconds)*1000;
+      setCooldown(120-data.request_age_seconds);
     }
     // When opening after a refresh, show only an active or completed unsaved
     // calibration. Old stale/failed requests do not populate the dialog.
@@ -217,7 +227,7 @@
       activeId=data.request_id;
       activeKind='calibration';
       runSeconds=data.duration_seconds;
-      cooldownUntil=Date.now()+120000;
+      setCooldown(120);
       drawProgress('Waiting for relay worker…',null,0);
       showMessage('Test queued. The progress bar starts only after the relay worker confirms GPIO ON.');
       startPolling();
@@ -263,7 +273,7 @@
       const data=await request('/api/fertilizer/dose',{});
       activeId=data.request_id;
       activeKind='dose';
-      cooldownUntil=Date.now()+120000;
+      setCooldown(120);
       setDoseMessage('Manual '+dose+' ml dose queued…');
       startPolling();
     }catch(error){
