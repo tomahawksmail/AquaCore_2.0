@@ -218,6 +218,9 @@ class FertilizerPump:
                 if (now.hour != hour or now.minute != minute or
                         now.second >= 10 or config["last_run_date"] == now.date()):
                     return
+                if not self.apply:
+                    LOG.info('DRY RUN: would activate fertilizer pump for %s seconds', duration)
+                    return
                 # Atomic at-most-once claim; never re-dose after a process restart.
                 cursor.execute(
                     "UPDATE fertilizer_pump SET last_run_date=CURDATE() "
