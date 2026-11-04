@@ -9,6 +9,7 @@
   if (!doseBtn || !testBtn || !saveBtn || !measuredInput || !status) return;
 
   // Jinja renders current flow rate; this UI never assumes an uncalibrated pump.
+  const readonly=testBtn.disabled || saveBtn.disabled;
   let calibrated=rateLabel.textContent.includes('Calibrated:');
   let busy=false, queued=false;
   const mlInput=document.getElementById('fertilizer-ml');
@@ -16,8 +17,8 @@
     const ml=Number(mlInput.dataset.saved ?? mlInput.value);
     doseBtn.disabled=busy||queued||mlInput.disabled||!calibrated||
       !Number.isFinite(ml)||ml<=0||ml>100;
-    testBtn.disabled=busy||testBtn.dataset.readonly==='true';
-    saveBtn.disabled=busy||saveBtn.dataset.readonly==='true';
+    testBtn.disabled=busy||readonly;
+    saveBtn.disabled=busy||readonly;
   };
   const api=async path=>{
     const response=await fetch(path,{
