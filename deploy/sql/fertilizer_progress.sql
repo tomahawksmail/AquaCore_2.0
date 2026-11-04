@@ -1,3 +1,6 @@
+-- LEGACY ONLY: for historical installations using the old fertilizer_pump table.
+-- Do NOT run on unified options/status installations.
+-- Use fertilizer_options.sql; optionally copy the old data via fertilizer_options_copy.sql.
 -- Pump worker progress/status tracking for real calibration progress UI.
 -- Apply with aquacore.service and aquacore-relays.service STOPPED.
 -- Existing installations: run fertilizer_pump.sql, fertilizer_manual.sql, fertilizer_ml.sql first.
