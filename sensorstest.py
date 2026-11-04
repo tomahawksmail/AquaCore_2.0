@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Read-only AquaCore sensor diagnostics for Orange Pi Zero 2W.
 
-Configured hardware: analog TDS transmitter -> ADS1115 input A3 over I2C.
+Configured hardware: ADS1115 A3=TDS, A0/A1=unverified pH-module outputs.
 No GPIO, relay, MariaDB or equipment output is modified.
-Unconfigured temperature and pH sensors are reported, never fabricated.
+pH and temperature channels are raw readings, not calibrated units.
 """
 import argparse
 import glob
@@ -46,6 +46,8 @@ def main():
                    help="ADS1115 7-bit address (default 0x48)")
     p.add_argument("--interval", type=float, default=2.0)
     p.add_argument("--once", action="store_true")
+    p.add_argument("--all-channels", action="store_true",
+                   help="Read raw A0, A1 and adjusted TDS on A3 (no pH/temp conversion)")
     p.add_argument("--tds-factor", type=float, default=DEFAULT_TDS_FACTOR,
                    help="Provisional multiplier (default 0.2626); use 1 for unadjusted")
     p.add_argument("--temperature", type=float, default=25.0,
@@ -59,8 +61,8 @@ def main():
         p.error("--temperature must be between -2 and 55 C")
 
     print("AquaCore SENSOR TEST — read-only, no DB writes or relay changes", flush=True)
-    print("Temperature: not configured in project; no hardware reader available")
-    print("pH:          not configured in project; no hardware reader available")
+    print("A0/A1:       pH-module outputs; channel identity/voltage limits require verification")
+    print("             No calibrated pH or water temperature conversion available")
     print(f"TDS:         ADS1115 A3; temperature {args.temperature:.1f} C; provisional factor {args.tds_factor:.4f} (NOT calibrated)")
     buses = glob.glob("/dev/i2c-*")
     print("Detected I2C bus devices:", ", ".join(sorted(buses)) or "none")
@@ -77,14 +79,22 @@ def main():
     except ImportError:
         print("ERROR: install smbus2 in the project venv: pip install smbus2", file=sys.stderr)
         return 2
-    print(f"Reading ADS1115 0x{args.address:02x} on {path}, A3; Ctrl+C to quit")
+    print(f"Reading ADS1115 0x{args.address:02x} on {path}, "+("A0/A1/A3" if args.all_channels else "A3")+"; Ctrl+C to quit")
     try:
         while True:
             try:
                 raw, volts = adc_read(args.bus, args.address, 3)
                 ppm = estimate_tds_ppm(volts, args.temperature)
                 adjusted = ppm * args.tds_factor
-                print(f"{time.strftime('%Y-%m-%d %H:%M:%S')}  TDS A3: {volts:.5f} V  raw={raw}  base={ppm:.1f} ppm  adjusted={adjusted:.1f} ppm ({args.temperature:.1f} C, PROVISIONAL)", flush=True)
+                prefix = time.strftime('%Y-%m-%d %H:%M:%S')
+                if args.all_channels:
+                    channels = []
+                    for channel in (0, 1):
+                        sample, output_v = adc_read(args.bus, args.address, channel)
+                        channels.append(f"A{channel}={output_v:.5f} V (raw={sample})")
+                    print(f"{prefix}  {'  '.join(channels)}  A3 TDS={adjusted:.1f} ppm (PROVISIONAL)", flush=True)
+                else:
+                    print(f"{prefix}  TDS A3: {volts:.5f} V  raw={raw}  base={ppm:.1f} ppm  adjusted={adjusted:.1f} ppm ({args.temperature:.1f} C, PROVISIONAL)", flush=True)
             except (OSError, ValueError) as exc:
                 print(f"{time.strftime('%Y-%m-%d %H:%M:%S')}  SENSOR ERROR: {exc}", flush=True)
                 if args.once:
