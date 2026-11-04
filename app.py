@@ -306,10 +306,14 @@ def _fertilizer_request(kind):
                 last=row['manual_requested_at']
                 if last is not None and (row['now_time']-last).total_seconds() < 120:
                     return jsonify(error='Wait 2 minutes between pump requests'),429
+                new_id=int(row['manual_request_id'])+1
                 cur.execute(
-                    'UPDATE fertilizer_pump SET manual_request_id=manual_request_id+1,'
-                    'manual_duration_seconds=%s,manual_requested_at=NOW(),manual_kind=%s WHERE id=1',
-                    (duration,kind)
+                    'UPDATE fertilizer_pump SET manual_request_id=%s,'
+                    'manual_duration_seconds=%s,manual_requested_at=NOW(),manual_kind=%s,'
+                    "pulse_request_id=%s,pulse_kind=%s,pulse_state='queued',"
+                    'pulse_started_at=NULL,pulse_finished_at=NULL,pulse_duration_seconds=%s '
+                    'WHERE id=1',
+                    (new_id,duration,kind,new_id,kind,duration)
                 )
                 cur.execute(
                     'INSERT INTO loging (`User`,`Event`,`Datetime`) VALUES (%s,%s,NOW())',
@@ -319,10 +323,50 @@ def _fertilizer_request(kind):
         except Exception:
             con.rollback()
             raise
-    response=jsonify(queued=True,duration_seconds=duration,
+    response=jsonify(queued=True,request_id=new_id,duration_seconds=duration,
                      note='Queued, not verified delivered. Check relay logs.')
     response.headers['Cache-Control']='no-store'
     return response,202
+
+
+@app.get('/api/fertilizer/status')
+@logged_in
+def fertilizer_pulse_status():
+    """Progress reported from relay worker GPIO commands (not flow feedback)."""
+    row=query(
+        "SELECT dose_ml,ml_per_second,manual_request_id,manual_processed_id,"
+        "manual_requested_at,pulse_request_id,pulse_kind,pulse_state,"
+        "pulse_duration_seconds,pulse_started_at,pulse_finished_at,"
+        "TIMESTAMPDIFF(MICROSECOND,pulse_started_at,NOW(3))/1000000.0 "
+        "AS elapsed_seconds,"
+        "TIMESTAMPDIFF(MICROSECOND,manual_requested_at,NOW(3))/1000000.0 "
+        "AS request_age_seconds "
+        "FROM fertilizer_pump WHERE id=1",one=True
+    )
+    if row is None:
+        return jsonify(error='Fertilizer configuration missing'),404
+    state=row['pulse_state']
+    elapsed=float(row['elapsed_seconds'] or 0)
+    duration=float(row['pulse_duration_seconds'] or 0)
+    age=float(row['request_age_seconds'] or 0)
+    if state == 'running' and elapsed > duration+5:
+        state='unconfirmed'  # Worker may have crashed; never report completion.
+    if state == 'queued' and age > 18:
+        state='stale'
+    response=jsonify(
+        request_id=int(row['pulse_request_id']),
+        kind=row['pulse_kind'],
+        state=state,
+        duration_seconds=duration,
+        elapsed_seconds=max(0,elapsed),
+        request_age_seconds=max(0,age),
+        calibrated=row['ml_per_second'] is not None,
+        dose_ml=float(row['dose_ml'] or 0),
+        # 'completed' means the worker issued OFF, not that liquid flowed.
+        note='Relay command status only; pumped volume is not measured'
+    )
+    response.headers['Cache-Control']='no-store'
+    return response
 
 
 @app.post('/api/fertilizer/dose')
@@ -353,7 +397,8 @@ def finish_fertilizer_calibration():
             with con.cursor() as cur:
                 cur.execute(
                     'SELECT manual_request_id,manual_processed_id,manual_kind,'
-                    'manual_requested_at,calibration_saved_request_id,NOW() AS now_time '
+                    'manual_requested_at,calibration_saved_request_id,'
+                    'pulse_state,pulse_kind,pulse_request_id,pulse_finished_at,NOW() AS now_time '
                     'FROM fertilizer_pump WHERE id=1 FOR UPDATE'
                 )
                 row=cur.fetchone()
@@ -362,9 +407,13 @@ def finish_fertilizer_calibration():
                 age=((row['now_time']-row['manual_requested_at']).total_seconds()
                      if row['manual_requested_at'] else -1)
                 if (row['manual_kind'] != 'calibration'
+                        or row['pulse_kind'] != 'calibration'
+                        or row['pulse_state'] != 'completed'
+                        or row['pulse_request_id'] != row['manual_request_id']
+                        or row['pulse_finished_at'] is None
                         or row['manual_request_id'] != row['manual_processed_id']
                         or row['manual_request_id'] == row['calibration_saved_request_id']
-                        or not 28 <= age <= 900):
+                        or not 0 <= age <= 900):
                     return jsonify(error='No completed, recent 10-second calibration test to save'),409
                 cur.execute(
                     'UPDATE fertilizer_pump SET ml_per_second=%s,'
