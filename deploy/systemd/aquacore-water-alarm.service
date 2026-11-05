@@ -1,0 +1,21 @@
+[Unit]
+Description=AquaCore GPIO PI2 water leak Telegram alarm
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=aquacore
+Group=aquacore
+WorkingDirectory=/opt/aquacore
+EnvironmentFile=/etc/aquacore/web.env
+ExecStart=/opt/aquacore/.venv/bin/python /opt/aquacore/water_alarm.py
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
