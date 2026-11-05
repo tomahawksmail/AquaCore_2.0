@@ -25,6 +25,17 @@
   <input type="hidden" name="csrf" value="{{csrf_token()}}">
   <section class="card settings-card">
     <div class="settings-section-head">
+      <span class="settings-section-icon"><i class="mdi mdi-test-tube" aria-hidden="true"></i></span>
+      <div><h2>Sensor calibration</h2><p>Water temperature and pH calibration using stable ADS1115 voltage readings.</p></div>
+    </div>
+    <button id="sensor-open-calibration" type="button" class="outline small"
+            {% if session.get('role')|int != 1 %}disabled{% endif %}>
+      <i class="mdi mdi-tune-variant" aria-hidden="true"></i> Calibrate sensors
+    </button>
+    <p class="control-disclaimer">Temperature calibration requires the 10k B3950 thermistor divider on A1. pH requires certified 7.00 and 4.00 buffer solutions on A0.</p>
+  </section>
+  <section class="card settings-card">
+    <div class="settings-section-head">
       <span class="settings-section-icon"><i class="mdi mdi-water-outline" aria-hidden="true"></i></span>
       <div><h2>Water quality</h2><p>Set the safe monitoring ranges shown on your charts.</p></div>
     </div>
@@ -192,6 +203,37 @@
     </div>
   </div>
 </dialog>
+<dialog id="sensor-calibration-dialog" class="fertilizer-modal" aria-labelledby="sensor-calibration-title">
+  <div class="fertilizer-modal-content">
+    <div class="fertilizer-modal-heading">
+      <h2 id="sensor-calibration-title"><i class="mdi mdi-test-tube"></i> Sensor calibration</h2>
+      <button type="button" id="sensor-calibration-close" class="outline small" aria-label="Close sensor calibration"><i class="mdi mdi-close"></i></button>
+    </div>
+    <p id="sensor-existing" class="control-state">Checking saved calibration…</p>
+    <h3>Temperature · NTC 10K B3950 (ADS1115 A1)</h3>
+    <p class="fertilizer-modal-help">Only after installing the NTC + 10k resistor divider on A1. Immerse probe and a reliable thermometer in the same water. Allow readings to stabilize.</p>
+    <div class="fertilizer-modal-inputs">
+      <button type="button" id="sensor-capture-temp" class="outline">Capture A1</button>
+      <span id="sensor-voltage-temp">No reading</span>
+      <label>Reference temperature (°C)
+        <input id="sensor-temp-reference" type="number" min="5" max="40" step="0.01" placeholder="e.g. 21.60">
+      </label>
+      <button type="button" id="sensor-save-temp" class="primary">Save temperature calibration</button>
+    </div>
+    <h3>pH · two reference solutions (ADS1115 A0)</h3>
+    <p class="fertilizer-modal-help">Use certified pH 7.00 buffer first, rinse, then certified pH 4.00 buffer. Wait for stable voltage each time. Ordinary drinking water and vinegar are NOT known-pH calibration standards.</p>
+    <div class="fertilizer-modal-inputs">
+      <button type="button" id="sensor-capture-ph7" class="outline">Capture pH 7.00</button>
+      <span id="sensor-voltage-ph7">No reading</span>
+      <button type="button" id="sensor-capture-ph4" class="outline">Capture pH 4.00</button>
+      <span id="sensor-voltage-ph4">No reading</span>
+    </div>
+    <label><input type="checkbox" id="sensor-confirm-buffers"> I used certified pH 7.00 and pH 4.00 buffers.</label>
+    <button type="button" id="sensor-save-ph" class="primary">Save pH calibration</button>
+    <p id="sensor-calibration-status" class="fertilizer-modal-status" role="status" aria-live="polite"></p>
+  </div>
+</dialog>
+<script defer src="{{ url_for('static', filename='sensor-calibration.js', v='20261104-sensor-cal-v1') }}"></script>
 <script>window.AQUACORE_CSRF = {{ csrf_token()|tojson }};</script>
 <script defer src="{{ url_for('static', filename='controls.js') }}"></script>
 <script defer src="{{ url_for('static', filename='settings-autosave.js', v='20261104-calibration-modal') }}"></script>
