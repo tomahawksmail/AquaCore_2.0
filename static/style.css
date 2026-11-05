@@ -1633,7 +1633,7 @@ status trends preserved */
 }
 .fertilizer-dose-heading {gap:11px;min-width:0;}
 .fertilizer-dose-heading>div:not(.fertilizer-heading-actions){min-width:0;}
-.fertilizer-heading-actions {
+.fertilizer-dose-heading > .fertilizer-heading-actions {
   display:flex;
   flex:0 0 auto;
   align-items:center;
@@ -1763,7 +1763,7 @@ status trends preserved */
   .fertilizer-weekly-header {align-items:flex-start;}
 }
 @media (max-width:490px) {
-  .fertilizer-dose-heading .fertilizer-heading-actions {
+  .fertilizer-dose-heading > .fertilizer-heading-actions {
     width:100%;
     margin-left:0;
     padding-left:51px;
