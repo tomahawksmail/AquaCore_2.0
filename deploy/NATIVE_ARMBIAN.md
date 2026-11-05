@@ -46,7 +46,7 @@ After verifying the web Settings page, a short manual ON/OFF test with a water-f
 sudo mariadb _AquaCore_ -e 'DROP TABLE IF EXISTS `fertilizer_pump`;'
 ```
 
-No new service is needed. The relay controller owns GPIO 233 and publishes its commanded state to `status`. The settings popup and `/api/fertilizer/status` now read `options`. The old SQL files remain in GitHub only as historical references.
+No new service is needed. The relay controller owns GPIO 230 and publishes its commanded state to `status`. The settings popup and `/api/fertilizer/status` now read `options`. The old SQL files remain in GitHub only as historical references.
 
 ---
 
@@ -192,11 +192,11 @@ Do **not** enable `aquacore-relays.service` yet.
 | 1 | CO2 | PH4 | 228 | 18 |
 | 2 | Oxygen | PI6 | 262 | 22 |
 | 3 | Main light | PH5 | 229 | 24 |
-| 4 | Fertilizer dosing pump | PH9 | 233 | 26 |
+| 4 | Fertilizer dosing pump | PH6 | 230 | 23 |
 | 5 | Backlight | PI16 | 272 | 37 |
 | 6 | Plant light | PC12 | 76 | 36 |
 | 7 | UV | PI0 | 256 | 29 |
-| 8 | Reserved | PH6 | 230 | 23 |
+| 8 | Reserved (former pump) | PH9 | 233 | 26 |
 | 9 | CPU cooler (ON above 70 C; OFF at/below 65 C) | PH8 | 232 | 21 |
 | 10 | Reserved | PH7 | 231 | 19 |
 
@@ -206,7 +206,7 @@ Stop any manual `gpioset` tests and physically disconnect mains/aquarium loads. 
 gpioinfo -c gpiochip1 | grep -E 'line +(228|262|229|272|76|256|232):'
 sudo /opt/aquacore/.venv/bin/python /opt/aquacore/relay_controller.py --interval 1
 ```
-This is dry-run mode. It reads DB states and logs requested outputs without touching GPIO. Ctrl+C to end. The relay worker now uses persistent `libgpiod 2` line ownership in `--apply` mode; six channels are CO2 PH4(228), Oxygen PI6(262), Main PH5(229), Backlight PI16(272), Plant PC12(76), UV PI0(256). Two other lines remain unclaimed (PH6/230, PH7/231); the CPU cooler uses PH8/232 and the fertilizer pump uses PH9/233. **On startup the active-low relay lines initialize HIGH/OFF, and switch based on DB state.** Releasing lines on exit may not preserve voltage; use external hardware fail-safe arrangements.
+This is dry-run mode. It reads DB states and logs requested outputs without touching GPIO. Ctrl+C to end. The relay worker now uses persistent `libgpiod 2` line ownership in `--apply` mode; six channels are CO2 PH4(228), Oxygen PI6(262), Main PH5(229), Backlight PI16(272), Plant PC12(76), UV PI0(256). Two other lines remain unclaimed (PH7/231, PH6/230); the CPU cooler uses PH8/232 and the fertilizer pump uses PH6/230. **On startup the active-low relay lines initialize HIGH/OFF, and switch based on DB state.** Releasing lines on exit may not preserve voltage; use external hardware fail-safe arrangements.
 After verifying the database schedule/state and physical relay wiring, explicitly enable live control:
 ```bash
 sudo systemctl enable --now aquacore-relays.service
@@ -276,7 +276,7 @@ If I2C is denied, verify `getent group i2c`, `ls -l /dev/i2c-2` and the service'
 
 ## Fertilizer pump — once-daily timed pulse
 
-Dedicated GPIO: **gpiochip1 offset 233 / PH9 / physical header pin 26** (active-low; LOW energizes relay).
+Dedicated GPIO: **gpiochip1 offset 230 / PH6 / physical header pin 23** (active-low; LOW energizes relay).
 
 The relay worker already runs as `aquacore-relays.service`; no separate process is required. The Settings page provides two auto-saved fields: **Activation time (HH:MM)** and **Run duration in seconds (0–60)**. Default is **12:00 with 0 seconds**, meaning **OFF/disabled** until explicitly configured.
 
@@ -299,14 +299,14 @@ The relay worker checks the DB-local clock during the first 10 seconds of the sc
 sudo journalctl -u aquacore-relays.service -f
 sudo mariadb _AquaCore_ -e 'SELECT * FROM fertilizer_pump;'
 ```
-Confirm GPIO 233 switches only once and returns OFF promptly, including after relay-worker restart. Change duration back to 0 until the pump has been calibrated for delivered milliliters. Use appropriate external pump supply and protect against siphoning and unintended dosing; don't power the pump motor from the Orange Pi GPIO.
+Confirm GPIO 230 switches only once and returns OFF promptly, including after relay-worker restart. Change duration back to 0 until the pump has been calibrated for delivered milliliters. Use appropriate external pump supply and protect against siphoning and unintended dosing; don't power the pump motor from the Orange Pi GPIO.
 
 ### Manual fertilizer dose (Settings → Equipment & lighting)
 
 The fertilizer pump now appears under the **Equipment & lighting** card alongside the scheduled relays. Set **Activation time** and **Run duration (0–60 seconds)** there. **Dose now** requests one additional pulse using the saved duration; it does not replace or consume the scheduled daily dose.
 
 - Requires the admin role, authenticated session, confirmation dialog, and CSRF token.
-- Requests are placed in MariaDB; only the existing `aquacore-relays.service` energizes GPIO 233.
+- Requests are placed in MariaDB; only the existing `aquacore-relays.service` energizes GPIO 230.
 - The endpoint allows one pending request and applies a **120-second cooldown** between manual requests. The relay worker marks a request processed **before** output activation, preventing repeat dosing after a restart.
 - Any pending request older than 15 seconds is discarded rather than executed late.
 - Manual and scheduled pulses cannot overlap in the same worker. If a scheduled dose falls while the pump is busy, that day's scheduled dose may be skipped.
@@ -383,7 +383,7 @@ If relay worker code is also behind the revision adding pump progress, restart `
 
 ## Manual fertilizer pump ON/OFF (max 30 seconds) and calibration progress
 
-The **Manual dose** switch is now a manual pump ON/OFF control, independent of any saved pump calibration and of the configured daily dose. **It controls time, not measured mL.** As an administrator, switch ON to request a manually timed pump run; switch OFF to request early shutdown. The relay worker automatically turns the pump OFF after **30 seconds maximum** even if the browser disconnects. Both requests require authenticated, CSRF-protected API calls; only the existing `aquacore-relays.service` commands GPIO 233.
+The **Manual dose** switch is now a manual pump ON/OFF control, independent of any saved pump calibration and of the configured daily dose. **It controls time, not measured mL.** As an administrator, switch ON to request a manually timed pump run; switch OFF to request early shutdown. The relay worker automatically turns the pump OFF after **30 seconds maximum** even if the browser disconnects. Both requests require authenticated, CSRF-protected API calls; only the existing `aquacore-relays.service` commands GPIO 230.
 
 When starting with an uncalibrated pump, collect into a measured container **outside the aquarium**. Do not interpret the manual switch as a calibrated fertilizer dose. A manual start uses the same 120-second minimum interval between starts as other pump requests, and cannot overlap a calibration test. The switch remains ON while the worker reports the manual pulse queued/running; switching OFF sends a stop request, with worker acknowledgment expected within its normal 1-second polling loop. If the relay service is down, a manual request can expire without activating.
 
