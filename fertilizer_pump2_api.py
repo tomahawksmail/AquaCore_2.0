@@ -1,4 +1,5 @@
 """Second dosing pump API; queues requests for the relay worker, never drives GPIO."""
+import os
 from functools import wraps
 from flask import Blueprint, request, session, abort, jsonify
 from fertilizer_math import calibrated_seconds, calibrate_rate
@@ -49,6 +50,8 @@ def _fertilizer_request(kind):
     """Queue a time-bounded GPIO pulse (the Flask process never touches GPIO)."""
     if int(session.get('role', 0)) != 1:
         abort(403)
+    if os.getenv("PUMP2_ENABLED","0").lower() not in ("1","true","yes"):
+        return jsonify(error="Pump 2 relay is disabled until wiring is verified"),409
     with db() as con:
         try:
             with con.cursor() as cur:
