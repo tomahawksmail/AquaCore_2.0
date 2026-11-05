@@ -26,8 +26,8 @@ RUNNING = True
 # Orange Pi Zero 2W relay layout, by physical relay channel:
 # CO2=PH4(228); Oxygen=PI6(262); Main Light=PH5(229);
 # Backlight=PI16(272); Plant Light=PC12(76); UV=PI0(256);
-# CPU cooler=PH8(232); fertilizer pump=PH9(233).
-# Unassigned: PH6(230), PH7(231).
+# CPU cooler=PH8(232); fertilizer pump=PH6(230).
+# Unassigned: PH7(231), PH9(233).
 # Each pair is (PHYSICAL_HEADER_PIN, SUNXI_GPIO_NUMBER).
 # Controlled using libgpiod v2 on gpiochip1.
 PIN_MAP = {
@@ -41,12 +41,12 @@ PIN_MAP = {
 
 # Unused relay channels: kept unconfigured/uncontrolled.
 SPARE_PIN_MAP = {
-    "spare_ph6": (23, 230),  # PH6 / physical 23
     "spare_ph7": (19, 231),  # PH7 / physical 19
+    "spare_ph9": (26, 233),  # PH9 / physical 26 (previous pump output)
 }
 
 COOLER_PIN = (21, 232)  # PH8 / physical pin 21
-PUMP_PIN = (26, 233)    # PH9 / physical pin 26; active-low
+PUMP_PIN = (23, 230)    # PH6 / physical pin 23; active-low
 PUMP_MAX_SECONDS = 60
 CPU_TEMP_PATH = "/sys/class/thermal/thermal_zone0/temp"
 COOLER_ON_C = 70.0
