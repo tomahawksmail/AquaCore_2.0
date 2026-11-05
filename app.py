@@ -293,6 +293,9 @@ def _fertilizer_request(kind):
                     'fertilizer_manual_request_id AS manual_request_id,'
                     'fertilizer_manual_processed_id AS manual_processed_id,'
                     'fertilizer_manual_requested_at AS manual_requested_at,'
+                    'fertilizer_pulse_state AS pulse_state,'
+                    'fertilizer_pulse_kind AS pulse_kind,'
+                    'fertilizer_pulse_finished_at AS pulse_finished_at,'
                     'NOW() AS now_time FROM options LIMIT 1 FOR UPDATE'
                 )
                 row=cur.fetchone()
@@ -314,8 +317,18 @@ def _fertilizer_request(kind):
                         return jsonify(error='Calibrate the pump and set an achievable dose (1–60 seconds runtime) first'),409
                 last=row['manual_requested_at']
                 age=(row['now_time']-last).total_seconds() if last is not None else None
-                if age is not None and age < 120:
-                    return jsonify(error='Wait 2 minutes between pump requests'),429
+                # Retry a confirmed-OFF calibration or one skipped before activation.
+                # Failed/interrupted/unconfirmed runs retain the safety cooldown.
+                confirmed_retry = (kind == 'calibration'
+                    and row['pulse_kind'] == 'calibration'
+                    and row['manual_request_id'] == row['manual_processed_id']
+                    and row['pulse_state'] in ('completed', 'skipped')
+                    and row['pulse_finished_at'] is not None)
+                required_gap = 5 if confirmed_retry else 120
+                if age is not None and age < required_gap:
+                    remaining = max(1, int(__import__('math').ceil(required_gap - age)))
+                    return jsonify(error=f'Pump cooldown: retry in {remaining} seconds',
+                                   retry_after_seconds=remaining),429
                 if row['manual_request_id'] != row['manual_processed_id']:
                     # Expired, unprocessed requests must never run late.
                     # This row is locked, so the relay worker cannot claim it
@@ -388,7 +401,14 @@ def fertilizer_pulse_status():
         state='stale'
     if state == 'stop_requested' and age > duration+5:
         state='unconfirmed'  # OFF acknowledgement missing; physical state unknown.
+    confirmed_retry = (row['pulse_kind'] == 'calibration'
+        and int(row['manual_request_id']) == int(row['manual_processed_id'])
+        and row['pulse_state'] in ('completed', 'skipped')
+        and row['pulse_finished_at'] is not None)
+    calibration_retry_after = (max(0, (5 if confirmed_retry else 120) - age)
+                               if row['manual_requested_at'] else 0)
     response=jsonify(
+        calibration_retry_after_seconds=calibration_retry_after,
         request_id=int(row['pulse_request_id']),
         kind=row['pulse_kind'],
         state=state,
