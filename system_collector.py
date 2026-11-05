@@ -65,7 +65,7 @@ def values():
 
 def main():
     p=argparse.ArgumentParser(description="Collect AquaCore system metrics into psutil DB table")
-    p.add_argument("--interval",type=float,default=10)
+    p.add_argument("--interval",type=float,default=600)
     p.add_argument("--once",action="store_true")
     args=p.parse_args()
     if args.interval < 1:p.error("--interval must be at least 1s")

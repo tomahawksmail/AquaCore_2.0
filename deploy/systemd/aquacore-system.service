@@ -10,7 +10,7 @@ Group=aquacore
 WorkingDirectory=/opt/aquacore
 Environment=PYTHONUNBUFFERED=1
 EnvironmentFile=/etc/aquacore/web.env
-ExecStart=/opt/aquacore/.venv/bin/python /opt/aquacore/system_collector.py --interval 10
+ExecStart=/opt/aquacore/.venv/bin/python /opt/aquacore/system_collector.py --interval 600
 Restart=on-failure
 RestartSec=5
 UMask=0077
