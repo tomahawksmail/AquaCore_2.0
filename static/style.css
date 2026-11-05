@@ -1501,3 +1501,127 @@ status trends preserved */
   .fertilizer-modal-inputs { grid-template-columns:1fr; }
   .fertilizer-modal-actions { display:grid; grid-template-columns:1fr; }
 }
+
+
+/* Weekly dosing: compact selectable day chips, isolated from generic form label/input rules. */
+.fertilizer-weekly-panel {
+  margin-top:14px;
+  padding:17px 19px;
+  background:#1a3043;
+  border:1px solid #2b4a60;
+  border-radius:14px;
+}
+.fertilizer-weekly-header {
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:16px;
+  flex-wrap:wrap;
+}
+.fertilizer-weekly-header h4 {
+  margin:0;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  color:#e8f4fa;
+  font-size:14px;
+  font-weight:700;
+}
+.fertilizer-weekly-header h4 .mdi {font-size:19px;color:#5eead4;}
+.fertilizer-weekly-header p {
+  margin:5px 0 0;
+  color:#97b7c8;
+  font-size:12px;
+  line-height:1.5;
+}
+.fertilizer-weekly-count {
+  background:#133b48;
+  border:1px solid #306475;
+  color:#88e9df;
+  border-radius:999px;
+  padding:5px 12px;
+  font-size:12px;
+  font-weight:650;
+  white-space:nowrap;
+}
+.fertilizer-weekdays {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:8px;
+  margin-top:16px;
+}
+.fertilizer-weekdays .fertilizer-day {
+  position:relative;
+  display:inline-flex;
+  flex:0 0 auto;
+  width:66px;
+  height:41px;
+  min-width:0;
+  margin:0;
+  padding:0;
+  cursor:pointer;
+}
+.fertilizer-weekdays .fertilizer-day input[type="checkbox"] {
+  position:absolute;
+  width:100%;
+  height:100%;
+  inset:0;
+  margin:0;
+  opacity:0;
+  cursor:inherit;
+  z-index:1;
+}
+.fertilizer-weekdays .fertilizer-day span {
+  box-sizing:border-box;
+  display:flex;
+  width:100%;
+  height:100%;
+  align-items:center;
+  justify-content:center;
+  background:#102434;
+  border:1px solid #355369;
+  border-radius:9px;
+  color:#aac5d5;
+  font-size:12px;
+  font-weight:650;
+  transition:background .12s,border-color .12s,color .12s;
+}
+.fertilizer-weekdays .fertilizer-day input:checked + span {
+  background:#184e57;
+  border-color:#46c4b2;
+  color:#b9fff0;
+}
+.fertilizer-weekdays .fertilizer-day input:focus-visible + span {
+  outline:2px solid #9bebef;
+  outline-offset:3px;
+}
+.fertilizer-weekdays .fertilizer-day input:disabled + span {
+  opacity:.5;
+  cursor:not-allowed;
+}
+.fertilizer-weekly-actions {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  gap:12px;
+  margin-top:15px;
+}
+.fertilizer-weekly-actions .control-state {
+  flex:1 1 240px;
+  margin:0;
+  font-size:12px;
+}
+.fertilizer-weekly-actions button {
+  flex:0 0 auto;
+  margin:0;
+  padding:9px 15px;
+  min-height:38px;
+  border-radius:9px;
+}
+@media(max-width:600px) {
+  .fertilizer-weekly-panel {padding:15px;}
+  .fertilizer-weekdays .fertilizer-day {width:calc((100% - 24px)/4);}
+  .fertilizer-weekly-actions button {width:100%;}
+}
