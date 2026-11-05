@@ -204,7 +204,7 @@
               </span>
             </div>
             <div class="fertilizer-heading-actions">
-              <button type="button" id="fertilizer2-open-calibration" {% if not fertilizer2.hardware_enabled %}disabled{% endif %} class="outline small fertilizer-open-calibration">
+              <button type="button" id="fertilizer2-open-calibration" data-hardware-enabled="{{ 1 if fertilizer2.hardware_enabled else 0 }}" {% if not fertilizer2.hardware_enabled %}disabled{% endif %} class="outline small fertilizer-open-calibration">
                 <i class="mdi mdi-tune-variant" aria-hidden="true"></i> Calibration
               </button>
               <button type="button" id="fertilizer2-scheduler-toggle" class="outline small fertilizer-scheduler-toggle"
