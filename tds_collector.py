@@ -57,7 +57,7 @@ def calibration_settings():
     )
     try:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT temp_offset_c,ph7_voltage,ph4_voltage FROM sensor_calibration WHERE id=1")
+            cursor.execute("SELECT temp_offset_c,ph7_voltage,ph4_voltage,tds_factor,ph_factor,temp_factor FROM sensor_calibration WHERE id=1")
             return cursor.fetchone() or {}
     finally:
         connection.close()
@@ -111,8 +111,9 @@ def main():
                     ntc_samples = [adc_read(args.bus, args.address, 1) for _ in range(args.samples)]
                     if any(raw >= 32767 for raw, _ in ntc_samples):
                         raise ValueError("ADS1115 A1 saturated")
-                    water_temp = ntc_celsius(statistics.median(v for _, v in ntc_samples),
-                                              supply_v=args.ntc_supply) + float(calibration.get('temp_offset_c') or 0)
+                    temp_raw = ntc_celsius(statistics.median(v for _, v in ntc_samples),
+                                             supply_v=args.ntc_supply)
+                    water_temp = temp_raw * float(calibration.get('temp_factor') if calibration.get('temp_factor') is not None else 1.0) + float(calibration.get('temp_offset_c') or 0)
                     if not -2 <= water_temp <= 55:
                         raise ValueError('Calibrated water temperature outside supported range')
                 except (OSError, ValueError) as exc:
@@ -125,17 +126,24 @@ def main():
                     ph_samples = [adc_read(args.bus, args.address, 0) for _ in range(args.samples)]
                     if any(raw >= 32767 for raw, _ in ph_samples):
                         raise ValueError("ADS1115 A0 saturated")
-                    ph = calibrated_ph(statistics.median(v for _, v in ph_samples),
-                                       float(v7), float(v4))
+                    ph_raw = calibrated_ph(statistics.median(v for _, v in ph_samples),
+                                           float(v7), float(v4))
+                    ph = 7.0 + (ph_raw - 7.0) * float(
+                        calibration.get('ph_factor') if calibration.get('ph_factor') is not None else 1.0)
+                    if not 0 <= ph <= 14:
+                        raise ValueError("Corrected pH outside 0-14")
                 except (OSError, ValueError) as exc:
                     LOG.warning("pH measurement unavailable: %s", exc)
             temperature = water_temp if water_temp is not None else args.temperature
-            ppm = estimate_tds_ppm(volts, temperature) * args.tds_factor
+            tds_factor = float(calibration.get('tds_factor') if calibration.get('tds_factor') is not None else args.tds_factor)
+            if not 0.001 <= tds_factor <= 10:
+                raise ValueError("Invalid database TDS factor")
+            ppm = estimate_tds_ppm(volts, temperature) * tds_factor
             save_sample(ppm, water_temp, ph)
             LOG.info("Saved temp=%s C pH=%s TDS=%.2f ppm (A3 %.5f V; TDS factor %.4f; comp temp %.1f C)",
                      f"{water_temp:.2f}" if water_temp is not None else "NULL",
                      f"{ph:.2f}" if ph is not None else "NULL",
-                     ppm, volts, args.tds_factor, temperature)
+                     ppm, volts, tds_factor, temperature)
         except (OSError, ValueError, pymysql.MySQLError) as exc:
             LOG.exception("TDS reading not saved: %s", exc)
             if args.once:
