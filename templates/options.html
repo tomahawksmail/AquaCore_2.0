@@ -98,13 +98,13 @@
     </div>
     {% endfor %}
     <div class="device-group">
-      <h3 class="device-group-heading"><i class="mdi mdi-water-pump" aria-hidden="true"></i> Fertilizer pump</h3>
+      <h3 class="device-group-heading"><i class="mdi mdi-water-pump" aria-hidden="true"></i> Pump 1 · Bottle A</h3>
       <div class="device-rows">
         <div class="device-settings-row control-row fertilizer-control-row">
           <div class="device-settings-name fertilizer-dose-heading">
             <span class="settings-device-icon"><i class="mdi mdi-flask-outline" aria-hidden="true"></i></span>
             <div>
-              <strong>Fertilizer dosing</strong>
+              <strong>Bottle A dosing</strong>
               <span class="control-state" id="fertilizer-dose-state">
                 {% if not fertilizer.ml_per_second %}
                   Auto dose needs calibration · Manual pump available
@@ -181,6 +181,94 @@
         </div>
       </div>
     </div>
+    <div class="device-group">
+      <h3 class="device-group-heading"><i class="mdi mdi-water-pump" aria-hidden="true"></i> Pump 2 · Bottle B</h3>
+      <p class="control-state">Independent bottle, calibration, dose and weekly schedule. Relay: PH7 / physical 19 (SPI pin; verify wiring).</p>
+      {% if not fertilizer2.hardware_enabled %}
+      <p class="control-disclaimer"><i class="mdi mdi-alert-outline"></i> Pump 2 relay disabled until PH7 wiring is verified and PUMP2_ENABLED=1 is set in the service environment.</p>
+      {% endif %}
+      <div class="device-rows">
+        <div class="device-settings-row control-row fertilizer-control-row">
+          <div class="device-settings-name fertilizer-dose-heading">
+            <span class="settings-device-icon"><i class="mdi mdi-flask-outline" aria-hidden="true"></i></span>
+            <div>
+              <strong>Bottle B dosing</strong>
+              <span class="control-state" id="fertilizer2-dose-state">
+                {% if not fertilizer2.ml_per_second %}
+                  Auto dose needs calibration · Manual pump available
+                {% elif not fertilizer2.dose_ml %}
+                  Scheduled · OFF
+                {% else %}
+                  Scheduled · {{fertilizer2.start_time|string|truncate(5,True,'')}} · {{fertilizer2.dose_ml}} ml · {{ fertilizer2.times_per_week }} time(s)/week
+                {% endif %}
+              </span>
+            </div>
+            <div class="fertilizer-heading-actions">
+              <button type="button" id="fertilizer2-open-calibration" data-hardware-enabled="{{ 1 if fertilizer2.hardware_enabled else 0 }}" {% if not fertilizer2.hardware_enabled %}disabled{% endif %} class="outline small fertilizer-open-calibration">
+                <i class="mdi mdi-tune-variant" aria-hidden="true"></i> Calibration
+              </button>
+              <button type="button" id="fertilizer2-scheduler-toggle" class="outline small fertilizer-scheduler-toggle"
+                      aria-expanded="false" aria-controls="fertilizer2-weekly-reveal">
+                <i class="mdi mdi-calendar-week-outline" aria-hidden="true"></i>
+                <span>Scheduler</span>
+                <i class="mdi mdi-chevron-down fertilizer-scheduler-chevron" aria-hidden="true"></i>
+              </button>
+            </div>
+          </div>
+          <label class="device-time" for="fertilizer2-time">
+            <span>Activation time</span>
+            <input id="fertilizer2-time" name="fertilizer2_time" type="time"
+                   value="{{ fertilizer2.start_time|string|truncate(5,True,'') if fertilizer2.start_time is not none else '12:00' }}"
+                   {% if session.get('role')|int != 1 %}disabled{% endif %}>
+          </label>
+          <label class="device-time" for="fertilizer2-ml">
+            <span>Daily dose (ml)</span>
+            <input id="fertilizer2-ml" name="fertilizer2_dose_ml" type="number"
+                   min="0" max="100" step="0.1"
+                   value="{{ fertilizer2.dose_ml if fertilizer2.dose_ml is not none else 0 }}"
+                   {% if session.get('role')|int != 1 %}disabled{% endif %}>
+          </label>
+          <div class="device-manual">
+            <span>Manual dose</span>
+            <label class="ios-switch" aria-label="Manually start or stop fertilizer pump (30-second safety cutoff)"
+                   title="Manual ON/OFF; automatic OFF after 30 seconds. Volume is not measured.">
+              <input id="fertilizer2-dose-now" type="checkbox"
+                     {% if session.get('role')|int != 1 or not fertilizer2.hardware_enabled %}disabled{% endif %}>
+              <span class="switch-track" aria-hidden="true"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div id="fertilizer2-weekly-reveal" class="fertilizer-weekly-reveal" aria-hidden="true" inert>
+        <div class="fertilizer-weekly-reveal-inner">
+          <section class="fertilizer-weekly-panel" aria-label="Fertilizer weekly dosing schedule">
+            <div class="fertilizer-weekly-header">
+              <div class="fertilizer-weekly-title">
+                <h4><i class="mdi mdi-calendar-check-outline" aria-hidden="true"></i> Weekly dosing schedule</h4>
+                <p>Select the days to run the pump at your configured time. No days selected = automatic dosing off.</p>
+              </div>
+              <span class="fertilizer-weekly-count" id="fertilizer2-weekly-count">{{ fertilizer2.times_per_week }} times per week</span>
+            </div>
+            <div id="fertilizer2-weekdays" class="fertilizer-weekdays" role="group" aria-label="Days for automatic fertilizer dosing">
+              {% for day, title in [(0,'Mon'),(1,'Tue'),(2,'Wed'),(3,'Thu'),(4,'Fri'),(5,'Sat'),(6,'Sun')] %}
+              <label class="fertilizer-day">
+                <input type="checkbox" value="{{ day }}" {% if (fertilizer2.weekdays // (2 ** day)) % 2 == 1 %}checked{% endif %}
+                       {% if session.get('role')|int != 1 %}disabled{% endif %}>
+                <span>{{ title }}</span>
+              </label>
+              {% endfor %}
+            </div>
+            <div class="fertilizer-weekly-actions">
+              <p id="fertilizer2-weekly-feedback" class="fertilizer-weekly-feedback" role="status" aria-live="polite"></p>
+              <button type="button" id="fertilizer2-weekly-save" class="primary small"
+                      {% if session.get('role')|int != 1 %}disabled{% endif %}>
+                <i class="mdi mdi-content-save-outline" aria-hidden="true"></i> Save schedule
+              </button>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
     <p class="control-disclaimer"><i class="mdi mdi-information-outline" aria-hidden="true"></i> Changes to times and water parameters save automatically. Manual switches take effect immediately and last until the next scheduled transition.</p>
   </section>
 
@@ -235,6 +323,61 @@
       </button>
       <button type="button" id="fertilizer-calibrate-save" class="primary"
               {% if session.get('role')|int != 1 %}disabled{% endif %}>
+        Save calibration
+      </button>
+    </div>
+  </div>
+</dialog>
+<dialog id="fertilizer2-calibration-dialog" class="fertilizer-modal"
+        aria-labelledby="fertilizer2-dialog-title" aria-describedby="fertilizer2-dialog-help">
+  <div class="fertilizer-modal-content">
+    <div class="fertilizer-modal-heading">
+      <div>
+        <h2 id="fertilizer2-dialog-title"><i class="mdi mdi-flask-outline" aria-hidden="true"></i> Pump 2 · Bottle B calibration</h2>
+        <p id="fertilizer2-calibration-rate" class="control-state">
+          {% if fertilizer2.ml_per_second %}
+            Calibrated: {{'%.3f'|format(fertilizer2.ml_per_second|float)}} ml/sec
+          {% else %}
+            Not calibrated
+          {% endif %}
+        </p>
+      </div>
+      <button type="button" id="fertilizer2-dialog-close" class="outline small"
+              aria-label="Close pump calibration window"><i class="mdi mdi-close"></i></button>
+    </div>
+    <p id="fertilizer2-dialog-help" class="fertilizer-modal-help">
+      Prime the pump and direct its outlet into a measuring cup, <strong>not the aquarium</strong>.
+      Run the test, then enter the collected volume. Never save an uncompleted test.
+    </p>
+    <div class="fertilizer-modal-inputs">
+      <label for="fertilizer2-calibration-seconds">
+        Test duration (seconds)
+        <input id="fertilizer2-calibration-seconds" type="number" min="2" max="60" step="1" value="10"
+               {% if session.get('role')|int != 1 or not fertilizer2.hardware_enabled %}disabled{% endif %}>
+      </label>
+      <label for="fertilizer2-measured-ml">
+        Collected volume (ml)
+        <input id="fertilizer2-measured-ml" type="number" min="0.1" max="500" step="0.1"
+               placeholder="Measured ml"
+               {% if session.get('role')|int != 1 or not fertilizer2.hardware_enabled %}disabled{% endif %}>
+      </label>
+    </div>
+    <div id="fertilizer2-test-progress" class="fertilizer-test-progress" hidden>
+      <div class="fertilizer-progress-heading">
+        <span id="fertilizer2-progress-label">Waiting for relay worker…</span>
+        <span id="fertilizer2-progress-time">0 / 10 s</span>
+      </div>
+      <progress id="fertilizer2-progress-meter" max="100" value="0"
+                aria-label="Calibration pump test progress">0%</progress>
+    </div>
+    <p id="fertilizer2-dose-status" class="fertilizer-modal-status" role="status" aria-live="polite"></p>
+    <div class="fertilizer-modal-actions">
+      <button type="button" id="fertilizer2-calibrate-start" class="outline"
+              {% if session.get('role')|int != 1 or not fertilizer2.hardware_enabled %}disabled{% endif %}>
+        <i class="mdi mdi-play-outline" aria-hidden="true"></i> Run test
+      </button>
+      <button type="button" id="fertilizer2-calibrate-save" class="primary"
+              {% if session.get('role')|int != 1 or not fertilizer2.hardware_enabled %}disabled{% endif %}>
         Save calibration
       </button>
     </div>
@@ -296,6 +439,8 @@
 <script defer src="{{ url_for('static', filename='sensor-calibration.js', v='20261105-live-sensors-v2') }}"></script>
 <script>window.AQUACORE_CSRF = {{ csrf_token()|tojson }};</script>
 <script defer src="{{ url_for('static', filename='controls.js') }}"></script>
+<script defer src="{{ url_for('static', filename='fertilizer-manual2.js', v='20261105-dual-pumps-v1') }}"></script>
+<script defer src="{{ url_for('static', filename='fertilizer-weekly2.js', v='20261105-dual-pumps-v1') }}"></script>
 <script defer src="{{ url_for('static', filename='fertilizer-weekly.js', v='20261105-weekly-toggle-v2') }}"></script>
 <script defer src="{{ url_for('static', filename='settings-autosave.js', v='20261104-calibration-modal') }}"></script>
 <script defer src="{{ url_for('static', filename='fertilizer-manual.js', v='20261104-calibration-retry') }}"></script>

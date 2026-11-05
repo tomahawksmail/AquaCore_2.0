@@ -26,7 +26,9 @@ def local_commit():
 
 app = Flask(__name__)
 from sensor_calibration_api import bp as sensor_calibration_bp
+from fertilizer_pump2_api import bp as fertilizer_pump2_bp
 app.register_blueprint(sensor_calibration_bp)
+app.register_blueprint(fertilizer_pump2_bp)
 app.secret_key = os.environ.get('SECRET_KEY') or secrets.token_hex(32)
 app.jinja_env.globals['deployed_commit'] = local_commit()
 app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax', MAX_CONTENT_LENGTH=16384)
@@ -253,20 +255,20 @@ def save_option_field():
     if not isinstance(payload,dict):
         return jsonify(error='Expected JSON object'),400
     field=payload.get('field')
-    pump_fields=('fertilizer_time','fertilizer_dose_ml')
+    pump_fields=('fertilizer_time','fertilizer_dose_ml','fertilizer2_time','fertilizer2_dose_ml')
     if not isinstance(field,str) or field not in SETTINGS and field not in TIME_FIELDS and field not in pump_fields:
         return jsonify(error='Unknown setting'),400
     raw=str(payload.get('value') if payload.get('value') is not None else '').strip()
     if not raw:
         return jsonify(error='A value is required'),400
     try:
-        if field == 'fertilizer_dose_ml':
+        if field in ('fertilizer_dose_ml','fertilizer2_dose_ml'):
             from decimal import Decimal
             parsed=Decimal(raw)
             if not parsed.is_finite() or not 0 <= parsed <= 100 or parsed.as_tuple().exponent < -2:
                 raise ValueError('Dose must be 0–100 ml with at most two decimals')
             parsed=str(parsed)
-        elif field == 'fertilizer_time':
+        elif field in ('fertilizer_time','fertilizer2_time'):
             parsed=datetime.strptime(raw,'%H:%M').strftime('%H:%M:%S')
         elif field in SETTINGS:
             cast,low,high=SETTINGS[field]
@@ -288,13 +290,15 @@ def save_option_field():
             parsed=datetime.strptime(raw,'%H:%M').strftime('%H:%M:%S')
     except (ValueError,OverflowError,TypeError,__import__('decimal').InvalidOperation):
         return jsonify(error='Invalid value'),400
-    if field == 'fertilizer_dose_ml' and float(parsed) > 0:
-        config=query('SELECT fertilizer_ml_per_second AS ml_per_second FROM options LIMIT 1',one=True)
+    if field in ('fertilizer_dose_ml','fertilizer2_dose_ml') and float(parsed) > 0:
+        table='fertilizer_pump2' if field=='fertilizer2_dose_ml' else 'options'
+        config=query('SELECT fertilizer_ml_per_second AS ml_per_second FROM '+table+' LIMIT 1',one=True)
         if config and config['ml_per_second'] is not None and calibrated_seconds(parsed,config['ml_per_second']) is None:
             return jsonify(error='Dose exceeds the 60-second pump limit for current calibration'),400
     if field in pump_fields:
-        column='fertilizer_start_time' if field=='fertilizer_time' else 'fertilizer_dose_ml'
-        mutate('UPDATE options SET `'+column+'`=%s LIMIT 1',(parsed,))
+        column='fertilizer_start_time' if field.endswith('_time') else 'fertilizer_dose_ml'
+        table='fertilizer_pump2' if field.startswith('fertilizer2_') else 'options'
+        mutate('UPDATE '+table+' SET `'+column+'`=%s LIMIT 1',(parsed,))
     else:
         mutate('UPDATE options SET `'+field+'`=%s LIMIT 1',(parsed,))
     response=jsonify(ok=True,field=field,value=parsed)
@@ -604,6 +608,16 @@ def options():
     statuses=query('SELECT * FROM `status` LIMIT 1',one=True) or {}
     overrides=query('SELECT device,until_at FROM manual_overrides WHERE until_at > NOW()')
     manual={r['device']:r['until_at'] for r in overrides}
+    pump2_row=query('SELECT * FROM fertilizer_pump2 WHERE id=1',one=True) or {}
+    fertilizer2={
+        'start_time':pump2_row.get('fertilizer_start_time'),
+        'dose_ml':pump2_row.get('fertilizer_dose_ml'),
+        'ml_per_second':pump2_row.get('fertilizer_ml_per_second'),
+        'last_run_date':pump2_row.get('fertilizer_last_run_date'),
+        'weekdays':int(pump2_row.get('fertilizer_weekdays') if pump2_row.get('fertilizer_weekdays') is not None else 127),
+        'times_per_week':int(pump2_row.get('fertilizer_weekdays') if pump2_row.get('fertilizer_weekdays') is not None else 127).bit_count(),
+        'hardware_enabled':os.getenv('PUMP2_ENABLED','0').lower() in ('1','true','yes')
+    }
     fertilizer={
         'start_time':current.get('fertilizer_start_time'),
         'dose_ml':current.get('fertilizer_dose_ml'),
@@ -613,7 +627,7 @@ def options():
         'times_per_week':int(current.get('fertilizer_weekdays') if current.get('fertilizer_weekdays') is not None else 127).bit_count()
     }
     return render_template('options.html', options=current,devices=DEVICES,settings=SETTINGS,
-                           statuses=statuses,manual=manual,fertilizer=fertilizer)
+                           statuses=statuses,manual=manual,fertilizer=fertilizer,fertilizer2=fertilizer2)
 
 @app.get('/loging')
 @logged_in
