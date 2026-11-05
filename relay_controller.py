@@ -432,6 +432,7 @@ class FertilizerPump:
                     "fertilizer_dose_ml AS dose_ml,"
                     "fertilizer_ml_per_second AS ml_per_second,"
                     "fertilizer_last_run_date AS last_run_date,"
+                    "fertilizer_weekdays AS weekdays,"
                     "NOW() AS db_now FROM options LIMIT 1"
                 )
                 config = cursor.fetchone()
@@ -447,6 +448,8 @@ class FertilizerPump:
                     minute = (start.seconds // 60) % 60
                 if duration is None:
                     return
+                if not (int(config['weekdays']) & (1 << now.weekday())):
+                    return
                 if (now.hour != hour or now.minute != minute or
                         now.second >= 10 or config["last_run_date"] == now.date()):
                     return
@@ -458,8 +461,9 @@ class FertilizerPump:
                     "WHERE (fertilizer_last_run_date IS NULL "
                     "OR fertilizer_last_run_date<CURDATE()) "
                     "AND fertilizer_dose_ml=%s "
-                    "AND fertilizer_ml_per_second=%s AND fertilizer_start_time=%s",
-                    (config["dose_ml"],config["ml_per_second"],start)
+                    "AND fertilizer_ml_per_second=%s AND fertilizer_start_time=%s "
+                    "AND (fertilizer_weekdays & %s) <> 0",
+                    (config["dose_ml"],config["ml_per_second"],start,1 << now.weekday())
                 )
                 if cursor.rowcount != 1:
                     return
