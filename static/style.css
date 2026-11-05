@@ -1625,3 +1625,154 @@ status trends preserved */
   .fertilizer-weekdays .fertilizer-day {width:calc((100% - 24px)/4);}
   .fertilizer-weekly-actions button {width:100%;}
 }
+
+
+/* Fertilizer scheduler — a compact accordion directly under the dosing controls. */
+.fertilizer-control-row {
+  grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) minmax(0,1fr) 96px;
+}
+.fertilizer-dose-heading {gap:11px;min-width:0;}
+.fertilizer-dose-heading>div:not(.fertilizer-heading-actions){min-width:0;}
+.fertilizer-heading-actions {
+  display:flex;
+  flex:0 0 auto;
+  align-items:center;
+  gap:8px;
+  margin-left:auto;
+}
+.fertilizer-dose-heading .fertilizer-heading-actions .fertilizer-open-calibration,
+.fertilizer-dose-heading .fertilizer-heading-actions .fertilizer-scheduler-toggle {
+  box-sizing:border-box;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  min-height:38px;
+  margin:0;
+  padding:8px 11px;
+  border:1px solid #386478;
+  border-radius:10px;
+  background:#193b4c;
+  color:#d4eaf4;
+  font-size:12px;
+  line-height:1.2;
+  font-weight:650;
+  white-space:nowrap;
+  cursor:pointer;
+  transition:background .18s,border-color .18s,box-shadow .18s;
+}
+.fertilizer-dose-heading .fertilizer-heading-actions button:hover {
+  background:#235165;
+  border-color:#52859b;
+}
+.fertilizer-dose-heading .fertilizer-heading-actions button:focus-visible {
+  outline:2px solid #70e2d0;
+  outline-offset:3px;
+}
+.fertilizer-dose-heading .fertilizer-heading-actions .fertilizer-scheduler-toggle[aria-expanded="true"] {
+  background:#18534f;
+  border-color:#4abdaf;
+  color:#d2fff4;
+  box-shadow:inset 0 0 0 1px #337b73;
+}
+.fertilizer-scheduler-toggle .mdi{font-size:16px;}
+.fertilizer-scheduler-toggle .fertilizer-scheduler-chevron {
+  display:inline-block;
+  transition:transform .24s ease;
+}
+.fertilizer-scheduler-toggle[aria-expanded="true"] .fertilizer-scheduler-chevron {
+  transform:rotate(180deg);
+}
+.fertilizer-weekly-reveal {
+  display:grid;
+  grid-template-rows:0fr;
+  opacity:0;
+  visibility:hidden;
+  margin:0;
+  transition:grid-template-rows .3s cubic-bezier(.2,.8,.2,1),opacity .22s ease,
+    visibility 0s linear .3s;
+}
+.fertilizer-weekly-reveal.is-open {
+  grid-template-rows:1fr;
+  opacity:1;
+  visibility:visible;
+  transition:grid-template-rows .3s cubic-bezier(.2,.8,.2,1),opacity .25s ease,
+    visibility 0s;
+}
+.fertilizer-weekly-reveal-inner{min-height:0;overflow:hidden;}
+.fertilizer-weekly-reveal .fertilizer-weekly-panel {
+  margin:10px 0 0;
+  padding:18px 20px;
+  border:1px solid #305368;
+  border-radius:13px;
+  background:linear-gradient(120deg,#192f42,#1a3546);
+  box-shadow:inset 0 1px 0 #ffffff09;
+  transform:translateY(-7px);
+  transition:transform .3s cubic-bezier(.2,.8,.2,1);
+}
+.fertilizer-weekly-reveal.is-open .fertilizer-weekly-panel {transform:translateY(0);}
+.fertilizer-weekly-title {min-width:0;flex:1 1 250px;}
+.fertilizer-weekly-header {align-items:center;gap:12px;}
+.fertilizer-weekly-header h4{font-size:14px;letter-spacing:.01em;}
+.fertilizer-weekly-header p{max-width:770px;}
+.fertilizer-weekdays {margin-top:18px;gap:9px;}
+.fertilizer-weekdays .fertilizer-day {width:64px;height:40px;}
+.fertilizer-weekly-actions {
+  padding-top:15px;
+  border-top:1px solid #34506485;
+  margin-top:17px;
+  gap:14px;
+  min-height:50px;
+}
+.fertilizer-weekly-feedback {
+  margin:0;
+  flex:1 1 190px;
+  color:#9ebfcd;
+  font-size:12px;
+  line-height:1.5;
+}
+.fertilizer-weekly-feedback[data-state="dirty"]{color:#e6c78d;}
+.fertilizer-weekly-feedback[data-state="saved"]{color:#79dcc9;}
+.fertilizer-weekly-feedback[data-state="error"]{color:#ffb2a8;}
+.fertilizer-weekly-actions #fertilizer-weekly-save {
+  display:inline-flex;
+  gap:7px;
+  align-items:center;
+  justify-content:center;
+  min-height:39px;
+  border-radius:9px;
+  padding:9px 15px;
+  font-weight:650;
+  white-space:nowrap;
+  background:#2c877e;
+  color:#f1fffc;
+  border:1px solid #4eafa4;
+}
+.fertilizer-weekly-actions #fertilizer-weekly-save:not(:disabled):hover{background:#369c8f;}
+.fertilizer-weekly-actions #fertilizer-weekly-save:disabled{opacity:.45;cursor:not-allowed;}
+@media (max-width:1160px) {
+  .fertilizer-control-row {grid-template-columns:minmax(0,1fr) minmax(0,1fr) 92px;}
+  .fertilizer-control-row .fertilizer-dose-heading {grid-column:1/-1;}
+  .fertilizer-control-row .device-manual {grid-column:3;grid-row:2;}
+}
+@media (max-width:700px) {
+  .fertilizer-control-row {grid-template-columns:minmax(0,1fr) minmax(0,1fr) 66px;}
+  .fertilizer-dose-heading {flex-wrap:wrap;}
+  .fertilizer-heading-actions {margin-left:auto;}
+  .fertilizer-weekly-reveal .fertilizer-weekly-panel {padding:17px 15px;}
+  .fertilizer-weekly-header {align-items:flex-start;}
+}
+@media (max-width:490px) {
+  .fertilizer-dose-heading .fertilizer-heading-actions {
+    width:100%;
+    margin-left:0;
+    padding-left:51px;
+  }
+  .fertilizer-dose-heading .fertilizer-heading-actions button {flex:1;}
+  .fertilizer-weekly-actions #fertilizer-weekly-save {width:100%;}
+  .fertilizer-weekly-count {order:2;}
+}
+@media (prefers-reduced-motion:reduce) {
+  .fertilizer-weekly-reveal,.fertilizer-weekly-reveal .fertilizer-weekly-panel,
+  .fertilizer-scheduler-toggle .fertilizer-scheduler-chevron {transition:none;}
+}
