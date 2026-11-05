@@ -486,3 +486,60 @@ sudo mariadb _AquaCore_ -e 'SELECT Datetime,temp,ph,tds FROM data ORDER BY Id DE
 ```
 
 **Only enable NTC_ENABLED after physically installing the correct divider.** An invalid or absent NTC will leave `temp=NULL` while using `TDS_WATER_TEMP_C` as a fallback for TDS. The pH field is deliberately NULL until a real two-buffer calibration is supplied. Do not feed these estimates into automated chemical dosing or heater failsafes without independent verification.
+
+
+## Sensor calibration dialog and active-low water leak Telegram alarm (November 2026)
+
+### Apply SQL migration before restarting the sensor collector or web process
+
+```bash
+sudo -u aquacore git -C /opt/aquacore pull --ff-only origin master
+sudo mariadb _AquaCore_ < /opt/aquacore/deploy/sql/sensor_calibration.sql
+sudo mariadb _AquaCore_ -e "SELECT * FROM sensor_calibration;"
+sudo systemctl restart aquacore.service aquacore-tds.service
+```
+
+In **Settings → Sensor calibration → Calibrate sensors**, an admin can capture averaged, stability-checked ADS1115 A1 and A0 readings, then explicitly save. A reading must be captured within 15 minutes before saving; unsteady or ADC-saturated signals are rejected. Pump operations are unaffected.
+
+**Temperature:** The calibration dialog assumes **NTC 10k B3950 wired A1-to-GND with fixed 10k pull-up to 3.3V** as documented in the section above. **If that new probe isn't physically installed, do not use the temperature calibration dialog or enable `NTC_ENABLED`.** Place an independent thermometer and NTC together in water, sample A1, enter measured reference C (5–40 C), and save. Offset is limited to +/-5 C and saved to `sensor_calibration.temp_offset_c`. This offset applies to `data.temp` and TDS temperature compensation once `NTC_ENABLED=true`.
+
+**pH:** Place the probe in certified pH 7.00 buffer and capture A0 after stabilization, rinse, place in certified pH 4.00 buffer and capture again, check the certification acknowledgement and save. The collector automatically uses the saved `ph7_voltage` and `ph4_voltage` from `sensor_calibration` for new data rows. Drinking water, homemade vinegar dilutions and 5% vinegar are **not** certified calibration buffers. No pH will be reported unless valid reference voltages are stored. The existing pH ADC wiring is not modified in this update. Calibration cannot fix unsafe 5V-to-3.3V I2C pull-up or A0 overvoltage: **check actual signals independently**.
+
+### Water alarm wiring — physical header pin 35 / PI2 / line 258
+
+The Orange Pi Zero 2W maps physical header **pin 35 to PI2**, SoC GPIO **258**, expected libgpiod offset **258 on gpiochip1** in this installation. Confirm locally using `gpioinfo gpiochip1 | grep -E 'line +258:'`.
+
+```text
+          WATER LEAK SENSOR MODULE                 ORANGE PI ZERO 2W
+          ------------------------                ------------------
+          Digital OUT (DRY = 3.3V)  ------------>  PI2 physical pin 35
+          Digital OUT (WET = 0V)    -- same wire --
+          GND                      ------------>  GND physical pin 39 (or 34)
+          Sensor power             ------------>  rated supply, per its datasheet
+
+          IMPORTANT: Output on pin 35 must NEVER exceed 3.3V.
+```
+
+If your sensor is an **open-collector/open-drain** type, the monitor requests the SoC internal pull-up; an external 4.7k–10k pull-up to **3.3V** may be needed for stable readings. Never pull it up to 5V. If its digital output is 5V, use a suitable level shifter or divider *before* connection. Verify DRY=HIGH and WET=LOW with a meter or `gpioget` first.
+
+The standalone `water_alarm.py` samples the input once per second, requires 3 stable readings, sends a **WET alert** via existing `BOT_TOKEN` to existing Telegram owner `MyTGaccount`, sends a **DRY recovery** after a previously delivered alarm, and repeats unresolved WET once per hour. Failed Telegram sends are retried every 30 seconds. Note: on process restart while already wet, a new initial alert is sent; power loss, network issues, and GPIO access failure prevent delivery. This is a supplemental monitoring alert, **not a safety-rated leak shutoff**.
+
+### Install and enable alarm monitor
+
+```bash
+# Check permissions and free pin BEFORE enabling:
+gpioinfo gpiochip1 | grep -E 'line +258:'
+ls -l /dev/gpiochip1
+id aquacore
+# Ensure aquacore account can read the GPIO chip (existing udev/group setup).
+
+sudo cp /opt/aquacore/deploy/systemd/aquacore-water-alarm.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now aquacore-water-alarm.service
+sudo systemctl status aquacore-water-alarm.service --no-pager
+sudo journalctl -u aquacore-water-alarm.service -f
+```
+
+With the alarm running, safely simulate DRY then WET using the actual 3.3V-compatible water-sensor output (do **not** tie the GPIO directly to the 3.3V power rail or output of an unverified 5V module). Expect one Telegram alarm on LOW and a recovery on HIGH; verify both physical states and Telegram delivery. Do not drive this input using `gpioset` while the alarm process owns the line.
+
+`aquacore-water-alarm.service` is independent of `aquacore-telegram.service`; both use the same bot token safely because the alarm monitor only sends HTTP notifications and does not poll for Telegram updates.
