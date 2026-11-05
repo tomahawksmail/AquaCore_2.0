@@ -26,8 +26,8 @@ RUNNING = True
 # Orange Pi Zero 2W relay layout, by physical relay channel:
 # CO2=PH4(228); Oxygen=PI6(262); Main Light=PH5(229);
 # Backlight=PI16(272); Plant Light=PC12(76); UV=PI0(256);
-# CPU cooler=PH8(232); fertilizer pump=PH6(230).
-# Unassigned: PH7(231), PH9(233).
+# CPU cooler=PH8(232); Pump 1=PH6(230); Pump 2=PH7(231).
+# Unassigned: PH9(233).
 # Each pair is (PHYSICAL_HEADER_PIN, SUNXI_GPIO_NUMBER).
 # Controlled using libgpiod v2 on gpiochip1.
 PIN_MAP = {
@@ -41,12 +41,12 @@ PIN_MAP = {
 
 # Unused relay channels: kept unconfigured/uncontrolled.
 SPARE_PIN_MAP = {
-    "spare_ph7": (19, 231),  # PH7 / physical 19
     "spare_ph9": (26, 233),  # PH9 / physical 26 (previous pump output)
 }
 
 COOLER_PIN = (21, 232)  # PH8 / physical pin 21
-PUMP_PIN = (23, 230)    # PH6 / physical pin 23; active-low
+PUMP_PIN = (23, 230)    # Pump 1 / PH6 / physical pin 23; active-low
+PUMP2_PIN = (19, 231)   # Pump 2 / PH7 / physical pin 19; verify SPI overlay and wiring
 PUMP_MAX_SECONDS = 60
 CPU_TEMP_PATH = "/sys/class/thermal/thermal_zone0/temp"
 COOLER_ON_C = 70.0
@@ -93,7 +93,7 @@ def update_cooler(request, previous_on, apply):
 
 def load_config():
     load_dotenv(os.getenv("AQUACORE_ENV", "/home/orangepi/AquaCore/.env"))
-    all_pins = [physical for physical, _ in (*PIN_MAP.values(), *SPARE_PIN_MAP.values(), COOLER_PIN, PUMP_PIN)]
+    all_pins = [physical for physical, _ in (*PIN_MAP.values(), *SPARE_PIN_MAP.values(), COOLER_PIN, PUMP_PIN, PUMP2_PIN)]
     if len(set(all_pins)) != len(all_pins):
         raise ValueError('Duplicate physical header pins across relay modules')
     return dict(PIN_MAP)
@@ -127,6 +127,8 @@ def get_status(pins):
 def request_relay_lines(pins):
     """Claim aquarium and cooler GPIO lines in one persistent request."""
     line_ids=[number for _,number in pins.values()] + [COOLER_PIN[1], PUMP_PIN[1]]
+    if os.getenv("PUMP2_ENABLED", "0").lower() in ("1","true","yes"):
+        line_ids.append(PUMP2_PIN[1])
     settings=gpiod.LineSettings(direction=Direction.OUTPUT,output_value=Value.ACTIVE)
     # No active_low flag: ACTIVE means physical HIGH; on the relay module HIGH = OFF.
     request=gpiod.request_lines("/dev/gpiochip1",consumer="aquacore-relays",
@@ -138,7 +140,9 @@ def setup_pins(pins, apply):
     for field,(physical,pin) in pins.items():
         LOG.info("%s => physical pin %s / chip1 offset %s",field,physical,pin)
     LOG.info("CPU cooler => physical pin %s / chip1 offset %s", *COOLER_PIN)
-    LOG.info("Fertilizer pump => physical pin %s / chip1 offset %s", *PUMP_PIN)
+    LOG.info("Fertilizer Pump 1 => physical pin %s / chip1 offset %s", *PUMP_PIN)
+    LOG.info("Fertilizer Pump 2 => physical pin %s / chip1 offset %s; enabled=%s",
+             *PUMP2_PIN, os.getenv("PUMP2_ENABLED","0"))
     return request_relay_lines(pins) if apply else None
 
 
@@ -167,7 +171,14 @@ class FertilizerPump:
     Progress records describe GPIO commands, not measured liquid movement.
     The OFF timer runs independently of database and UI polling.
     """
-    def __init__(self, request, apply):
+    def __init__(self, request, apply, *, table="options", pin=PUMP_PIN, status_field="fertilizer_pump_status"):
+        if table not in ("options", "fertilizer_pump2"):
+            raise ValueError("Invalid pump table")
+        if status_field not in ("fertilizer_pump_status", "fertilizer_pump2_status"):
+            raise ValueError("Invalid pump status field")
+        self.table = table
+        self.pin = pin
+        self.status_field = status_field
         self.request = request
         self.apply = apply
         self.lock = threading.Lock()
@@ -182,7 +193,7 @@ class FertilizerPump:
             with database() as connection:
                 with connection.cursor() as cursor:
                     cursor.execute(
-                        "UPDATE options SET fertilizer_pulse_state='interrupted',"
+                        f"UPDATE {self.table} SET fertilizer_pulse_state='interrupted',"
                         "fertilizer_pulse_finished_at=NOW(3) "
                         "WHERE fertilizer_pulse_state='running'"
                     )
@@ -207,7 +218,7 @@ class FertilizerPump:
                 if cursor.fetchone()["n"] != 1:
                     raise RuntimeError("Expected one status row for pump sync")
                 cursor.execute(
-                    "UPDATE `status` SET `fertilizer_pump_status`=%s",
+                    f"UPDATE `status` SET `{self.status_field}`=%s",
                     (desired,)
                 )
         self.last_published = desired
@@ -219,7 +230,7 @@ class FertilizerPump:
         with database() as connection:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    "UPDATE options SET fertilizer_pulse_state=%s,"
+                    f"UPDATE {self.table} SET fertilizer_pulse_state=%s,"
                     "fertilizer_pulse_finished_at=NOW(3) "
                     "WHERE fertilizer_pulse_request_id=%s "
                     "AND fertilizer_pulse_state IN ('running','stop_requested')",
@@ -241,7 +252,7 @@ class FertilizerPump:
             request_id = self.pulse_request_id
             try:
                 if self.apply and self.request is not None:
-                    self.request.set_value(PUMP_PIN[1], Value.ACTIVE)  # HIGH=OFF
+                    self.request.set_value(self.pin[1], Value.ACTIVE)  # HIGH=OFF
             except OSError:
                 LOG.exception("Fertilizer GPIO OFF failed")
                 state = "failed"
@@ -273,7 +284,7 @@ class FertilizerPump:
             with database() as connection:
                 with connection.cursor() as cursor:
                     cursor.execute(
-                        "UPDATE options SET fertilizer_pulse_state='running',"
+                        f"UPDATE {self.table} SET fertilizer_pulse_state='running',"
                         "fertilizer_pulse_started_at=NOW(3),"
                         "fertilizer_pulse_finished_at=NULL,"
                         "fertilizer_pulse_duration_seconds=%s "
@@ -289,7 +300,7 @@ class FertilizerPump:
             with self.lock:
                 if self.active:
                     raise RuntimeError("Fertilizer pulse already active")
-                self.request.set_value(PUMP_PIN[1], Value.INACTIVE)  # LOW=ON
+                self.request.set_value(self.pin[1], Value.INACTIVE)  # LOW=ON
                 self.active = True
                 self.pulse_request_id = request_id
                 self.generation += 1
@@ -307,7 +318,7 @@ class FertilizerPump:
                     self.timer.cancel()
                     self.timer = None
                 try:
-                    self.request.set_value(PUMP_PIN[1], Value.ACTIVE)  # best-effort OFF
+                    self.request.set_value(self.pin[1], Value.ACTIVE)  # best-effort OFF
                 except OSError:
                     LOG.exception("Unable to deactivate fertilizer relay after start error")
             if request_id is not None:
@@ -329,7 +340,7 @@ class FertilizerPump:
                     "fertilizer_manual_duration_seconds AS manual_duration_seconds,"
                     "fertilizer_manual_kind AS manual_kind,"
                     "fertilizer_pulse_state AS pulse_state,NOW() AS db_now "
-                    "FROM options LIMIT 1"
+                    f"FROM {self.table} LIMIT 1"
                 )
                 row = cursor.fetchone()
                 if row is None:
@@ -344,7 +355,7 @@ class FertilizerPump:
                 if row["pulse_state"] == "stop_requested":
                     if self.apply:
                         cursor.execute(
-                            "UPDATE options SET fertilizer_manual_processed_id=%s,"
+                            f"UPDATE {self.table} SET fertilizer_manual_processed_id=%s,"
                             "fertilizer_pulse_state='stopped',"
                             "fertilizer_pulse_finished_at=NOW(3) "
                             "WHERE fertilizer_manual_request_id=%s "
@@ -359,7 +370,7 @@ class FertilizerPump:
                     return True
                 # Claim before physical activation to prevent accidental re-doses.
                 cursor.execute(
-                    "UPDATE options SET fertilizer_manual_processed_id=%s "
+                    f"UPDATE {self.table} SET fertilizer_manual_processed_id=%s "
                     "WHERE fertilizer_manual_request_id=%s "
                     "AND fertilizer_manual_processed_id<%s",
                     (request_id,request_id,request_id)
@@ -373,7 +384,7 @@ class FertilizerPump:
             with database() as connection:
                 with connection.cursor() as cursor:
                     cursor.execute(
-                        "UPDATE options SET fertilizer_pulse_state='skipped',"
+                        f"UPDATE {self.table} SET fertilizer_pulse_state='skipped',"
                         "fertilizer_pulse_finished_at=NOW(3) "
                         "WHERE fertilizer_pulse_request_id=%s "
                         "AND fertilizer_pulse_state='queued'",
@@ -393,7 +404,7 @@ class FertilizerPump:
                     "SELECT fertilizer_pulse_request_id AS pulse_request_id,"
                     "fertilizer_pulse_kind AS pulse_kind,"
                     "fertilizer_pulse_state AS pulse_state "
-                    "FROM options LIMIT 1"
+                    f"FROM {self.table} LIMIT 1"
                 )
                 row = cursor.fetchone()
                 if not row or row["pulse_kind"] != "manual" or row["pulse_state"] != "stop_requested":
@@ -406,7 +417,7 @@ class FertilizerPump:
             with database() as connection:
                 with connection.cursor() as cursor:
                     cursor.execute(
-                        "UPDATE options SET fertilizer_manual_processed_id=GREATEST("
+                        f"UPDATE {self.table} SET fertilizer_manual_processed_id=GREATEST("
                         "fertilizer_manual_processed_id,%s),"
                         "fertilizer_pulse_state='stopped',"
                         "fertilizer_pulse_finished_at=NOW(3) "
@@ -433,7 +444,7 @@ class FertilizerPump:
                     "fertilizer_ml_per_second AS ml_per_second,"
                     "fertilizer_last_run_date AS last_run_date,"
                     "fertilizer_weekdays AS weekdays,"
-                    "NOW() AS db_now FROM options LIMIT 1"
+                    f"NOW() AS db_now FROM {self.table} LIMIT 1"
                 )
                 config = cursor.fetchone()
                 if not config:
@@ -457,7 +468,7 @@ class FertilizerPump:
                     LOG.info("DRY RUN: would dose fertilizer for %.2f seconds",duration)
                     return
                 cursor.execute(
-                    "UPDATE options SET fertilizer_last_run_date=CURDATE() "
+                    f"UPDATE {self.table} SET fertilizer_last_run_date=CURDATE() "
                     "WHERE (fertilizer_last_run_date IS NULL "
                     "OR fertilizer_last_run_date<CURDATE()) "
                     "AND fertilizer_dose_ml=%s "
@@ -498,6 +509,10 @@ def main():
     request=setup_pins(pins,args.apply)
     cooler_on = None
     pump = FertilizerPump(request, args.apply)
+    pump2_enabled = os.getenv("PUMP2_ENABLED","0").lower() in ("1","true","yes")
+    pump2 = FertilizerPump(request, args.apply and pump2_enabled,
+                           table="fertilizer_pump2",pin=PUMP2_PIN,
+                           status_field="fertilizer_pump2_status")
     try:
       while RUNNING:
         try:
@@ -508,6 +523,14 @@ def main():
             pump.sync_status()
         except (pymysql.MySQLError,OSError,RuntimeError,ValueError,KeyError):
             LOG.exception("Unable to synchronize fertilizer_pump_status")
+        try:
+            pump2.poll()
+        except (pymysql.MySQLError,OSError,RuntimeError,ValueError,KeyError):
+            LOG.exception("Pump 2 scheduling failed")
+        try:
+            pump2.sync_status()
+        except (pymysql.MySQLError,OSError,RuntimeError,ValueError,KeyError):
+            LOG.exception("Pump 2 status synchronization failed")
         try:
             cooler_on = update_cooler(request, cooler_on, args.apply)
         except (OSError, RuntimeError, ValueError):
@@ -520,6 +543,11 @@ def main():
         time.sleep(args.interval)
     finally:
         pump.close()
+        pump2.close()
+        try:
+            pump2.sync_status()
+        except (pymysql.MySQLError,OSError,RuntimeError,ValueError,KeyError):
+            LOG.exception("Pump 2 OFF status update failed")
         try:
             pump.sync_status()
         except (pymysql.MySQLError,OSError,RuntimeError,ValueError,KeyError):
