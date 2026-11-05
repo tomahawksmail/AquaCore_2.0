@@ -25,6 +25,8 @@ def local_commit():
         return os.getenv('AQUACORE_COMMIT', 'Unavailable')
 
 app = Flask(__name__)
+from sensor_calibration_api import bp as sensor_calibration_bp
+app.register_blueprint(sensor_calibration_bp)
 app.secret_key = os.environ.get('SECRET_KEY') or secrets.token_hex(32)
 app.jinja_env.globals['deployed_commit'] = local_commit()
 app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax', MAX_CONTENT_LENGTH=16384)
