@@ -29,7 +29,7 @@
   let busy=false, stopping=false;
   let activeId=null, activeKind='';
   let calibrationReady=false, runSeconds=10, elapsedBase=0, elapsedAt=0;
-  let cooldownUntil=0, cooldownTimer=null, pollTimer=null, tickTimer=null;
+  let cooldownUntil=0, calibrationCooldownUntil=0, cooldownTimer=null, calibrationTimer=null, pollTimer=null, tickTimer=null;
   let notice='', noticeTimer=null, inFlight=false;
 
   const valueMl=()=>Number(mlInput.dataset.saved ?? mlInput.value);
@@ -59,7 +59,8 @@
       'Manually run pump (uncalibrated volume, maximum 30 seconds)';
     secondsInput.disabled=readonly || busy ||
       (activeId!==null && activeKind==='calibration');
-    startBtn.disabled=readonly || busy || activeId!==null || cooling ||
+    startBtn.disabled=readonly || busy || activeId!==null ||
+      Date.now()<calibrationCooldownUntil ||
       !secondsInput.checkValidity() || !secondsInput.value;
     saveBtn.disabled=readonly || busy || !calibrationReady ||
       !measuredInput.value || !measuredInput.checkValidity();
@@ -68,6 +69,12 @@
     cooldownUntil=Date.now()+Math.max(0,seconds)*1000;
     if(cooldownTimer!==null)clearTimeout(cooldownTimer);
     cooldownTimer=setTimeout(updateUI,Math.max(0,seconds)*1000+150);
+  }
+  function calibrationCooldown(seconds) {
+    calibrationCooldownUntil=Date.now()+Math.max(0,seconds)*1000;
+    if(calibrationTimer!==null)clearTimeout(calibrationTimer);
+    calibrationTimer=setTimeout(updateUI,Math.max(0,seconds)*1000+150);
+    updateUI();
   }
   async function api(path,payload) {
     const response=await fetch(path,{
@@ -136,6 +143,7 @@
     inFlight=false;
     if(data.request_id>0 && data.request_age_seconds>=0 &&
        data.request_age_seconds<120)cooldown(120-data.request_age_seconds);
+    calibrationCooldown(Number(data.calibration_retry_after_seconds)||0);
 
     if(reconnect && activeId===null) {
       if(data.kind==='manual' && ['queued','running','stop_requested'].includes(data.state)){
@@ -233,12 +241,14 @@
       activeKind='calibration';
       runSeconds=Number(result.duration_seconds);
       cooldown(120);
+      calibrationCooldown(120);
       showProgress('Waiting for relay worker to start…',null,0);
       message.textContent='Test queued. Progress starts after relay ON is recorded.';
       startPolling();
       readStatus(false);
     }catch(error){
       message.textContent='Test rejected: '+error.message;
+      if(error.message.includes('retry in '))readStatus(true);
     }finally{busy=false;updateUI();}
   });
 
