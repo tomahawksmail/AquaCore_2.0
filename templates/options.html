@@ -143,21 +143,28 @@
           </div>
         </div>
       </div>
-      <div class="settings-card" style="margin-top:1rem">
-        <strong>Fertilizer weekly schedule</strong>
-        <p class="control-state">Select days for the configured pump dose and activation time. No days = automatic dosing OFF; manual dosing remains available.</p>
-        <div id="fertilizer-weekdays" class="fertilizer-modal-inputs">
-        {% for day, title in [(0,'Mon'),(1,'Tue'),(2,'Wed'),(3,'Thu'),(4,'Fri'),(5,'Sat'),(6,'Sun')] %}
-          <label style="display:inline-flex;align-items:center;gap:.35rem;min-width:5rem">
-            <input type="checkbox" value="{{day}}" {% if (fertilizer.weekdays // (2 ** day)) % 2 == 1 %}checked{% endif %}
-              {% if session.get('role')|int != 1 %}disabled{% endif %}>{{title}}
-          </label>
-        {% endfor %}
+      <div class="fertilizer-weekly-panel">
+        <div class="fertilizer-weekly-header">
+          <div>
+            <h4><i class="mdi mdi-calendar-week-outline" aria-hidden="true"></i> Weekly dosing schedule</h4>
+            <p>Choose the days for the scheduled dose. Select none to turn off automatic dosing.</p>
+          </div>
+          <span class="fertilizer-weekly-count" id="fertilizer-weekly-count">{{ fertilizer.times_per_week }} times per week</span>
         </div>
-        <p class="control-state" id="fertilizer-weekly-count">{{fertilizer.times_per_week}} time(s) per week</p>
-        <button type="button" id="fertilizer-weekly-save" class="outline small"
-          {% if session.get('role')|int != 1 %}disabled{% endif %}>Save weekly schedule</button>
-        <p id="fertilizer-weekly-feedback" class="control-state" role="status" aria-live="polite"></p>
+        <div id="fertilizer-weekdays" class="fertilizer-weekdays" role="group" aria-label="Fertilizer dosing weekdays">
+          {% for day, title in [(0,'Mon'),(1,'Tue'),(2,'Wed'),(3,'Thu'),(4,'Fri'),(5,'Sat'),(6,'Sun')] %}
+          <label class="fertilizer-day">
+            <input type="checkbox" value="{{ day }}" {% if (fertilizer.weekdays // (2 ** day)) % 2 == 1 %}checked{% endif %}
+                   {% if session.get('role')|int != 1 %}disabled{% endif %}>
+            <span>{{ title }}</span>
+          </label>
+          {% endfor %}
+        </div>
+        <div class="fertilizer-weekly-actions">
+          <p id="fertilizer-weekly-feedback" class="control-state" role="status" aria-live="polite"></p>
+          <button type="button" id="fertilizer-weekly-save" class="outline small"
+                  {% if session.get('role')|int != 1 %}disabled{% endif %}>Save schedule</button>
+        </div>
       </div>
     </div>
     <p class="control-disclaimer"><i class="mdi mdi-information-outline" aria-hidden="true"></i> Changes to times and water parameters save automatically. Manual switches take effect immediately and last until the next scheduled transition.</p>
