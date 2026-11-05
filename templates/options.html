@@ -115,9 +115,17 @@
                 {% endif %}
               </span>
             </div>
-            <button type="button" id="fertilizer-open-calibration" class="outline small fertilizer-open-calibration">
-              <i class="mdi mdi-tune-variant" aria-hidden="true"></i> Calibration
-            </button>
+            <div class="fertilizer-heading-actions">
+              <button type="button" id="fertilizer-open-calibration" class="outline small fertilizer-open-calibration">
+                <i class="mdi mdi-tune-variant" aria-hidden="true"></i> Calibration
+              </button>
+              <button type="button" id="fertilizer-scheduler-toggle" class="outline small fertilizer-scheduler-toggle"
+                      aria-expanded="false" aria-controls="fertilizer-weekly-reveal">
+                <i class="mdi mdi-calendar-week-outline" aria-hidden="true"></i>
+                <span>Scheduler</span>
+                <i class="mdi mdi-chevron-down fertilizer-scheduler-chevron" aria-hidden="true"></i>
+              </button>
+            </div>
           </div>
           <label class="device-time" for="fertilizer-time">
             <span>Activation time</span>
@@ -143,27 +151,33 @@
           </div>
         </div>
       </div>
-      <div class="fertilizer-weekly-panel">
-        <div class="fertilizer-weekly-header">
-          <div>
-            <h4><i class="mdi mdi-calendar-week-outline" aria-hidden="true"></i> Weekly dosing schedule</h4>
-            <p>Choose the days for the scheduled dose. Select none to turn off automatic dosing.</p>
-          </div>
-          <span class="fertilizer-weekly-count" id="fertilizer-weekly-count">{{ fertilizer.times_per_week }} times per week</span>
-        </div>
-        <div id="fertilizer-weekdays" class="fertilizer-weekdays" role="group" aria-label="Fertilizer dosing weekdays">
-          {% for day, title in [(0,'Mon'),(1,'Tue'),(2,'Wed'),(3,'Thu'),(4,'Fri'),(5,'Sat'),(6,'Sun')] %}
-          <label class="fertilizer-day">
-            <input type="checkbox" value="{{ day }}" {% if (fertilizer.weekdays // (2 ** day)) % 2 == 1 %}checked{% endif %}
-                   {% if session.get('role')|int != 1 %}disabled{% endif %}>
-            <span>{{ title }}</span>
-          </label>
-          {% endfor %}
-        </div>
-        <div class="fertilizer-weekly-actions">
-          <p id="fertilizer-weekly-feedback" class="control-state" role="status" aria-live="polite"></p>
-          <button type="button" id="fertilizer-weekly-save" class="outline small"
-                  {% if session.get('role')|int != 1 %}disabled{% endif %}>Save schedule</button>
+      <div id="fertilizer-weekly-reveal" class="fertilizer-weekly-reveal" aria-hidden="true" inert>
+        <div class="fertilizer-weekly-reveal-inner">
+          <section class="fertilizer-weekly-panel" aria-label="Fertilizer weekly dosing schedule">
+            <div class="fertilizer-weekly-header">
+              <div class="fertilizer-weekly-title">
+                <h4><i class="mdi mdi-calendar-check-outline" aria-hidden="true"></i> Weekly dosing schedule</h4>
+                <p>Select the days to run the pump at your configured time. No days selected = automatic dosing off.</p>
+              </div>
+              <span class="fertilizer-weekly-count" id="fertilizer-weekly-count">{{ fertilizer.times_per_week }} times per week</span>
+            </div>
+            <div id="fertilizer-weekdays" class="fertilizer-weekdays" role="group" aria-label="Days for automatic fertilizer dosing">
+              {% for day, title in [(0,'Mon'),(1,'Tue'),(2,'Wed'),(3,'Thu'),(4,'Fri'),(5,'Sat'),(6,'Sun')] %}
+              <label class="fertilizer-day">
+                <input type="checkbox" value="{{ day }}" {% if (fertilizer.weekdays // (2 ** day)) % 2 == 1 %}checked{% endif %}
+                       {% if session.get('role')|int != 1 %}disabled{% endif %}>
+                <span>{{ title }}</span>
+              </label>
+              {% endfor %}
+            </div>
+            <div class="fertilizer-weekly-actions">
+              <p id="fertilizer-weekly-feedback" class="fertilizer-weekly-feedback" role="status" aria-live="polite"></p>
+              <button type="button" id="fertilizer-weekly-save" class="primary small"
+                      {% if session.get('role')|int != 1 %}disabled{% endif %}>
+                <i class="mdi mdi-content-save-outline" aria-hidden="true"></i> Save schedule
+              </button>
+            </div>
+          </section>
         </div>
       </div>
     </div>
@@ -282,7 +296,7 @@
 <script defer src="{{ url_for('static', filename='sensor-calibration.js', v='20261105-live-sensors-v2') }}"></script>
 <script>window.AQUACORE_CSRF = {{ csrf_token()|tojson }};</script>
 <script defer src="{{ url_for('static', filename='controls.js') }}"></script>
-<script defer src="{{ url_for('static', filename='fertilizer-weekly.js', v='20261105-weekly-v1') }}"></script>
+<script defer src="{{ url_for('static', filename='fertilizer-weekly.js', v='20261105-weekly-toggle-v2') }}"></script>
 <script defer src="{{ url_for('static', filename='settings-autosave.js', v='20261104-calibration-modal') }}"></script>
 <script defer src="{{ url_for('static', filename='fertilizer-manual.js', v='20261104-calibration-retry') }}"></script>
 {% endblock %}
