@@ -25,6 +25,7 @@
          manual,mlInput,timeInput,doseLabel].every(Boolean)) return;
 
   const readonly=secondsInput.disabled;
+  const hardwareEnabled=openBtn.dataset.hardwareEnabled !== '0';
   let calibrated=rateLabel.textContent.includes('Calibrated:');
   let busy=false, stopping=false;
   let activeId=null, activeKind='';
@@ -43,7 +44,8 @@
   }
   function updateUI() {
     const time=timeInput.dataset.saved ?? timeInput.value;
-    const schedule=!calibrated?'Auto dose needs calibration · Manual pump available':
+    const schedule=!hardwareEnabled?'Relay disabled · verify PH7 wiring before enabling Pump 2':
+      !calibrated?'Auto dose needs calibration · Manual pump available':
       !doseValid()?'Scheduled · OFF':
       'Scheduled · '+(time||'--:--')+' · '+valueMl()+' ml';
     doseLabel.textContent=notice || schedule;
