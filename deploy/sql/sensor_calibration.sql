@@ -2,6 +2,9 @@
 CREATE TABLE IF NOT EXISTS sensor_calibration (
   id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
   temp_offset_c DOUBLE NOT NULL DEFAULT 0,
+  tds_factor DOUBLE NOT NULL DEFAULT 0.2626,
+  ph_factor DOUBLE NOT NULL DEFAULT 1.0,
+  temp_factor DOUBLE NOT NULL DEFAULT 1.0,
   ph7_voltage DOUBLE NULL,
   ph4_voltage DOUBLE NULL,
   temp_updated_at DATETIME NULL,
