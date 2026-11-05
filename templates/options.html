@@ -210,6 +210,15 @@
       <button type="button" id="sensor-calibration-close" class="outline small" aria-label="Close sensor calibration"><i class="mdi mdi-close"></i></button>
     </div>
     <p id="sensor-existing" class="control-state">Checking saved calibration…</p>
+    <h3>Live sensor readings</h3>
+    <p class="fertilizer-modal-help">Refreshes every 5 seconds while this window is open. Changing K factors previews the result immediately without saving. Only Save multipliers writes to MariaDB. Values marked unavailable need sensor installation or buffer calibration.</p>
+    <div class="settings-fields" aria-live="off">
+      <div><strong>pH (A0)</strong><p id="sensor-live-ph">—</p><small id="sensor-live-a0">—</small></div>
+      <div><strong>TDS (A3)</strong><p id="sensor-live-tds">—</p><small id="sensor-live-a3">—</small></div>
+      <div><strong>Temperature (A1)</strong><p id="sensor-live-temp">—</p><small id="sensor-live-a1">—</small></div>
+    </div>
+    <p id="sensor-live-updated" class="control-state">Not sampled yet</p>
+    <button type="button" id="sensor-live-refresh" class="outline small">Refresh now</button>
     <h3>Sensor correction multipliers</h3>
     <p class="fertilizer-modal-help">Saved in MariaDB and applied to new collector samples only. Existing history is unchanged. TDS adjusts the provisional ppm estimate; pH scales deviation from pH 7; temperature scales the NTC result before the temperature offset. Leave pH and temperature at 1.000 unless checked against reliable references.</p>
     <div class="fertilizer-modal-inputs">
@@ -247,7 +256,7 @@
     <p id="sensor-calibration-status" class="fertilizer-modal-status" role="status" aria-live="polite"></p>
   </div>
 </dialog>
-<script defer src="{{ url_for('static', filename='sensor-calibration.js', v='20261105-sensor-factors-v1') }}"></script>
+<script defer src="{{ url_for('static', filename='sensor-calibration.js', v='20261105-live-sensors-v2') }}"></script>
 <script>window.AQUACORE_CSRF = {{ csrf_token()|tojson }};</script>
 <script defer src="{{ url_for('static', filename='controls.js') }}"></script>
 <script defer src="{{ url_for('static', filename='settings-autosave.js', v='20261104-calibration-modal') }}"></script>
