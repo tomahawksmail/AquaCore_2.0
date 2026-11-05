@@ -22,6 +22,9 @@
   const present = async () => {
     try {
       const result = await api('');
+      for (const name of ['tds_factor','ph_factor','temp_factor']) {
+        btn('sensor-factor-' + name).value = Number(result[name] ?? 1).toString();
+      }
       btn('sensor-existing').textContent =
         'Temperature offset: ' + Number(result.temp_offset_c || 0).toFixed(2) +
         '°C · pH: ' + (result.ph7_voltage != null && result.ph4_voltage != null ? 'calibrated' : 'not calibrated');
@@ -29,6 +32,23 @@
   };
   open.addEventListener('click', () => { setStatus(''); modal.showModal(); present(); });
   btn('sensor-calibration-close').addEventListener('click', () => modal.close());
+  btn('sensor-save-factors').addEventListener('click', async () => {
+    const button = btn('sensor-save-factors');
+    try {
+      const data = {};
+      for (const name of ['tds_factor','ph_factor','temp_factor']) {
+        const input = btn('sensor-factor-' + name);
+        if (input.value.trim() === '') throw new Error(name + ' is required');
+        data[name] = Number(input.value);
+        if (!Number.isFinite(data[name])) throw new Error(name + ' must be finite');
+      }
+      button.disabled = true;
+      await api('/factors', data);
+      setStatus('Saved sensor multipliers. The collector will apply them on its next sample.');
+      await present();
+    } catch (error) { setStatus(error.message); }
+    finally { button.disabled = false; }
+  });
   for (const kind of ['temp','ph7','ph4']) {
     btn('sensor-capture-' + kind).addEventListener('click', async () => {
       const button = btn('sensor-capture-' + kind);
