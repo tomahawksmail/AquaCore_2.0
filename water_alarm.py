@@ -2,7 +2,7 @@
 """Active-low GPIO water alarm: Orange Pi Zero 2W PI2, physical header pin 35.
 
 Run as an independent systemd service. DRY=HIGH (3.3V), WET=LOW (0V).
-Three stable samples required per transition, with alerts on WET and recovery.
+Five consecutive 200-ms samples (~1 second) required per transition, with alerts on WET and recovery.
 Uses existing Telegram bot credentials but no polling/API commands.
 """
 import json
@@ -18,8 +18,8 @@ from dotenv import load_dotenv
 LOG = logging.getLogger("aquacore.water_alarm")
 CHIP = os.getenv("WATER_ALARM_CHIP", "/dev/gpiochip1")
 LINE = int(os.getenv("WATER_ALARM_LINE", "258"))  # PI2 = port I*32 + 2
-SAMPLE_SECONDS = 1.0
-STABLE_SAMPLES = 3
+SAMPLE_SECONDS = 0.2
+STABLE_SAMPLES = 5
 REPEAT_SECONDS = 3600
 
 
