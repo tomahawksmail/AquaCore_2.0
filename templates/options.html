@@ -194,9 +194,9 @@
             <div>
               <strong>Bottle B dosing</strong>
               <span class="control-state" id="fertilizer2-dose-state">
-                {% if not fertilizer.ml_per_second %}
+                {% if not fertilizer2.ml_per_second %}
                   Auto dose needs calibration · Manual pump available
-                {% elif not fertilizer.dose_ml %}
+                {% elif not fertilizer2.dose_ml %}
                   Scheduled · OFF
                 {% else %}
                   Scheduled · {{fertilizer2.start_time|string|truncate(5,True,'')}} · {{fertilizer2.dose_ml}} ml · {{ fertilizer2.times_per_week }} time(s)/week
@@ -204,7 +204,7 @@
               </span>
             </div>
             <div class="fertilizer-heading-actions">
-              <button type="button" id="fertilizer2-open-calibration" class="outline small fertilizer-open-calibration">
+              <button type="button" id="fertilizer2-open-calibration" {% if not fertilizer2.hardware_enabled %}disabled{% endif %} class="outline small fertilizer-open-calibration">
                 <i class="mdi mdi-tune-variant" aria-hidden="true"></i> Calibration
               </button>
               <button type="button" id="fertilizer2-scheduler-toggle" class="outline small fertilizer-scheduler-toggle"
@@ -218,14 +218,14 @@
           <label class="device-time" for="fertilizer2-time">
             <span>Activation time</span>
             <input id="fertilizer2-time" name="fertilizer2_time" type="time"
-                   value="{{ fertilizer2.start_time|string|truncate(5,True,'') if fertilizer.start_time is not none else '12:00' }}"
+                   value="{{ fertilizer2.start_time|string|truncate(5,True,'') if fertilizer2.start_time is not none else '12:00' }}"
                    {% if session.get('role')|int != 1 %}disabled{% endif %}>
           </label>
           <label class="device-time" for="fertilizer2-ml">
             <span>Daily dose (ml)</span>
             <input id="fertilizer2-ml" name="fertilizer2_dose_ml" type="number"
                    min="0" max="100" step="0.1"
-                   value="{{ fertilizer2.dose_ml if fertilizer.dose_ml is not none else 0 }}"
+                   value="{{ fertilizer2.dose_ml if fertilizer2.dose_ml is not none else 0 }}"
                    {% if session.get('role')|int != 1 %}disabled{% endif %}>
           </label>
           <div class="device-manual">
@@ -335,8 +335,8 @@
       <div>
         <h2 id="fertilizer2-dialog-title"><i class="mdi mdi-flask-outline" aria-hidden="true"></i> Pump 2 · Bottle B calibration</h2>
         <p id="fertilizer2-calibration-rate" class="control-state">
-          {% if fertilizer.ml_per_second %}
-            Calibrated: {{'%.3f'|format(fertilizer.ml_per_second|float)}} ml/sec
+          {% if fertilizer2.ml_per_second %}
+            Calibrated: {{'%.3f'|format(fertilizer2.ml_per_second|float)}} ml/sec
           {% else %}
             Not calibrated
           {% endif %}
