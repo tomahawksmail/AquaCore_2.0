@@ -45,7 +45,7 @@ def status():
     _admin()
     with _db() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT temp_offset_c,ph7_voltage,ph4_voltage FROM sensor_calibration WHERE id=1")
+            cur.execute("SELECT temp_offset_c,ph7_voltage,ph4_voltage,tds_factor,ph_factor,temp_factor FROM sensor_calibration WHERE id=1")
             row = cur.fetchone()
     resp = jsonify(row or {})
     resp.headers["Cache-Control"] = "no-store"
@@ -120,3 +120,38 @@ def save():
     resp = jsonify(result)
     resp.headers["Cache-Control"] = "no-store"
     return resp
+
+
+@bp.post("/factors")
+def save_factors():
+    """Save bounded, finite calibration multipliers for the sensor collector."""
+    _admin()
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify(error="Expected JSON object"), 400
+    limits = {"tds_factor": (0.001, 10.0),
+              "ph_factor": (0.5, 1.5),
+              "temp_factor": (0.8, 1.2)}
+    if set(body) != set(limits):
+        return jsonify(error="Provide tds_factor, ph_factor, and temp_factor"), 400
+    values = {}
+    try:
+        for field, (low, high) in limits.items():
+            if isinstance(body[field], bool):
+                raise ValueError(field + " must be a number")
+            value = float(body[field])
+            if not math.isfinite(value) or not low <= value <= high:
+                raise ValueError(f"{field} must be between {low} and {high}")
+            values[field] = value
+    except (ValueError, TypeError, OverflowError) as exc:
+        return jsonify(error=str(exc)), 400
+    with _db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE sensor_calibration SET tds_factor=%s,ph_factor=%s,temp_factor=%s "
+                "WHERE id=1",
+                (values["tds_factor"], values["ph_factor"], values["temp_factor"]))
+        conn.commit()
+    result = jsonify(ok=True, **values)
+    result.headers["Cache-Control"] = "no-store"
+    return result
