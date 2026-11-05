@@ -7,6 +7,65 @@
   const csrf = window.AQUACORE_CSRF;
   const btn = (id) => document.getElementById(id);
   const setStatus = (message) => { status.textContent = message; };
+  const names = ['tds_factor','ph_factor','temp_factor'];
+  let snapshot = null;
+  let timer = null;
+  let inFlight = false;
+  const factorValues = () => {
+    const data = {};
+    for (const name of names) {
+      const field = btn('sensor-factor-' + name);
+      const v = Number(field.value);
+      if (!field.value.trim() || !Number.isFinite(v)) return null;
+      const limits = {tds_factor:[0.001,10],ph_factor:[0.5,1.5],temp_factor:[0.8,1.2]};
+      if (v < limits[name][0] || v > limits[name][1]) return null;
+      data[name] = v;
+    }
+    return data;
+  };
+  const preview = () => {
+    if (!snapshot) return;
+    const factors = factorValues();
+    for (const ch of ['a0','a1','a3']) {
+      btn('sensor-live-' + ch).textContent = 'A' + ch.slice(1) + ': ' +
+        snapshot.volts[ch].toFixed(5) + ' V';
+    }
+    if (!factors) {
+      for (const field of ['ph','temp','tds']) btn('sensor-live-' + field).textContent = 'Invalid K factor';
+      return;
+    }
+    const temp = snapshot.temp_raw == null ? null :
+      snapshot.temp_raw * factors.temp_factor + snapshot.temp_offset_c;
+    btn('sensor-live-temp').textContent = temp == null ?
+      (snapshot.ntc_enabled ? 'Unavailable: ' + (snapshot.temp_error || 'invalid NTC') : 'Not configured (NTC disabled)') :
+      (temp >= -2 && temp <= 55 ? temp.toFixed(2) + ' °C (preview)' : 'Outside temperature range');
+    const ph = snapshot.ph_raw == null ? null :
+      7 + (snapshot.ph_raw - 7) * factors.ph_factor;
+    btn('sensor-live-ph').textContent = ph == null ?
+      'Unavailable: ' + (snapshot.ph_error || 'save pH 7/4 buffer calibration') :
+      (ph >= 0 && ph <= 14 ? ph.toFixed(2) + ' pH (preview)' : 'Outside pH range');
+    const tempForTds = temp != null && temp >= -2 && temp <= 55 ?
+      temp : snapshot.fallback_temperature_c;
+    const voltage = Math.max(0, snapshot.tds_voltage) /
+      (1 + 0.02 * (tempForTds - 25));
+    const base = Math.max(0, (133.42 * voltage ** 3 -
+      255.86 * voltage ** 2 + 857.39 * voltage) * 0.5);
+    btn('sensor-live-tds').textContent =
+      (base * factors.tds_factor).toFixed(1) + ' ppm (preview, provisional)';
+  };
+  const refreshLive = async () => {
+    if (inFlight || !modal.open) return;
+    inFlight = true;
+    try {
+      snapshot = await api('/live');
+      preview();
+      btn('sensor-live-updated').textContent =
+        'Read at ' + snapshot.captured_at + ' · Browser K changes are unsaved';
+    } catch (error) {
+      btn('sensor-live-updated').textContent = error.message;
+    } finally { inFlight = false; }
+  };
+  for (const name of names) btn('sensor-factor-' + name).addEventListener('input', preview);
   const api = async (path, payload) => {
     const response = await fetch('/api/sensors/calibration' + path, {
       method: payload === undefined ? 'GET' : 'POST',
@@ -30,8 +89,18 @@
         '°C · pH: ' + (result.ph7_voltage != null && result.ph4_voltage != null ? 'calibrated' : 'not calibrated');
     } catch (error) { setStatus(error.message); }
   };
-  open.addEventListener('click', () => { setStatus(''); modal.showModal(); present(); });
+  open.addEventListener('click', () => {
+    setStatus('');
+    modal.showModal();
+    snapshot = null;
+    present().then(preview);
+    refreshLive();
+    timer = window.setInterval(refreshLive, 5000);
+  });
+  const stopLive = () => { if (timer != null) window.clearInterval(timer); timer = null; };
+  modal.addEventListener('close', stopLive);
   btn('sensor-calibration-close').addEventListener('click', () => modal.close());
+  btn('sensor-live-refresh').addEventListener('click', refreshLive);
   btn('sensor-save-factors').addEventListener('click', async () => {
     const button = btn('sensor-save-factors');
     try {
@@ -46,6 +115,7 @@
       await api('/factors', data);
       setStatus('Saved sensor multipliers. The collector will apply them on its next sample.');
       await present();
+      preview();
     } catch (error) { setStatus(error.message); }
     finally { button.disabled = false; }
   });

@@ -7,6 +7,7 @@ from datetime import datetime
 
 from flask import Blueprint, abort, jsonify, request, session
 from sensor_conversion import ntc_celsius, calibrated_ph
+from sensorstest import estimate_tds_ppm
 from sensorstest import adc_read
 
 bp = Blueprint("sensor_calibration", __name__, url_prefix="/api/sensors/calibration")
@@ -155,3 +156,61 @@ def save_factors():
     result = jsonify(ok=True, **values)
     result.headers["Cache-Control"] = "no-store"
     return result
+
+
+@bp.get("/live")
+def live():
+    """Read-only ADC snapshot for browser preview; never touches relays or DB writes."""
+    _admin()
+    try:
+        with _db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT temp_offset_c,ph7_voltage,ph4_voltage,"
+                            "tds_factor,ph_factor,temp_factor "
+                            "FROM sensor_calibration WHERE id=1")
+                config = cur.fetchone() or {}
+        # The installed web service user needs read access to /dev/i2c-2.
+        # Use the same ADS1115 PGA as the collector (currently +/-4.096 V).
+        readings = {}
+        bus = int(os.getenv("TDS_I2C_BUS", "2"))
+        for channel in (0, 1, 3):
+            values = []
+            for _ in range(5):
+                raw, volts = adc_read(bus, 0x48, channel)
+                if raw >= 32767:
+                    raise ValueError(f"ADS1115 A{channel} saturated")
+                values.append(volts)
+                time.sleep(0.025)
+            readings[f"a{channel}"] = round(statistics.median(values), 6)
+        enabled_ntc = os.getenv("NTC_ENABLED", "").lower() in ("1", "true", "yes")
+        raw_temp = None
+        temp_error = None
+        if enabled_ntc:
+            try:
+                raw_temp = ntc_celsius(readings["a1"], supply_v=float(
+                    os.getenv("NTC_SUPPLY_V", "3.3")))
+            except ValueError as exc:
+                temp_error = str(exc)
+        v7, v4 = config.get("ph7_voltage"), config.get("ph4_voltage")
+        raw_ph = None
+        ph_error = None
+        if v7 is not None and v4 is not None:
+            try:
+                raw_ph = calibrated_ph(readings["a0"], float(v7), float(v4))
+            except ValueError as exc:
+                ph_error = str(exc)
+        response = jsonify(
+            volts=readings,
+            ph_raw=raw_ph,
+            ph_error=ph_error,
+            temp_raw=raw_temp,
+            temp_error=temp_error,
+            ntc_enabled=enabled_ntc,
+            temp_offset_c=float(config.get("temp_offset_c") or 0),
+            fallback_temperature_c=float(os.getenv("TDS_WATER_TEMP_C", "22")),
+            tds_voltage=readings["a3"],
+            captured_at=time.strftime("%Y-%m-%d %H:%M:%S"))
+        response.headers["Cache-Control"] = "no-store"
+        return response
+    except (OSError, ValueError) as exc:
+        return jsonify(error=f"Sensor read failed: {exc}"), 503
