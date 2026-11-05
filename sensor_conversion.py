@@ -51,3 +51,21 @@ def calibrated_ph(volts, ph7_voltage, ph4_voltage):
     if not 0 <= result <= 14:
         raise ValueError("pH estimate outside physical 0-14 range")
     return result
+
+
+def calibrated_ph_from_points(volts, ph_a, volts_a, ph_b, volts_b):
+    """Calculate pH using two measured buffer points (pH, volts).
+
+    Unlike calibrated_ph(), reference pH values need not be exactly 4 and 7.
+    """
+    values = (volts, ph_a, volts_a, ph_b, volts_b)
+    if not all(math.isfinite(value) for value in values):
+        raise ValueError("Invalid pH calibration values")
+    if not 0 <= ph_a <= 14 or not 0 <= ph_b <= 14 or ph_a == ph_b:
+        raise ValueError("Invalid reference buffer pH values")
+    if abs(volts_b - volts_a) < 0.03:
+        raise ValueError("pH calibration voltages are too close")
+    result = ph_a + (volts - volts_a) * (ph_b - ph_a) / (volts_b - volts_a)
+    if not 0 <= result <= 14:
+        raise ValueError("pH estimate outside physical 0-14 range")
+    return result
