@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Collect provisional temperature-compensated TDS into AquaCore data.tds.
+"""Collect ADS1115 TDS, optional NTC water temperature and calibrated pH.
 
-No temperature or pH probes are configured: insert NULL for both fields.
-The provisional 0.2626 factor assumes boiled Primo water contained 13 ppm;
-this is NOT a certified calibration and must not be used for safety control.
+A1 NTC requires a 10k B3950 probe with 10k pull-up to 3.3V.
+A0 pH requires real pH 7 and 4 buffer reference voltages.
+Unconfigured or invalid measurements are stored as NULL, never invented.
+TDS factor 0.2626 is a provisional estimate, not certified calibration.
 """
 import argparse
 import logging
@@ -14,11 +15,12 @@ import time
 import pymysql
 from dotenv import load_dotenv
 from sensorstest import adc_read, estimate_tds_ppm, DEFAULT_TDS_FACTOR
+from sensor_conversion import calibrated_ph, ntc_celsius
 
 LOG = logging.getLogger("aquacore.tds")
 
 
-def save_tds(ppm):
+def save_sample(ppm, temp=None, ph=None):
     connection = pymysql.connect(
         host=os.getenv("DB_HOST") or "localhost",
         port=int(os.getenv("DB_PORT", "3306")),
@@ -30,10 +32,13 @@ def save_tds(ppm):
     )
     try:
         with connection.cursor() as cursor:
-            # Unavailable temp/pH are NULL rather than fictitious measurements.
+            # Invalid or unconfigured sensors remain NULL, not fake zeros.
             cursor.execute(
                 "INSERT INTO `data` (`Datetime`,`temp`,`ph`,`tds`) "
-                "VALUES (NOW(), NULL, NULL, %s)", (round(ppm, 2),)
+                "VALUES (NOW(), %s, %s, %s)",
+                (round(temp, 2) if temp is not None else None,
+                 round(ph, 3) if ph is not None else None,
+                 round(ppm, 2))
             )
     finally:
         connection.close()
@@ -45,6 +50,12 @@ def main():
     parser.add_argument("--address", type=lambda s: int(s, 0), default=0x48)
     parser.add_argument("--temperature", type=float, default=float(os.getenv("TDS_WATER_TEMP_C", "22")))
     parser.add_argument("--tds-factor", type=float, default=DEFAULT_TDS_FACTOR)
+    parser.add_argument("--ntc", action="store_true",
+                        default=os.getenv("NTC_ENABLED", "").lower() in ("1","true","yes"),
+                        help="Enable A1 thermistor (10k B3950 with 10k pull-up to 3.3V)")
+    parser.add_argument("--ntc-supply", type=float, default=float(os.getenv("NTC_SUPPLY_V", "3.3")))
+    parser.add_argument("--ph7-voltage", type=float, default=float(os.environ["PH7_V"]) if os.getenv("PH7_V") else None)
+    parser.add_argument("--ph4-voltage", type=float, default=float(os.environ["PH4_V"]) if os.getenv("PH4_V") else None)
     parser.add_argument("--interval", type=float, default=30)
     parser.add_argument("--samples", type=int, default=5)
     parser.add_argument("--once", action="store_true")
@@ -53,10 +64,19 @@ def main():
         parser.error("Invalid bus, interval or sample count")
     if not -2 <= args.temperature <= 55 or not 0 < args.tds_factor <= 10:
         parser.error("Invalid temperature or provisional factor")
+    if not 2.5 <= args.ntc_supply <= 3.5:
+        parser.error("Invalid NTC supply voltage")
+    if (args.ph7_voltage is None) != (args.ph4_voltage is None):
+        parser.error("Provide both pH buffer voltages or neither")
+    if args.ph7_voltage is not None:
+        try:
+            calibrated_ph(args.ph7_voltage, args.ph7_voltage, args.ph4_voltage)
+        except ValueError as exc:
+            parser.error(str(exc))
     load_dotenv(os.getenv("AQUACORE_ENV", os.path.join(os.path.dirname(__file__), ".env")))
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    LOG.warning("TDS readings are PROVISIONAL, not reference-calibrated; water temp %.1f C",
-                args.temperature)
+    LOG.warning("TDS remains PROVISIONAL; NTC=%s pH calibrated=%s, fallback temp %.1f C",
+                args.ntc, args.ph7_voltage is not None, args.temperature)
     while True:
         try:
             readings = []
@@ -65,10 +85,33 @@ def main():
                 readings.append(voltage)
                 time.sleep(0.1)
             volts = statistics.median(readings)
-            ppm = estimate_tds_ppm(volts, args.temperature) * args.tds_factor
-            save_tds(ppm)
-            LOG.info("Saved TDS %.2f ppm (A3 %.5f V, multiplier %.4f, temp %.1f C)",
-                     ppm, volts, args.tds_factor, args.temperature)
+            water_temp = None
+            if args.ntc:
+                try:
+                    ntc_samples = [adc_read(args.bus, args.address, 1) for _ in range(args.samples)]
+                    if any(raw >= 32767 for raw, _ in ntc_samples):
+                        raise ValueError("ADS1115 A1 saturated")
+                    water_temp = ntc_celsius(statistics.median(v for _, v in ntc_samples),
+                                              supply_v=args.ntc_supply)
+                except (OSError, ValueError) as exc:
+                    LOG.warning("NTC measurement unavailable: %s", exc)
+            ph = None
+            if args.ph7_voltage is not None:
+                try:
+                    ph_samples = [adc_read(args.bus, args.address, 0) for _ in range(args.samples)]
+                    if any(raw >= 32767 for raw, _ in ph_samples):
+                        raise ValueError("ADS1115 A0 saturated")
+                    ph = calibrated_ph(statistics.median(v for _, v in ph_samples),
+                                       args.ph7_voltage, args.ph4_voltage)
+                except (OSError, ValueError) as exc:
+                    LOG.warning("pH measurement unavailable: %s", exc)
+            temperature = water_temp if water_temp is not None else args.temperature
+            ppm = estimate_tds_ppm(volts, temperature) * args.tds_factor
+            save_sample(ppm, water_temp, ph)
+            LOG.info("Saved temp=%s C pH=%s TDS=%.2f ppm (A3 %.5f V; TDS factor %.4f; comp temp %.1f C)",
+                     f"{water_temp:.2f}" if water_temp is not None else "NULL",
+                     f"{ph:.2f}" if ph is not None else "NULL",
+                     ppm, volts, args.tds_factor, temperature)
         except (OSError, ValueError, pymysql.MySQLError) as exc:
             LOG.exception("TDS reading not saved: %s", exc)
             if args.once:
