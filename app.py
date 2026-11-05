@@ -224,6 +224,25 @@ def history():
     response.headers['Cache-Control'] = 'no-store'
     return response
 
+@app.post('/api/fertilizer/schedule/days')
+@logged_in
+def save_fertilizer_schedule_days():
+    """Weekday schedule: 0=Monday, 6=Sunday."""
+    if int(session.get('role', 0)) != 1:
+        abort(403)
+    payload = request.get_json(silent=True)
+    days = payload.get('days') if isinstance(payload, dict) else None
+    if not isinstance(days, list) or len(days) > 7 or any(
+            type(day) is not int or not 0 <= day <= 6 for day in days
+    ) or len(set(days)) != len(days):
+        return jsonify(error="Use unique weekday numbers 0 through 6"), 400
+    mask = sum(1 << day for day in days)
+    mutate("UPDATE options SET fertilizer_weekdays=%s LIMIT 1", (mask,))
+    response = jsonify(ok=True, times_per_week=len(days), days=days)
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 @app.post('/api/options/field')
 @logged_in
 def save_option_field():
@@ -589,7 +608,9 @@ def options():
         'start_time':current.get('fertilizer_start_time'),
         'dose_ml':current.get('fertilizer_dose_ml'),
         'ml_per_second':current.get('fertilizer_ml_per_second'),
-        'last_run_date':current.get('fertilizer_last_run_date')
+        'last_run_date':current.get('fertilizer_last_run_date'),
+        'weekdays':int(current.get('fertilizer_weekdays') if current.get('fertilizer_weekdays') is not None else 127),
+        'times_per_week':int(current.get('fertilizer_weekdays') if current.get('fertilizer_weekdays') is not None else 127).bit_count()
     }
     return render_template('options.html', options=current,devices=DEVICES,settings=SETTINGS,
                            statuses=statuses,manual=manual,fertilizer=fertilizer)

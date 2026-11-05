@@ -4,6 +4,7 @@
 -- Does not read or drop the old fertilizer_pump table.
 ALTER TABLE `options`
   ADD COLUMN IF NOT EXISTS `fertilizer_start_time` TIME NOT NULL DEFAULT '12:00:00',
+  ADD COLUMN IF NOT EXISTS `fertilizer_weekdays` TINYINT UNSIGNED NOT NULL DEFAULT 127,
   ADD COLUMN IF NOT EXISTS `fertilizer_dose_ml` DECIMAL(7,2) NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS `fertilizer_ml_per_second` DECIMAL(10,5) DEFAULT NULL,
   ADD COLUMN IF NOT EXISTS `fertilizer_last_run_date` DATE DEFAULT NULL,

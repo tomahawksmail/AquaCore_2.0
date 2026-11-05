@@ -111,7 +111,7 @@
                 {% elif not fertilizer.dose_ml %}
                   Scheduled · OFF
                 {% else %}
-                  Scheduled · {{fertilizer.start_time|string|truncate(5,True,'')}} · {{fertilizer.dose_ml}} ml
+                  Scheduled · {{fertilizer.start_time|string|truncate(5,True,'')}} · {{fertilizer.dose_ml}} ml · {{ fertilizer.times_per_week }} time(s)/week
                 {% endif %}
               </span>
             </div>
@@ -142,6 +142,22 @@
             </label>
           </div>
         </div>
+      </div>
+      <div class="settings-card" style="margin-top:1rem">
+        <strong>Fertilizer weekly schedule</strong>
+        <p class="control-state">Select days for the configured pump dose and activation time. No days = automatic dosing OFF; manual dosing remains available.</p>
+        <div id="fertilizer-weekdays" class="fertilizer-modal-inputs">
+        {% for day, title in [(0,'Mon'),(1,'Tue'),(2,'Wed'),(3,'Thu'),(4,'Fri'),(5,'Sat'),(6,'Sun')] %}
+          <label style="display:inline-flex;align-items:center;gap:.35rem;min-width:5rem">
+            <input type="checkbox" value="{{day}}" {% if (fertilizer.weekdays // (2 ** day)) % 2 == 1 %}checked{% endif %}
+              {% if session.get('role')|int != 1 %}disabled{% endif %}>{{title}}
+          </label>
+        {% endfor %}
+        </div>
+        <p class="control-state" id="fertilizer-weekly-count">{{fertilizer.times_per_week}} time(s) per week</p>
+        <button type="button" id="fertilizer-weekly-save" class="outline small"
+          {% if session.get('role')|int != 1 %}disabled{% endif %}>Save weekly schedule</button>
+        <p id="fertilizer-weekly-feedback" class="control-state" role="status" aria-live="polite"></p>
       </div>
     </div>
     <p class="control-disclaimer"><i class="mdi mdi-information-outline" aria-hidden="true"></i> Changes to times and water parameters save automatically. Manual switches take effect immediately and last until the next scheduled transition.</p>
@@ -259,6 +275,7 @@
 <script defer src="{{ url_for('static', filename='sensor-calibration.js', v='20261105-live-sensors-v2') }}"></script>
 <script>window.AQUACORE_CSRF = {{ csrf_token()|tojson }};</script>
 <script defer src="{{ url_for('static', filename='controls.js') }}"></script>
+<script defer src="{{ url_for('static', filename='fertilizer-weekly.js', v='20261105-weekly-v1') }}"></script>
 <script defer src="{{ url_for('static', filename='settings-autosave.js', v='20261104-calibration-modal') }}"></script>
 <script defer src="{{ url_for('static', filename='fertilizer-manual.js', v='20261104-calibration-retry') }}"></script>
 {% endblock %}
