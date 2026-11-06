@@ -12,6 +12,11 @@ from dotenv import load_dotenv
 from scheduler import next_transition, scheduled_state, SCHEDULE_MAP
 from fertilizer_math import calibrated_seconds, calibrate_rate, CALIBRATION_SECONDS
 
+def pump_enabled(number):
+    """Match the relay service's defaults and supported boolean values."""
+    default = "1" if number == 1 else "0"
+    return os.getenv(f"PUMP{number}_ENABLED", default).strip().lower() in ("1","true","yes","on")
+
 load_dotenv()
 def local_commit():
     """Show the deployed checkout's commit, not GitHub's newest remote commit."""
@@ -309,6 +314,8 @@ def _fertilizer_request(kind):
     """Queue a time-bounded GPIO pulse (the Flask process never touches GPIO)."""
     if int(session.get('role', 0)) != 1:
         abort(403)
+    if not pump_enabled(1):
+        return jsonify(error='Pump 1 relay is disabled by PUMP1_ENABLED=0'), 409
     with db() as con:
         try:
             with con.cursor() as cur:
@@ -471,6 +478,8 @@ def manual_pump_stop():
     """Request early OFF for the currently pending/running manual pump."""
     if int(session.get('role', 0)) != 1:
         abort(403)
+    if not pump_enabled(1):
+        return jsonify(error='Pump 1 relay is disabled by PUMP1_ENABLED=0'), 409
     with db() as con:
         try:
             with con.cursor() as cur:
@@ -516,6 +525,8 @@ def start_fertilizer_calibration():
 def finish_fertilizer_calibration():
     if int(session.get('role',0)) != 1:
         abort(403)
+    if not pump_enabled(1):
+        return jsonify(error='Pump 1 relay is disabled by PUMP1_ENABLED=0'), 409
     payload=request.get_json(silent=True)
     if not isinstance(payload,dict):
         return jsonify(error='Expected measured_ml'),400
@@ -616,7 +627,7 @@ def options():
         'last_run_date':pump2_row.get('fertilizer_last_run_date'),
         'weekdays':int(pump2_row.get('fertilizer_weekdays') if pump2_row.get('fertilizer_weekdays') is not None else 127),
         'times_per_week':int(pump2_row.get('fertilizer_weekdays') if pump2_row.get('fertilizer_weekdays') is not None else 127).bit_count(),
-        'hardware_enabled':os.getenv('PUMP2_ENABLED','0').lower() in ('1','true','yes')
+        'hardware_enabled':pump_enabled(2)
     }
     fertilizer={
         'start_time':current.get('fertilizer_start_time'),
@@ -624,7 +635,8 @@ def options():
         'ml_per_second':current.get('fertilizer_ml_per_second'),
         'last_run_date':current.get('fertilizer_last_run_date'),
         'weekdays':int(current.get('fertilizer_weekdays') if current.get('fertilizer_weekdays') is not None else 127),
-        'times_per_week':int(current.get('fertilizer_weekdays') if current.get('fertilizer_weekdays') is not None else 127).bit_count()
+        'times_per_week':int(current.get('fertilizer_weekdays') if current.get('fertilizer_weekdays') is not None else 127).bit_count(),
+        'hardware_enabled':pump_enabled(1)
     }
     return render_template('options.html', options=current,devices=DEVICES,settings=SETTINGS,
                            statuses=statuses,manual=manual,fertilizer=fertilizer,fertilizer2=fertilizer2)
