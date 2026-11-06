@@ -99,6 +99,9 @@
     {% endfor %}
     <div class="device-group">
       <h3 class="device-group-heading"><i class="mdi mdi-water-pump" aria-hidden="true"></i> Pump 1 · Bottle A</h3>
+      {% if not fertilizer.hardware_enabled %}
+      <p class="control-disclaimer"><i class="mdi mdi-alert-outline"></i> Pump 1 relay disabled by PUMP1_ENABLED=0 in the service environment.</p>
+      {% endif %}
       <div class="device-rows">
         <div class="device-settings-row control-row fertilizer-control-row">
           <div class="device-settings-name fertilizer-dose-heading">
@@ -116,7 +119,7 @@
               </span>
             </div>
             <div class="fertilizer-heading-actions">
-              <button type="button" id="fertilizer-open-calibration" class="outline small fertilizer-open-calibration">
+              <button type="button" id="fertilizer-open-calibration" data-hardware-enabled="{{ 1 if fertilizer.hardware_enabled else 0 }}" {% if not fertilizer.hardware_enabled %}disabled{% endif %} class="outline small fertilizer-open-calibration">
                 <i class="mdi mdi-tune-variant" aria-hidden="true"></i> Calibration
               </button>
               <button type="button" id="fertilizer-scheduler-toggle" class="outline small fertilizer-scheduler-toggle"
@@ -145,7 +148,7 @@
             <label class="ios-switch" aria-label="Manually start or stop fertilizer pump (30-second safety cutoff)"
                    title="Manual ON/OFF; automatic OFF after 30 seconds. Volume is not measured.">
               <input id="fertilizer-dose-now" type="checkbox"
-                     {% if session.get('role')|int != 1 %}disabled{% endif %}>
+                     {% if session.get('role')|int != 1 or not fertilizer.hardware_enabled %}disabled{% endif %}>
               <span class="switch-track" aria-hidden="true"></span>
             </label>
           </div>
@@ -298,13 +301,13 @@
       <label for="fertilizer-calibration-seconds">
         Test duration (seconds)
         <input id="fertilizer-calibration-seconds" type="number" min="2" max="60" step="1" value="10"
-               {% if session.get('role')|int != 1 %}disabled{% endif %}>
+               {% if session.get('role')|int != 1 or not fertilizer.hardware_enabled %}disabled{% endif %}>
       </label>
       <label for="fertilizer-measured-ml">
         Collected volume (ml)
         <input id="fertilizer-measured-ml" type="number" min="0.1" max="500" step="0.1"
                placeholder="Measured ml"
-               {% if session.get('role')|int != 1 %}disabled{% endif %}>
+               {% if session.get('role')|int != 1 or not fertilizer.hardware_enabled %}disabled{% endif %}>
       </label>
     </div>
     <div id="fertilizer-test-progress" class="fertilizer-test-progress" hidden>
@@ -318,11 +321,11 @@
     <p id="fertilizer-dose-status" class="fertilizer-modal-status" role="status" aria-live="polite"></p>
     <div class="fertilizer-modal-actions">
       <button type="button" id="fertilizer-calibrate-start" class="outline"
-              {% if session.get('role')|int != 1 %}disabled{% endif %}>
+              {% if session.get('role')|int != 1 or not fertilizer.hardware_enabled %}disabled{% endif %}>
         <i class="mdi mdi-play-outline" aria-hidden="true"></i> Run test
       </button>
       <button type="button" id="fertilizer-calibrate-save" class="primary"
-              {% if session.get('role')|int != 1 %}disabled{% endif %}>
+              {% if session.get('role')|int != 1 or not fertilizer.hardware_enabled %}disabled{% endif %}>
         Save calibration
       </button>
     </div>
