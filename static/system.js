@@ -138,23 +138,37 @@
       if(!response.ok)throw Error('HTTP '+response.status);
       const body=await response.json();
       const points=body.points||[];
+      const snapshot=body.current;
+      const warning=document.getElementById('system-current-status');
+      if(warning){
+        warning.hidden=!!snapshot;
+        if(!snapshot){
+          warning.textContent=body.current_status==='stale'
+            ? 'Current system readings unavailable: last valid sample is older than 20 minutes. Check aquacore-system.service.'
+            : 'Current system readings unavailable: no valid RAM sample. Check aquacore-system.service and the psutil table.';
+        }
+      }
+      // Current cards represent ONE valid recent collector row. Charts retain
+      // historical rows, even when another writer inserts incomplete samples.
+      const currentValue=field=>snapshot&&Number.isFinite(Number(snapshot[field]))&&snapshot[field]!=null
+        ? Number(snapshot[field]) : null;
       const freq=document.getElementById('cpu-freq-chart');
       const freqValue=document.getElementById('cpu-freq-value');
       if(freqValue){
-        const latest=points.map(p=>p.scpufreq_cur).filter(v=>v!=null&&Number.isFinite(Number(v))).at(-1);
+        const latest=currentValue('scpufreq_cur');
         if(freqValue){freqValue.textContent=latest==null?'—':String(Math.round(latest));const unit=document.createElement('small');unit.textContent='MHz';freqValue.append(unit);}
       }
       const ramTotalChart=document.getElementById('ram-total-chart');
       const ramTotalValue=document.getElementById('ram-total-value');
       if(ramTotalValue){
-        const latest=points.map(p=>p.RAM_total).filter(v=>v!=null&&Number.isFinite(Number(v))).at(-1);
+        const latest=currentValue('RAM_total');
         if(ramTotalValue){ramTotalValue.textContent=latest==null?'—':String(Math.round(latest));const unit=document.createElement('small');unit.textContent='MB';ramTotalValue.append(unit);}
       }
       const ramChart=document.getElementById('ram-breakdown-chart');
-      if(ramChart){drawRamBreakdown(ramChart,points);updateRamLegend(points);}
+      if(ramChart){drawRamBreakdown(ramChart,points);updateRamLegend(snapshot?[snapshot]:[]);}
       const cpuTemp=document.getElementById('cpu-temp-value');
       if(cpuTemp){
-        const temp=points.map(p=>p.cpu_thermal_cur).filter(v=>v!=null&&Number.isFinite(Number(v))).at(-1);
+        const temp=currentValue('cpu_thermal_cur');
         cpuTemp.textContent=temp==null?'—':Number(temp).toFixed(0);
         const unit=document.createElement('small');unit.textContent='°C';cpuTemp.append(unit);
       }
@@ -162,7 +176,7 @@
       if(tempChart)draw(tempChart,points,'cpu_thermal_cur','#f7ad75');
       const ddrValue=document.getElementById('ddr-temp-value');
       if(ddrValue){
-        const latest=points.map(p=>p.ddr_thermal_cur).filter(v=>v!=null&&Number.isFinite(Number(v))).at(-1);
+        const latest=currentValue('ddr_thermal_cur');
         ddrValue.textContent=latest==null?'—':String(Math.round(latest));
         const unit=document.createElement('small');unit.textContent='°C';ddrValue.append(unit);
       }
@@ -171,7 +185,7 @@
       for(const field of ['net_bytes_sent','net_bytes_recv','net_packets_sent','net_packets_recv','net_errin','net_errout','net_dropin','net_dropout']){
         const el=document.getElementById('network-'+field);
         if(!el)continue;
-        const latest=points.map(p=>p[field]).filter(v=>v!=null&&Number.isFinite(Number(v))).at(-1);
+        const latest=currentValue(field);
         el.textContent=latest==null?'—':new Intl.NumberFormat('en-US',{notation:'compact',maximumFractionDigits:1}).format(Number(latest));
         if(latest!=null)el.title=Number(latest).toLocaleString('en-US');
       }
@@ -179,7 +193,7 @@
       for(const field of diskFields){
         const el=document.getElementById('disk-'+field);
         if(!el)continue;
-        const latest=points.map(p=>p[field]).filter(v=>v!=null&&Number.isFinite(Number(v))).at(-1);
+        const latest=currentValue(field);
         if(latest==null){el.textContent='—';el.removeAttribute('title');continue;}
         const n=Number(latest);
         const isBytes=field.includes('bytes')||field.startsWith('disk_usage_');
@@ -200,14 +214,14 @@
       });
       const cores=document.getElementById('cpu-cores-chart');
       if(cores){coreChart(cores,points);
-        for(let n=0;n<4;n++){const val=points.map(p=>p['cpus_percent_'+n]).filter(v=>v!=null&&Number.isFinite(Number(v))).at(-1);const out=document.getElementById('core-value-'+n);if(out)out.textContent=(val==null?'—':Number(val).toFixed(0))+'%';}
+        for(let n=0;n<4;n++){const val=currentValue('cpus_percent_'+n);const out=document.getElementById('core-value-'+n);if(out)out.textContent=(val==null?'—':Number(val).toFixed(0))+'%';}
       }
       for(const [field,[unit,precision,color]] of Object.entries(config)){
         const el=document.querySelector('[data-system-field="'+field+'"]'),value=document.getElementById('system-value-'+field);
         if(!el||!value)continue;
         const readings=(body.points||[]).map(p=>p[field]);
         draw(el,points,field,color);
-        const latest=readings.filter(v=>v!=null&&Number.isFinite(Number(v))).at(-1);
+        const latest=currentValue(field);
         value.textContent=latest===undefined?'—':Number(latest).toFixed(precision);
         const suffix=document.createElement('small');suffix.textContent=unit;value.appendChild(suffix);
       }
