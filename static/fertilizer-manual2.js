@@ -17,15 +17,19 @@
   const progressTime=el('fertilizer2-progress-time');
   const meter=el('fertilizer2-progress-meter');
   const manual=el('fertilizer2-dose-now');
+  const manualHint=el('fertilizer2-manual-hint');
   const mlInput=el('fertilizer2-ml');
   const timeInput=el('fertilizer2-time');
   const doseLabel=el('fertilizer2-dose-state');
   if (![dialog,openBtn,closeBtn,startBtn,saveBtn,secondsInput,measuredInput,
          rateLabel,message,progress,progressLabel,progressTime,meter,
-         manual,mlInput,timeInput,doseLabel].every(Boolean)) return;
+         manual,manualHint,mlInput,timeInput,doseLabel].every(Boolean)) return;
 
-  const readonly=secondsInput.disabled;
-  const hardwareEnabled=openBtn.dataset.hardwareEnabled !== '0';
+  // Access permissions and hardware availability are distinct from calibration.
+  // Manual priming must work before calibration, but never if the relay is disabled.
+  const readonly=manual.dataset.adminAllowed !== '1';
+  const hardwareEnabled=manual.dataset.hardwareEnabled === '1' &&
+    openBtn.dataset.hardwareEnabled === '1';
   let calibrated=rateLabel.textContent.includes('Calibrated:');
   let busy=false, stopping=false;
   let activeId=null, activeKind='';
@@ -50,21 +54,29 @@
       'Scheduled · '+(time||'--:--')+' · '+valueMl()+' ml';
     doseLabel.textContent=notice || schedule;
     const manualActive=activeId!==null && activeKind==='manual';
-    const cooling=Date.now()<cooldownUntil;
+    const remaining=Math.max(0,Math.ceil((cooldownUntil-Date.now())/1000));
+    const cooling=remaining>0;
     manual.checked=manualActive && !stopping;
-    // OFF must remain possible even during cooldown while the manual pump runs.
-    manual.disabled=readonly || busy || stopping ||
+    // Manual OFF must remain possible even during cooldown.
+    manual.disabled=!hardwareEnabled || readonly || busy || stopping ||
       (!manualActive && (cooling || activeId!==null));
-    manual.title=readonly?'Admin access required':
-      manualActive?'Switch OFF to stop; automatic cutoff at 30 seconds':
-      cooling?'Wait for the two-minute pump cooldown':
-      'Manually run pump (uncalibrated volume, maximum 30 seconds)';
-    secondsInput.disabled=readonly || busy ||
+    const manualState=!hardwareEnabled?'Disabled · PUMP2_ENABLED=0':
+      readonly?'Admin permission required':
+      stopping?'Stopping…':
+      manualActive?'ON · switch OFF to stop (30s max)':
+      busy?'Processing…':
+      activeId!==null?'Another pump operation in progress':
+      cooling?'Cooldown · '+remaining+'s remaining':
+      'Ready · manual priming works without calibration';
+    manualHint.textContent=manualState;
+    manual.title=manualState;
+    const calibrationBlocked=!hardwareEnabled || readonly;
+    secondsInput.disabled=calibrationBlocked || busy ||
       (activeId!==null && activeKind==='calibration');
-    startBtn.disabled=readonly || busy || activeId!==null ||
+    startBtn.disabled=calibrationBlocked || busy || activeId!==null ||
       Date.now()<calibrationCooldownUntil ||
       !secondsInput.checkValidity() || !secondsInput.value;
-    saveBtn.disabled=readonly || busy || !calibrationReady ||
+    saveBtn.disabled=calibrationBlocked || busy || !calibrationReady ||
       !measuredInput.value || !measuredInput.checkValidity();
   }
   function cooldown(seconds) {
@@ -272,7 +284,7 @@
   });
 
   manual.addEventListener('change',async()=>{
-    if(readonly){manual.checked=false;return;}
+    if(readonly || !hardwareEnabled){manual.checked=false;updateUI();return;}
     if(manual.checked){
       if(!window.confirm('Manually run the fertilizer pump? It will turn OFF when you switch it OFF, or after 30 seconds maximum. This does NOT measure ml. Use water first.')){
         manual.checked=false;return;
@@ -312,5 +324,6 @@
       setTimeout(updateUI,0);
   });
   updateUI();
+  setInterval(()=>{if(Date.now()<cooldownUntil)updateUI();},1000);
   readStatus(true); // Restore an active manual run or pending calibration after reload.
 })();

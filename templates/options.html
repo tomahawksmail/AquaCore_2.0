@@ -145,9 +145,12 @@
           </label>
           <div class="device-manual">
             <span>Manual dose</span>
+            <small id="fertilizer-manual-hint" class="control-state" role="status" aria-live="polite">Checking pump status…</small>
             <label class="ios-switch" aria-label="Manually start or stop fertilizer pump (30-second safety cutoff)"
                    title="Manual ON/OFF; automatic OFF after 30 seconds. Volume is not measured.">
               <input id="fertilizer-dose-now" type="checkbox"
+                     data-admin-allowed="{{ 1 if session.get('role')|int == 1 else 0 }}"
+                     data-hardware-enabled="{{ 1 if fertilizer.hardware_enabled else 0 }}"
                      {% if session.get('role')|int != 1 or not fertilizer.hardware_enabled %}disabled{% endif %}>
               <span class="switch-track" aria-hidden="true"></span>
             </label>
@@ -233,9 +236,12 @@
           </label>
           <div class="device-manual">
             <span>Manual dose</span>
+            <small id="fertilizer2-manual-hint" class="control-state" role="status" aria-live="polite">Checking pump status…</small>
             <label class="ios-switch" aria-label="Manually start or stop fertilizer pump (30-second safety cutoff)"
                    title="Manual ON/OFF; automatic OFF after 30 seconds. Volume is not measured.">
               <input id="fertilizer2-dose-now" type="checkbox"
+                     data-admin-allowed="{{ 1 if session.get('role')|int == 1 else 0 }}"
+                     data-hardware-enabled="{{ 1 if fertilizer2.hardware_enabled else 0 }}"
                      {% if session.get('role')|int != 1 or not fertilizer2.hardware_enabled %}disabled{% endif %}>
               <span class="switch-track" aria-hidden="true"></span>
             </label>
@@ -442,9 +448,9 @@
 <script defer src="{{ url_for('static', filename='sensor-calibration.js', v='20261105-live-sensors-v2') }}"></script>
 <script>window.AQUACORE_CSRF = {{ csrf_token()|tojson }};</script>
 <script defer src="{{ url_for('static', filename='controls.js') }}"></script>
-<script defer src="{{ url_for('static', filename='fertilizer-manual2.js', v='20261105-dual-pumps-v1') }}"></script>
+<script defer src="{{ url_for('static', filename='fertilizer-manual2.js', v='20261106-manual-state-v2') }}"></script>
 <script defer src="{{ url_for('static', filename='fertilizer-weekly2.js', v='20261105-dual-pumps-v1') }}"></script>
 <script defer src="{{ url_for('static', filename='fertilizer-weekly.js', v='20261105-weekly-toggle-v2') }}"></script>
 <script defer src="{{ url_for('static', filename='settings-autosave.js', v='20261104-calibration-modal') }}"></script>
-<script defer src="{{ url_for('static', filename='fertilizer-manual.js', v='20261104-calibration-retry') }}"></script>
+<script defer src="{{ url_for('static', filename='fertilizer-manual.js', v='20261106-manual-state-v2') }}"></script>
 {% endblock %}
