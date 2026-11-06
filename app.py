@@ -666,7 +666,33 @@ def system_history():
         timestamp=next((row.get(k) for k in ('Datetime','datetime','Timestamp','timestamp','created_at','CreatedAt','date_time') if row.get(k) is not None),None)
         point['timestamp']=timestamp.isoformat(sep=' ') if hasattr(timestamp,'isoformat') else (str(timestamp) if timestamp is not None else None)
         result.append(point)
-    response=jsonify({'points':result})
+    # Current gauges must reflect ONE coherent, plausible recent sample.
+    # Other/legacy writers may insert zeros in psutil rows; preserve those
+    # rows for historical diagnosis but never label them as live readings.
+    valid = []
+    for p in result:
+        total=p.get('RAM_total')
+        if total is not None and total > 0:
+            valid.append(p)
+    current=valid[-1] if valid else None
+    age_seconds=None
+    if current and current.get('timestamp'):
+        from datetime import datetime
+        try:
+            stamp=datetime.fromisoformat(str(current['timestamp']).replace('Z','+00:00'))
+            # Database timestamps are local naive values (same host as Flask).
+            now=datetime.now(stamp.tzinfo) if stamp.tzinfo else datetime.now()
+            age_seconds=max(0,(now-stamp).total_seconds())
+        except (ValueError, TypeError):
+            pass
+    # The collector is scheduled every 600s. Allow 20 minutes for startup,
+    # jitter and one missed cycle; unknown age cannot prove freshness.
+    fresh=age_seconds is not None and age_seconds <= 1200
+    response=jsonify({'points':result, 'current':current if fresh else None,
+                      'last_valid_timestamp':current.get('timestamp') if current else None,
+                      'current_age_seconds':age_seconds,
+                      'current_status':'ok' if fresh else
+                          ('stale' if current else 'missing')})
     response.headers['Cache-Control']='no-store'
     return response
 
