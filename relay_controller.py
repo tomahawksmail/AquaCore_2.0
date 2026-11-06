@@ -48,6 +48,14 @@ COOLER_PIN = (21, 232)  # PH8 / physical pin 21
 PUMP_PIN = (23, 230)    # Pump 1 / PH6 / physical pin 23; active-low
 PUMP2_PIN = (19, 231)   # Pump 2 / PH7 / physical pin 19; verify SPI overlay and wiring
 PUMP_MAX_SECONDS = 60
+
+def pump_enabled(number):
+    """Independent opt-in flag for each pump. Existing Pump 1 installs stay enabled."""
+    if number not in (1, 2):
+        raise ValueError("Unsupported pump number")
+    default = "1" if number == 1 else "0"
+    return os.getenv(f"PUMP{number}_ENABLED", default).strip().lower() in ("1", "true", "yes", "on")
+
 CPU_TEMP_PATH = "/sys/class/thermal/thermal_zone0/temp"
 COOLER_ON_C = 70.0
 COOLER_OFF_C = 65.0
@@ -126,8 +134,10 @@ def get_status(pins):
 
 def request_relay_lines(pins):
     """Claim aquarium and cooler GPIO lines in one persistent request."""
-    line_ids=[number for _,number in pins.values()] + [COOLER_PIN[1], PUMP_PIN[1]]
-    if os.getenv("PUMP2_ENABLED", "0").lower() in ("1","true","yes"):
+    line_ids=[number for _,number in pins.values()] + [COOLER_PIN[1]]
+    if pump_enabled(1):
+        line_ids.append(PUMP_PIN[1])
+    if pump_enabled(2):
         line_ids.append(PUMP2_PIN[1])
     settings=gpiod.LineSettings(direction=Direction.OUTPUT,output_value=Value.ACTIVE)
     # No active_low flag: ACTIVE means physical HIGH; on the relay module HIGH = OFF.
@@ -140,9 +150,10 @@ def setup_pins(pins, apply):
     for field,(physical,pin) in pins.items():
         LOG.info("%s => physical pin %s / chip1 offset %s",field,physical,pin)
     LOG.info("CPU cooler => physical pin %s / chip1 offset %s", *COOLER_PIN)
-    LOG.info("Fertilizer Pump 1 => physical pin %s / chip1 offset %s", *PUMP_PIN)
-    LOG.info("Fertilizer Pump 2 => physical pin %s / chip1 offset %s; enabled=%s",
-             *PUMP2_PIN, os.getenv("PUMP2_ENABLED","0"))
+    LOG.info("Fertilizer Pump 1 => pin %s / chip1 offset %s; enabled=%s",
+             *PUMP_PIN, pump_enabled(1))
+    LOG.info("Fertilizer Pump 2 => pin %s / chip1 offset %s; enabled=%s",
+             *PUMP2_PIN, pump_enabled(2))
     return request_relay_lines(pins) if apply else None
 
 
@@ -428,6 +439,9 @@ class FertilizerPump:
         return True
 
     def poll(self):
+        # Disabled pumps never claim schedules, queue entries, or GPIO lines.
+        if not self.apply:
+            return
         if self.poll_stop():
             return
         if self.active:
@@ -508,9 +522,8 @@ def main():
     previous = {}
     request=setup_pins(pins,args.apply)
     cooler_on = None
-    pump = FertilizerPump(request, args.apply)
-    pump2_enabled = os.getenv("PUMP2_ENABLED","0").lower() in ("1","true","yes")
-    pump2 = FertilizerPump(request, args.apply and pump2_enabled,
+    pump = FertilizerPump(request, args.apply and pump_enabled(1))
+    pump2 = FertilizerPump(request, args.apply and pump_enabled(2),
                            table="fertilizer_pump2",pin=PUMP2_PIN,
                            status_field="fertilizer_pump2_status")
     try:

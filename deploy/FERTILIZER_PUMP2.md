@@ -21,6 +21,7 @@ connecting the relay. PH9 / physical 26 remains spare.
 
 ## Safety
 
+- Each pump has an independent enable flag in `/etc/aquacore/web.env`: `PUMP1_ENABLED=1` (default, backward-compatible) and `PUMP2_ENABLED=0` (default). Set either to 0 to disable that pump's GPIO claim, automatic/manual dosing and calibration requests.
 - Keep `PUMP2_ENABLED=0` (default) until the relay and pin mapping are verified.
   In that state the new relay line is **not requested**, and Pump 2 manual
   activation/calibration cannot be initiated from the web API.

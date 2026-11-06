@@ -26,6 +26,22 @@ class DualPumpTests(unittest.TestCase):
         self.assertNotIn("FROM options",text)
         self.assertNotIn("UPDATE options SET",text)
         self.assertIn("Pump 2 relay is disabled",text)
+    def test_symmetric_enable_flags(self):
+        worker=(ROOT/"relay_controller.py").read_text(encoding="utf8")
+        web=(ROOT/"app.py").read_text(encoding="utf8")
+        api2=(ROOT/"fertilizer_pump2_api.py").read_text(encoding="utf8")
+        ui=(ROOT/"templates/options.html").read_text(encoding="utf8")
+        self.assertIn('default = "1" if number == 1 else "0"', worker)
+        self.assertIn('default = "1" if number == 1 else "0"', web)
+        self.assertIn("if pump_enabled(1):", worker)
+        self.assertIn("if pump_enabled(2):", worker)
+        self.assertIn("args.apply and pump_enabled(1)", worker)
+        self.assertIn("args.apply and pump_enabled(2)", worker)
+        self.assertIn("if not pump_enabled(1):", web)
+        self.assertIn("if not pump_enabled(2):", api2)
+        self.assertIn("PUMP1_ENABLED=0", ui)
+        self.assertIn("PUMP2_ENABLED=1", ui)
+
     def test_independent_ui(self):
         html=(ROOT/"templates/options.html").read_text(encoding="utf8")
         for ident in ("fertilizer-dose-now","fertilizer2-dose-now",
