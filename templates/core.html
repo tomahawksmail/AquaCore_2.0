@@ -2,6 +2,7 @@
 {% block title %}System · AquaCore{% endblock %}
 {% block content %}
 <div class="heading system-heading"><div><h1>System metrics</h1></div></div>
+<p id="system-current-status" class="control-disclaimer" role="status" hidden></p>
 <section class="system-cpu-grid" aria-label="CPU frequency and core utilization">
   <article class="system-cpu-panel">
     <div class="system-cpu-heading"><i class="mdi mdi-speedometer" aria-hidden="true"></i> CPU Frequency</div>
@@ -87,5 +88,5 @@
   {% endfor %}
 </section>
 
-<script defer src="{{url_for('static',filename='system.js',v='20261029-3hour-clock-grid')}}"></script>
+<script defer src="{{url_for('static',filename='system.js',v='20261106-current-snapshot')}}"></script>
 {% endblock %}
