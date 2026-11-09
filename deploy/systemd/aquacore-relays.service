@@ -4,8 +4,9 @@ Wants=network-online.target
 After=network-online.target mariadb.service
 
 [Service]
-# Tested GPIO mapping (gpiochip1): CO2=228, Oxygen=262, Main=229,
-# Backlight=272, Plant=76, UV=256, cooler=232, fertilizer pump=230 (PH6, pin 23).
+# GPIO mapping (gpiochip1): CO2=256 / PI0 / header 29, Oxygen=262, Main=229,
+# Backlight=272, Plant=76, UV=228 / PH4 / header 18,
+# cooler=232, fertilizer pumps=230 (PH6, pin 23), 231 (PH7, pin 19).
 # Relay inputs are active-low. No mains load until verified.
 Type=simple
 User=root
