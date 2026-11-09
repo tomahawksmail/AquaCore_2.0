@@ -15,6 +15,23 @@ class DualPumpTests(unittest.TestCase):
         self.assertIn("PUMP_PIN = (23, 230)",text)
         self.assertIn("PUMP2_PIN = (19, 231)",text)
         self.assertIn("PUMP2_ENABLED",text)
+    def test_uv_co2_swapped_outputs(self):
+        source=(ROOT/"relay_controller.py").read_text(encoding="utf8")
+        tree=ast.parse(source)
+        pin_assignment=next(node for node in tree.body
+                            if isinstance(node,ast.Assign) and any(
+                                isinstance(target,ast.Name) and target.id=="PIN_MAP"
+                                for target in node.targets))
+        pins=ast.literal_eval(pin_assignment.value)
+        self.assertEqual(pins["co2_status"],(29,256))
+        self.assertEqual(pins["UV_status"],(18,228))
+        self.assertNotEqual(pins["co2_status"],pins["UV_status"])
+        # Keep every other output unchanged.
+        self.assertEqual(pins["o2_status"],(22,262))
+        self.assertEqual(pins["MasterL_status"],(24,229))
+        self.assertEqual(pins["Backlight_status"],(37,272))
+        self.assertEqual(pins["PlantL_status"],(36,76))
+
     def test_safe_disabled_default(self):
         text=(ROOT/"deploy/sql/fertilizer_pump2_migration.sql").read_text(encoding="utf8")
         self.assertIn("fertilizer_dose_ml",text)
