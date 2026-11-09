@@ -24,19 +24,19 @@ LOG = logging.getLogger("aquacore.relay")
 RUNNING = True
 
 # Orange Pi Zero 2W relay layout, by physical relay channel:
-# CO2=PH4(228); Oxygen=PI6(262); Main Light=PH5(229);
-# Backlight=PI16(272); Plant Light=PC12(76); UV=PI0(256);
+# CO2=PI0(256); Oxygen=PI6(262); Main Light=PH5(229);
+# Backlight=PI16(272); Plant Light=PC12(76); UV=PH4(228);
 # CPU cooler=PH8(232); Pump 1=PH6(230); Pump 2=PH7(231).
 # Unassigned: PH9(233).
 # Each pair is (PHYSICAL_HEADER_PIN, SUNXI_GPIO_NUMBER).
 # Controlled using libgpiod v2 on gpiochip1.
 PIN_MAP = {
-    "co2_status": (18, 228),         # 1 PH4
+    "co2_status": (29, 256),         # CO2 -> PI0 / header 29 (previous UV output)
     "o2_status": (22, 262),          # 2 PI6
     "MasterL_status": (24, 229),     # PH5
     "Backlight_status": (37, 272),   # 5 PI16
     "PlantL_status": (36, 76),       # 6 PC12
-    "UV_status": (29, 256),          # 7 PI0 (moved from PH5)
+    "UV_status": (18, 228),          # UV -> PH4 / header 18 (previous CO2 output)
 }
 
 # Unused relay channels: kept unconfigured/uncontrolled.
