@@ -261,13 +261,29 @@ def save_option_field():
         return jsonify(error='Expected JSON object'),400
     field=payload.get('field')
     pump_fields=('fertilizer_time','fertilizer_dose_ml','fertilizer2_time','fertilizer2_dose_ml')
-    if not isinstance(field,str) or field not in SETTINGS and field not in TIME_FIELDS and field not in pump_fields:
+    cooler_fields=('cooler_on_c','cooler_off_c')
+    if not isinstance(field,str) or field not in SETTINGS and field not in TIME_FIELDS and field not in pump_fields and field not in cooler_fields:
         return jsonify(error='Unknown setting'),400
     raw=str(payload.get('value') if payload.get('value') is not None else '').strip()
     if not raw:
         return jsonify(error='A value is required'),400
     try:
-        if field in ('fertilizer_dose_ml','fertilizer2_dose_ml'):
+        if field in cooler_fields:
+            from decimal import Decimal
+            parsed=Decimal(raw)
+            if not parsed.is_finite() or parsed.as_tuple().exponent < -1:
+                raise ValueError('Cooler thresholds need at most one decimal')
+            if not (50 <= parsed <= 85 if field == 'cooler_on_c' else 40 <= parsed <= 80):
+                raise ValueError('Cooler threshold outside safe range')
+            current_cooler=query('SELECT cooler_on_c,cooler_off_c FROM options LIMIT 1',one=True)
+            if not current_cooler:
+                return jsonify(error='Missing cooler settings; run cooler migration'),409
+            on=parsed if field=='cooler_on_c' else Decimal(str(current_cooler['cooler_on_c']))
+            off=parsed if field=='cooler_off_c' else Decimal(str(current_cooler['cooler_off_c']))
+            if on-off < Decimal('3'):
+                return jsonify(error='Cooler ON must be at least 3°C above OFF; change the other threshold first'),400
+            parsed=str(parsed)
+        elif field in ('fertilizer_dose_ml','fertilizer2_dose_ml'):
             from decimal import Decimal
             parsed=Decimal(raw)
             if not parsed.is_finite() or not 0 <= parsed <= 100 or parsed.as_tuple().exponent < -2:
@@ -300,7 +316,9 @@ def save_option_field():
         config=query('SELECT fertilizer_ml_per_second AS ml_per_second FROM '+table+' LIMIT 1',one=True)
         if config and config['ml_per_second'] is not None and calibrated_seconds(parsed,config['ml_per_second']) is None:
             return jsonify(error='Dose exceeds the 60-second pump limit for current calibration'),400
-    if field in pump_fields:
+    if field in cooler_fields:
+        mutate('UPDATE options SET `'+field+'`=%s LIMIT 1',(parsed,))
+    elif field in pump_fields:
         column='fertilizer_start_time' if field.endswith('_time') else 'fertilizer_dose_ml'
         table='fertilizer_pump2' if field.startswith('fertilizer2_') else 'options'
         mutate('UPDATE '+table+' SET `'+column+'`=%s LIMIT 1',(parsed,))

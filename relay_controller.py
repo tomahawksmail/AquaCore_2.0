@@ -59,6 +59,26 @@ def pump_enabled(number):
 CPU_TEMP_PATH = "/sys/class/thermal/thermal_zone0/temp"
 COOLER_ON_C = 70.0
 COOLER_OFF_C = 65.0
+COOLER_CONFIG_REFRESH_SECONDS = 10
+
+def load_cooler_thresholds(previous=(COOLER_ON_C, COOLER_OFF_C)):
+    """Get saved hysteresis values; retain last safe settings on DB failure."""
+    try:
+        with database() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT cooler_on_c,cooler_off_c FROM options LIMIT 1")
+                row=cursor.fetchone()
+        if not row:
+            raise ValueError("Cooler settings not found")
+        on=float(row["cooler_on_c"])
+        off=float(row["cooler_off_c"])
+        if not 50 <= on <= 85 or not 40 <= off <= 80 or on-off < 3:
+            raise ValueError("Invalid cooler hysteresis thresholds")
+        return (on,off)
+    except (pymysql.MySQLError, OSError, ValueError, TypeError, KeyError):
+        LOG.exception("Cooler thresholds unavailable; retaining previous safe values")
+        return previous
+
 
 
 def cpu_temperature_c(path=CPU_TEMP_PATH):
@@ -71,19 +91,19 @@ def cpu_temperature_c(path=CPU_TEMP_PATH):
     return temperature
 
 
-def desired_cooler_on(temperature, previous_on):
-    """Hysteresis: switch on strictly above 70C; off at or below 65C."""
-    if temperature > COOLER_ON_C:
+def desired_cooler_on(temperature, previous_on, on_c=COOLER_ON_C, off_c=COOLER_OFF_C):
+    """Hysteresis with independent ON/OFF thresholds."""
+    if temperature > on_c:
         return True
-    if temperature <= COOLER_OFF_C:
+    if temperature <= off_c:
         return False
     return previous_on
 
 
-def update_cooler(request, previous_on, apply):
+def update_cooler(request, previous_on, apply, thresholds=(COOLER_ON_C, COOLER_OFF_C)):
     try:
         temperature = cpu_temperature_c()
-        on = desired_cooler_on(temperature, previous_on)
+        on = desired_cooler_on(temperature, previous_on, *thresholds)
         description = f"{temperature:.1f}C"
     except (OSError, ValueError) as exc:
         # Cooling is fail-on if the CPU temperature cannot be read.
@@ -522,6 +542,8 @@ def main():
     previous = {}
     request=setup_pins(pins,args.apply)
     cooler_on = None
+    cooler_thresholds = (COOLER_ON_C, COOLER_OFF_C)
+    cooler_next_refresh = 0.0
     pump = FertilizerPump(request, args.apply and pump_enabled(1))
     pump2 = FertilizerPump(request, args.apply and pump_enabled(2),
                            table="fertilizer_pump2",pin=PUMP2_PIN,
@@ -545,7 +567,10 @@ def main():
         except (pymysql.MySQLError,OSError,RuntimeError,ValueError,KeyError):
             LOG.exception("Pump 2 status synchronization failed")
         try:
-            cooler_on = update_cooler(request, cooler_on, args.apply)
+            if time.monotonic() >= cooler_next_refresh:
+                cooler_thresholds = load_cooler_thresholds(cooler_thresholds)
+                cooler_next_refresh = time.monotonic() + COOLER_CONFIG_REFRESH_SECONDS
+            cooler_on = update_cooler(request, cooler_on, args.apply, cooler_thresholds)
         except (OSError, RuntimeError, ValueError):
             LOG.exception("Cooler update failed")
         try:

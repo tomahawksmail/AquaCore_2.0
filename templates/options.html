@@ -98,6 +98,33 @@
     </div>
     {% endfor %}
     <div class="device-group">
+      <h3 class="device-group-heading"><i class="mdi mdi-fan" aria-hidden="true"></i> CPU cooler</h3>
+      <div class="device-rows">
+        <div class="device-settings-row control-row">
+          <div class="device-settings-name">
+            <span class="settings-device-icon"><i class="mdi mdi-fan" aria-hidden="true"></i></span>
+            <div>
+              <strong>CPU fan · PH8</strong>
+              <span class="control-state">Turns ON above the ON threshold; OFF at or below the OFF threshold. Temperatures between retain the previous state.</span>
+            </div>
+          </div>
+          <label class="device-time" for="cooler-on-c">
+            <span>Fan ON above (°C)</span>
+            <input id="cooler-on-c" type="number" name="cooler_on_c" min="50" max="85" step="0.1" required
+                   value="{{ options.cooler_on_c if options.cooler_on_c is not none else 70 }}"
+                   {% if session.get('role')|int != 1 %}disabled{% endif %}>
+          </label>
+          <label class="device-time" for="cooler-off-c">
+            <span>Fan OFF at/below (°C)</span>
+            <input id="cooler-off-c" type="number" name="cooler_off_c" min="40" max="80" step="0.1" required
+                   value="{{ options.cooler_off_c if options.cooler_off_c is not none else 65 }}"
+                   {% if session.get('role')|int != 1 %}disabled{% endif %}>
+          </label>
+        </div>
+      </div>
+      <p class="control-disclaimer">Keep at least 3°C between thresholds. If CPU temperature cannot be read, the relay worker requests fan ON. Fan control uses CPU temperature, not aquarium temperature.</p>
+    </div>
+    <div class="device-group">
       <h3 class="device-group-heading"><i class="mdi mdi-water-pump" aria-hidden="true"></i> Pump 1 · Bottle A</h3>
       {% if not fertilizer.hardware_enabled %}
       <p class="control-disclaimer"><i class="mdi mdi-alert-outline"></i> Pump 1 relay disabled by PUMP1_ENABLED=0 in the service environment.</p>
