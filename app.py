@@ -11,6 +11,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from dotenv import load_dotenv
 from scheduler import next_transition, scheduled_state, SCHEDULE_MAP
 from fertilizer_math import calibrated_seconds, calibrate_rate, CALIBRATION_SECONDS
+from time_utils import html_time
 
 def pump_enabled(number):
     """Match the relay service's defaults and supported boolean values."""
@@ -30,6 +31,7 @@ def local_commit():
         return os.getenv('AQUACORE_COMMIT', 'Unavailable')
 
 app = Flask(__name__)
+app.jinja_env.filters['html_time'] = html_time
 from sensor_calibration_api import bp as sensor_calibration_bp
 from fertilizer_pump2_api import bp as fertilizer_pump2_bp
 app.register_blueprint(sensor_calibration_bp)
@@ -329,6 +331,10 @@ def save_option_field():
         column='fertilizer_start_time' if field.endswith('_time') else 'fertilizer_dose_ml'
         table='fertilizer_pump2' if field.startswith('fertilizer2_') else 'options'
         mutate('UPDATE '+table+' SET `'+column+'`=%s LIMIT 1',(parsed,))
+        if field in ('fertilizer_time','fertilizer2_time'):
+            confirmed=query('SELECT fertilizer_start_time AS start_time FROM '+table+' LIMIT 1',one=True)
+            if not confirmed or html_time(confirmed['start_time']) != parsed[:5]:
+                return jsonify(error='Activation time could not be verified in MariaDB'),409
     else:
         mutate('UPDATE options SET `'+field+'`=%s LIMIT 1',(parsed,))
     response=jsonify(ok=True,field=field,value=parsed)
