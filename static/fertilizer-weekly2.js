@@ -29,7 +29,8 @@
     // Keep controls fixed while an in-flight save is being verified.
     save.disabled = busy || !changed || inputs.some(i => i.disabled);
     if (!busy && changed) notice("Unsaved changes", "dirty");
-    if (!busy && !changed && feedback.dataset.state === "dirty") notice("", "idle");
+    if (!busy && !changed && feedback.dataset.state === "dirty")
+      notice("Bottle B saved schedule: " + describeDays(saved), "saved");
   };
   const setOpen = (open) => {
     toggle.setAttribute("aria-expanded", String(open));
