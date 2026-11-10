@@ -682,8 +682,11 @@ def core():
 @logged_in
 def system_history():
     """Recent system measurements in chronological sample order (up to 1500 samples)."""
-    # Query all psutil columns so optional DB timestamp fields are available.
-    rows=query('SELECT * FROM psutil ORDER BY Id DESC LIMIT 1500')
+    # Exclude legacy/failed zero-RAM samples from trends. They are not valid
+    # host measurements and previously created false spikes to zero on every
+    # chart. Keep the samples in MariaDB for diagnostics; filter only the API.
+    # The same validity rule is used for the current-value cards below.
+    rows=query('SELECT * FROM psutil WHERE RAM_total > 0 ORDER BY Id DESC LIMIT 1500')
     result=[]
     for row in reversed(rows):
         point={key: (float(row[key]) if row.get(key) is not None else None)

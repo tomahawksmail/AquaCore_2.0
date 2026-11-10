@@ -13,6 +13,10 @@
   let saved = readDays();
   let busy = false;
   const same = (a, b) => a.length === b.length && a.every((day, i) => day === b[i]);
+  const weekdayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const describeDays = days => days.length
+    ? days.map(day => weekdayNames[day]).join(', ')
+    : 'None (automatic dosing OFF)';
   const notice = (message, state = "idle") => {
     feedback.textContent = message;
     feedback.dataset.state = state;
@@ -25,7 +29,8 @@
     // Keep controls fixed while an in-flight save is being verified.
     save.disabled = busy || !changed || inputs.some(i => i.disabled);
     if (!busy && changed) notice("Unsaved changes", "dirty");
-    if (!busy && !changed && feedback.dataset.state === "dirty") notice("", "idle");
+    if (!busy && !changed && feedback.dataset.state === "dirty")
+      notice("Bottle B saved schedule: " + describeDays(saved), "saved");
   };
   const setOpen = (open) => {
     toggle.setAttribute("aria-expanded", String(open));
@@ -43,6 +48,8 @@
   });
   inputs.forEach(i => i.addEventListener("change", refresh));
   refresh();
+  // The initial selections are rendered from MariaDB on page load.
+  notice('Bottle B saved schedule: ' + describeDays(saved), 'saved');
   save.addEventListener("click", async () => {
     if (busy || save.disabled) return;
     const days = readDays();
@@ -63,9 +70,8 @@
         throw new Error("Server did not confirm the selected weekdays");
       }
       saved = [...result.days];
-      notice(days.length === 0 ?
-        "Saved. Automatic dosing is now off; manual dosing stays available." :
-        "Saved. " + result.times_per_week + " scheduled dose(s) per week.", "saved");
+      notice('Bottle B schedule saved: ' + describeDays(saved) +
+        ' (' + result.times_per_week + ' per week).', 'saved');
     } catch (error) {
       notice("Not saved: " + error.message, "error");
     } finally {
