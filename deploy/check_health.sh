@@ -16,7 +16,8 @@ if [[ ! -e /opt/aquacore/app.py ]]; then
     fail '/opt/aquacore/app.py is missing'
 else
     ok '/opt/aquacore source checkout exists'
-    git -C /opt/aquacore log -1 --format='Deployed commit: %h (%cs)' 2>/dev/null || warn 'Cannot read deployed commit'
+    runuser -u aquacore -- git -C /opt/aquacore log -1 \
+        --format='Deployed commit: %h (%cs)' 2>/dev/null || warn 'Cannot read deployed commit as aquacore'
 fi
 
 for service in aquacore.service aquacore-scheduler.service aquacore-relays.service \
