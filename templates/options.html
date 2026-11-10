@@ -83,8 +83,8 @@
             <span class="settings-device-icon"><i class="mdi {{icons.get(field, 'mdi-power-plug-outline')}}" aria-hidden="true"></i></span>
             <div><strong>{{label}}</strong><span class="control-state" id="state-{{field}}">{{('Manual until ' ~ manual[field].strftime('%H:%M')) if field in manual else 'Scheduled · ' ~ ('ON' if active else 'OFF')}}</span></div>
           </div>
-          <label class="device-time" for="time-{{on}}"><span>ON time</span><input id="time-{{on}}" type="time" name="{{on}}" value="{{options[on]|string|truncate(5,True,'') if options[on] is not none else ''}}" {% if session.get('role')|int != 1 %}disabled{% endif %}></label>
-          <label class="device-time" for="time-{{off}}"><span>OFF time</span><input id="time-{{off}}" type="time" name="{{off}}" value="{{options[off]|string|truncate(5,True,'') if options[off] is not none else ''}}" {% if session.get('role')|int != 1 %}disabled{% endif %}></label>
+          <label class="device-time" for="time-{{on}}"><span>ON time</span><input id="time-{{on}}" type="time" name="{{on}}" value="{{ options[on]|html_time }}" {% if session.get('role')|int != 1 %}disabled{% endif %}></label>
+          <label class="device-time" for="time-{{off}}"><span>OFF time</span><input id="time-{{off}}" type="time" name="{{off}}" value="{{ options[off]|html_time }}" {% if session.get('role')|int != 1 %}disabled{% endif %}></label>
           <div class="device-manual">
             <span>Manual</span>
             <label class="ios-switch" aria-label="Toggle {{label}} manually">
@@ -141,7 +141,7 @@
                 {% elif not fertilizer.dose_ml %}
                   Scheduled · OFF
                 {% else %}
-                  Scheduled · {{fertilizer.start_time|string|truncate(5,True,'')}} · {{fertilizer.dose_ml}} ml · {{ fertilizer.times_per_week }} time(s)/week
+                  Scheduled · {{ fertilizer.start_time|html_time }} · {{fertilizer.dose_ml}} ml · {{ fertilizer.times_per_week }} time(s)/week
                 {% endif %}
               </span>
             </div>
@@ -160,7 +160,7 @@
           <label class="device-time" for="fertilizer-time">
             <span>Activation time</span>
             <input id="fertilizer-time" name="fertilizer_time" type="time"
-                   value="{{ fertilizer.start_time|string|truncate(5,True,'') if fertilizer.start_time is not none else '12:00' }}"
+                   value="{{ fertilizer.start_time|html_time if fertilizer.start_time is not none else '12:00' }}"
                    {% if session.get('role')|int != 1 %}disabled{% endif %}>
           </label>
           <label class="device-time" for="fertilizer-ml">
@@ -232,7 +232,7 @@
                 {% elif not fertilizer2.dose_ml %}
                   Scheduled · OFF
                 {% else %}
-                  Scheduled · {{fertilizer2.start_time|string|truncate(5,True,'')}} · {{fertilizer2.dose_ml}} ml · {{ fertilizer2.times_per_week }} time(s)/week
+                  Scheduled · {{ fertilizer2.start_time|html_time }} · {{fertilizer2.dose_ml}} ml · {{ fertilizer2.times_per_week }} time(s)/week
                 {% endif %}
               </span>
             </div>
@@ -251,7 +251,7 @@
           <label class="device-time" for="fertilizer2-time">
             <span>Activation time</span>
             <input id="fertilizer2-time" name="fertilizer2_time" type="time"
-                   value="{{ fertilizer2.start_time|string|truncate(5,True,'') if fertilizer2.start_time is not none else '12:00' }}"
+                   value="{{ fertilizer2.start_time|html_time if fertilizer2.start_time is not none else '12:30' }}"
                    {% if session.get('role')|int != 1 %}disabled{% endif %}>
           </label>
           <label class="device-time" for="fertilizer2-ml">
