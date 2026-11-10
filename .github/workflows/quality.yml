@@ -1,0 +1,38 @@
+name: AquaCore regression checks
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  software-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check Python syntax
+        run: python -m compileall -q -x 'create_test_database' .
+      - name: Run all offline unit tests
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
+      - name: Check JavaScript syntax
+        run: |
+          for f in static/*.js; do node --check "$f"; done
+      - name: Verify no tracked .env files
+        run: |
+          if git ls-files | grep -E '(^|/)\.env($|\.)'; then
+            echo "Tracked secrets/environment file detected" >&2
+            exit 1
+          fi
+      - name: Explain hardware coverage
+        run: |
+          echo "Offline checks passed. Live GPIO, I2C, MariaDB and Telegram delivery still require Orange Pi tests."
