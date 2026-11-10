@@ -13,7 +13,7 @@
     <div class="system-core-legend" id="cpu-core-legend">
       {% for n in range(4) %}<span class="cpu-core-key cpu-core-{{n}}"><i></i> Core {{n}}: <strong id="core-value-{{n}}">{% if row and row['cpus_percent_' ~ n] is not none %}{{row['cpus_percent_' ~ n]}}{% else %}—{% endif %}%</strong></span>{% endfor %}
     </div>
-    <div class="system-core-chart" id="cpu-cores-chart" aria-label="Recent CPU usage for cores zero through three"></div>
+    <div class="system-core-chart" id="cpu-cores-chart" aria-label="Three-sample averaged CPU utilization line trends for cores zero through three"></div>
   </article>
 </section>
 <section class="system-cpu-grid system-ram-grid" aria-label="RAM total and RAM usage breakdown">
@@ -88,5 +88,5 @@
   {% endfor %}
 </section>
 
-<script defer src="{{url_for('static',filename='system.js',v='20261106-current-snapshot')}}"></script>
+<script defer src="{{url_for('static',filename='system.js',v='20261109-clean-line-trends')}}"></script>
 {% endblock %}
