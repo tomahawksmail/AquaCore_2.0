@@ -24,6 +24,27 @@ git pull origin master
 
 In Telegram, open a **private chat** with your bot and send /start. It silently ignores other accounts and group chats. A numeric MyTGaccount is required. Avoid logging token values. Only **one** polling instance should run for the same token.
 
+## System chart consistency
+
+The Telegram **📉 System chart** uses the same 24-hour valid system sample
+window as the web dashboard: rows with `psutil.RAM_total=0` are not plotted,
+and gaps longer than 20 minutes remain gaps rather than artificial drops.
+The PNG includes four CPU core utilization trend **lines** (trailing
+three-sample average, as on the web), RAM used/available line trends, and
+CPU temperature lines. Invalid temperature values are not rendered as 0°C.
+
+If Telegram still sends the old plot after pulling code, restart **the bot**
+(not just the Flask web service):
+
+```bash
+sudo -u aquacore git -C /opt/aquacore pull --ff-only origin master
+sudo systemctl restart aquacore-telegram.service
+sudo journalctl -u aquacore-telegram.service -n 30 --no-pager
+```
+
+The bot generates PNGs on demand from the database; previous photos already
+sent in Telegram do not change retroactively.
+
 ## Commands
 
 - /start : inline menu
