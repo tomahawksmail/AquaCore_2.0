@@ -22,6 +22,7 @@
     const n = selected.length;
     count.textContent = n + (n === 1 ? " time" : " times") + " per week";
     const changed = !same(selected, saved);
+    // Keep controls fixed while an in-flight save is being verified.
     save.disabled = busy || !changed || inputs.some(i => i.disabled);
     if (!busy && changed) notice("Unsaved changes", "dirty");
     if (!busy && !changed && feedback.dataset.state === "dirty") notice("", "idle");
@@ -47,6 +48,7 @@
     const days = readDays();
     busy = true;
     save.disabled = true;
+    inputs.forEach(input => { input.disabled = true; });
     notice("Saving schedule…", "idle");
     try {
       const response = await fetch("/api/fertilizer/2/schedule/days", {
@@ -56,7 +58,11 @@
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || "Unable to save schedule");
-      saved = [...days];
+      if (result.ok !== true || !Array.isArray(result.days) ||
+          !same(result.days, days)) {
+        throw new Error("Server did not confirm the selected weekdays");
+      }
+      saved = [...result.days];
       notice(days.length === 0 ?
         "Saved. Automatic dosing is now off; manual dosing stays available." :
         "Saved. " + result.times_per_week + " scheduled dose(s) per week.", "saved");
@@ -64,6 +70,7 @@
       notice("Not saved: " + error.message, "error");
     } finally {
       busy = false;
+      inputs.forEach(input => { input.disabled = false; });
       refresh();
     }
   });

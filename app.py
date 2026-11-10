@@ -245,7 +245,14 @@ def save_fertilizer_schedule_days():
         return jsonify(error="Use unique weekday numbers 0 through 6"), 400
     mask = sum(1 << day for day in days)
     mutate("UPDATE options SET fertilizer_weekdays=%s LIMIT 1", (mask,))
-    response = jsonify(ok=True, times_per_week=len(days), days=days)
+    persisted=query("SELECT fertilizer_weekdays FROM options LIMIT 1", one=True)
+    if not persisted or persisted["fertilizer_weekdays"] is None:
+        return jsonify(error="Unable to verify saved pump schedule"), 409
+    persisted_mask=int(persisted["fertilizer_weekdays"])
+    actual_days=[day for day in range(7) if persisted_mask & (1 << day)]
+    if actual_days != sorted(days):
+        return jsonify(error="Saved weekdays do not match request; reload Settings"), 409
+    response = jsonify(ok=True, times_per_week=len(actual_days), days=actual_days)
     response.headers["Cache-Control"] = "no-store"
     return response
 
