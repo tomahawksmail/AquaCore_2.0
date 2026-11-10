@@ -278,6 +278,10 @@
       message.textContent='Calibration saved ('+Number(data.ml_per_second).toFixed(3)+
         ' ml/sec). Verify delivery with a second water test.';
       progressLabel.textContent='Calibration saved';
+      // Only close after the server confirms that the calibration was saved.
+      dialog.close();
+      setNotice('Calibration saved · '+Number(data.ml_per_second).toFixed(3)+
+        ' ml/sec. Verify the delivered volume with a second water test.');
     }catch(error){
       message.textContent='Cannot save calibration: '+error.message;
     }finally{busy=false;updateUI();}
