@@ -319,41 +319,124 @@ def read_timings():
     return "🕒 Equipment schedule (server time)\n"+ "\n".join(f"{DEVICES[field]}: {str(opts.get(on))[:5]}–{str(opts.get(off))[:5]}" for field,(on,off) in SCHEDULE_MAP.items())
 
 def chart_image(which):
+    """Generate line-based Telegram charts; system data mirrors web validation."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    from matplotlib.dates import AutoDateLocator,DateFormatter
+    from matplotlib.dates import AutoDateLocator, DateFormatter
+
     with db() as con:
         with con.cursor() as cur:
-            if which=="aqua":
-                cur.execute("SELECT Datetime,temp,ph,tds FROM data WHERE Datetime>=NOW()-INTERVAL 24 HOUR ORDER BY Datetime ASC LIMIT 2000")
-                rows=cur.fetchall()
-                fields=[("temp","Temperature °C"),("ph","pH"),("tds","TDS ppm")]
+            if which == "aqua":
+                cur.execute(
+                    "SELECT Datetime,temp,ph,tds FROM data "
+                    "WHERE Datetime>=NOW()-INTERVAL 24 HOUR "
+                    "ORDER BY Datetime ASC LIMIT 2000"
+                )
+                rows = cur.fetchall()
+            elif which == "system":
+                # Match /api/system/history: discard invalid old zero-RAM rows.
+                # Take the latest 1500 valid records within the last 24 hours.
+                cur.execute(
+                    "SELECT Datetime,RAM_total,RAM_used,RAM_available,"
+                    "cpus_percent_0,cpus_percent_1,cpus_percent_2,cpus_percent_3,"
+                    "cpu_thermal_cur FROM psutil "
+                    "WHERE RAM_total > 0 AND Datetime >= NOW()-INTERVAL 24 HOUR "
+                    "ORDER BY Datetime DESC,Id DESC LIMIT 1500"
+                )
+                rows = list(reversed(cur.fetchall()))
             else:
-                cur.execute("SELECT * FROM psutil ORDER BY Id DESC LIMIT 300")
-                rows=list(reversed(cur.fetchall()))
-                fields=[("cpus_percent_0","CPU core 0 %"),("RAM_percent","RAM %"),("cpu_thermal_cur","CPU °C")]
-    if not rows:return None
-    dates=[next((r.get(k) for k in ("Datetime","datetime","Timestamp","timestamp","created_at") if r.get(k) is not None),None) for r in rows]
-    dates=[datetime.fromisoformat(d) if isinstance(d,str) else d for d in dates]
-    if not all(isinstance(d,datetime) for d in dates):return None
-    fig,axes=plt.subplots(3,1,figsize=(9,7),sharex=True)
+                return None
+    if not rows:
+        return None
+
+    fig, axes = plt.subplots(3, 1, figsize=(9, 7), sharex=True)
     fig.patch.set_facecolor("#142536")
-    for ax,(field,label),color in zip(axes,fields,("#58dfc0","#84a7ff","#f3bc80")):
+    for ax in axes:
         ax.set_facecolor("#1d3548")
-        ax.plot(dates,[float(r[field]) if r.get(field) is not None else float("nan") for r in rows],color=color,linewidth=1.6)
-        ax.set_ylabel(label,color="#d7e4ec")
         ax.tick_params(colors="#cad9e4")
         ax.grid(alpha=.18)
+
+    if which == "aqua":
+        dates = [
+            datetime.fromisoformat(row["Datetime"]) if isinstance(row.get("Datetime"), str)
+            else row.get("Datetime")
+            for row in rows
+        ]
+        if not all(isinstance(date, datetime) for date in dates):
+            plt.close(fig)
+            return None
+        fields = [("temp", "Temperature °C"), ("ph", "pH"), ("tds", "TDS ppm")]
+        for ax, (field, label), color in zip(
+            axes, fields, ("#58dfc0", "#84a7ff", "#f3bc80")
+        ):
+            ax.plot(
+                dates,
+                [float(row[field]) if row.get(field) is not None else float("nan")
+                 for row in rows],
+                color=color, linewidth=1.6
+            )
+            ax.set_ylabel(label, color="#d7e4ec")
+    else:
+        from telegram_system_trends import split_system_samples, trailing_mean
+        segments = split_system_samples(rows, max_gap_seconds=1200)
+        if not segments:
+            plt.close(fig)
+            return None
+
+        core_colors = ("#58dfc0", "#84a7ff", "#f3bc80", "#76cdfa")
+        for segment_index, segment in enumerate(segments):
+            dates = [row["Datetime"] for row in segment]
+            # Like the web: smooth CPU utilization over the last 3 samples.
+            # A separate line segment starts after a collector gap >20 min.
+            for number, color in enumerate(core_colors):
+                field = f"cpus_percent_{number}"
+                axes[0].plot(
+                    dates, trailing_mean(segment, field, window=3, minimum=0, maximum=100),
+                    color=color, linewidth=2.0, solid_capstyle="round",
+                    label=f"Core {number}" if segment_index == 0 else None
+                )
+            for field, label, color in (
+                ("RAM_used", "Used", "#84a7ff"),
+                ("RAM_available", "Available", "#58dfc0"),
+            ):
+                axes[1].plot(
+                    dates, trailing_mean(segment, field, window=1, minimum=0),
+                    color=color, linewidth=2.0, solid_capstyle="round",
+                    label=label if segment_index == 0 else None
+                )
+            axes[2].plot(
+                dates, trailing_mean(
+                    segment, "cpu_thermal_cur", window=1, minimum=0.1, maximum=130
+                ),
+                color="#f3bc80", linewidth=2.0, solid_capstyle="round"
+            )
+
+        axes[0].set_ylabel("CPU cores %", color="#d7e4ec")
+        axes[0].set_ylim(0, 100)
+        axes[1].set_ylabel("RAM (MB)", color="#d7e4ec")
+        axes[2].set_ylabel("CPU temperature °C", color="#d7e4ec")
+        for ax in axes[:2]:
+            legend = ax.legend(
+                loc="upper left", ncol=4 if ax == axes[0] else 2,
+                fontsize=7.5, frameon=False
+            )
+            for label in legend.get_texts():
+                label.set_color("#d7e4ec")
+        # Keep 24h time scale, matching the System Metrics web view.
+        axes[-1].set_xlim(datetime.now() - timedelta(hours=24), datetime.now())
+
     axes[-1].xaxis.set_major_locator(AutoDateLocator(maxticks=7))
     axes[-1].xaxis.set_major_formatter(DateFormatter("%H:%M"))
-    fig.suptitle("AquaCore · "+which.title()+" metrics",color="white")
+    fig.suptitle("AquaCore · " + which.title() + " metrics", color="white")
     fig.autofmt_xdate()
     fig.tight_layout()
-    out=io.BytesIO()
-    fig.savefig(out,format="png",dpi=130,facecolor=fig.get_facecolor())
-    plt.close(fig)
-    return out.getvalue()
+    out = io.BytesIO()
+    try:
+        fig.savefig(out, format="png", dpi=130, facecolor=fig.get_facecolor())
+        return out.getvalue()
+    finally:
+        plt.close(fig)
 
 def set_device(field, action, actor=None):
     if field not in DEVICES or action not in ("on","off","auto"):
