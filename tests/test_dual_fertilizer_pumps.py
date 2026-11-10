@@ -14,7 +14,9 @@ class DualPumpTests(unittest.TestCase):
         text=(ROOT/"relay_controller.py").read_text(encoding="utf8")
         self.assertIn("PUMP_PIN = (23, 230)",text)
         self.assertIn("PUMP2_PIN = (19, 231)",text)
-        self.assertIn("PUMP2_ENABLED",text)
+        # The two pump flags are assembled dynamically from their numbers.
+        self.assertIn('f"PUMP{number}_ENABLED"',text)
+        self.assertIn('default = "1" if number == 1 else "0"',text)
     def test_uv_co2_swapped_outputs(self):
         source=(ROOT/"relay_controller.py").read_text(encoding="utf8")
         tree=ast.parse(source)
