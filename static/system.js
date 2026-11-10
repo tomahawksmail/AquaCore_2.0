@@ -54,12 +54,20 @@
       let sections=[],section=[];
       points.forEach((p,k)=>{
         const v=item.get(p);
+        // Do not connect across missing samples or collector outages.
+        const gap=k>0 && Number.isFinite(times[k]) && Number.isFinite(times[k-1]) &&
+          times[k]-times[k-1]>20*60*1000;
+        if(gap && section.length){sections.push(section);section=[];}
         if(v==null||!Number.isFinite(Number(v))){if(section.length)sections.push(section);section=[];}
         else section.push([x(k),y(v)]);
       });
       if(section.length)sections.push(section);
       for(const part of sections){
-        svg+='<path d="M '+part.map(t=>t[0].toFixed(1)+' '+t[1].toFixed(1)).join(' L ')+'" fill="none" stroke="'+item.color+'" stroke-width="1.2" vector-effect="non-scaling-stroke"/>';
+        if(part.length===1){
+          svg+='<circle cx="'+part[0][0].toFixed(1)+'" cy="'+part[0][1].toFixed(1)+'" r="2.6" fill="'+item.color+'"/>';
+          continue;
+        }
+        svg+='<path d="M '+part.map(t=>t[0].toFixed(1)+' '+t[1].toFixed(1)).join(' L ')+'" fill="none" stroke="'+item.color+'" stroke-width="1.9" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>';
       }
       const last=sections.at(-1)?.at(-1);
       if(last)svg+='<circle cx="'+last[0]+'" cy="'+last[1]+'" r="3.2" fill="'+item.color+'" stroke="#102335" stroke-width="1.2"/>';
@@ -71,7 +79,27 @@
   }
   const coreColors=['#5eead4','#8fa8ff','#ffc48b','#76cdfa'];
   function coreChart(el,points){
-    plot(el,[0,1,2,3].map(n=>({color:coreColors[n],get:p=>p['cpus_percent_'+n]})),points,{fixedMax:100});
+    // Draw three-sample moving-average lines for instant CPU utilization.
+    // Keep the raw readings in the API and current CPU labels.
+    const smoothed=points.map((sample,i)=>{
+      const result={...sample};
+      for(let n=0;n<4;n++){
+        const key='cpus_percent_'+n, values=[];
+        for(let j=i;j>=Math.max(0,i-2);j--){
+          const v=points[j][key];
+          if(v==null||!Number.isFinite(Number(v)))break;
+          if(j<i && points[j+1].timestamp && points[j].timestamp){
+            const t1=Date.parse(String(points[j+1].timestamp).replace(' ','T'));
+            const t0=Date.parse(String(points[j].timestamp).replace(' ','T'));
+            if(Number.isFinite(t1)&&Number.isFinite(t0)&&t1-t0>20*60*1000)break;
+          }
+          values.push(Number(v));
+        }
+        result[key]=values.length?values.reduce((a,b)=>a+b,0)/values.length:null;
+      }
+      return result;
+    });
+    plot(el,[0,1,2,3].map(n=>({color:coreColors[n],get:p=>p['cpus_percent_'+n]})),smoothed,{fixedMax:100});
   }
   const ramSeries=[
     ['RAM_available','Available','#5eead4'],['RAM_percent','Usage %','#f7ad75'],
