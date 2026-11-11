@@ -38,6 +38,7 @@ app.register_blueprint(sensor_calibration_bp)
 app.register_blueprint(fertilizer_pump2_bp)
 app.secret_key = os.environ.get('SECRET_KEY') or secrets.token_hex(32)
 app.jinja_env.globals['deployed_commit'] = local_commit()
+app.jinja_env.globals['app_version'] = '1.0'
 app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax', MAX_CONTENT_LENGTH=16384)
 if os.environ.get('COOKIE_SECURE', 'false').lower() == 'true':
     app.config['SESSION_COOKIE_SECURE'] = True
