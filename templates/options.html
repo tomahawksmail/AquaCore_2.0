@@ -528,8 +528,7 @@
             </div>
           </div>
         </div>
-        <label class="sensor-confirm" for="sensor-confirm-buffers"><input type="checkbox" id="sensor-confirm-buffers"><span>I used all three correctly prepared buffers and waited for each voltage to stabilize.</span></label>
-        <p class="sensor-hint"><i class="mdi mdi-shield-check-outline" aria-hidden="true"></i> Nothing is saved until you confirm all three readings. Captures expire after 15 minutes; failed saves preserve your previous calibration.</p>
+        <p class="sensor-hint"><i class="mdi mdi-shield-check-outline" aria-hidden="true"></i> Capture all three buffers to enable Save. Each reading must be less than 15 minutes old, and failed saves preserve your previous calibration.</p>
       </section>
     </div>
 
@@ -546,7 +545,7 @@
     </footer>
   </div>
 </dialog>
-<script defer src="{{ url_for('static', filename='sensor-calibration.js', v='20261112-calibration-ux-v2') }}"></script>
+<script defer src="{{ url_for('static', filename='sensor-calibration.js', v='20261112-independent-live-v3') }}"></script>
 <script>window.AQUACORE_CSRF = {{ csrf_token()|tojson }};</script>
 <script defer src="{{ url_for('static', filename='controls.js') }}"></script>
 <script defer src="{{ url_for('static', filename='fertilizer-manual2.js', v='20261109-close-after-save-v1') }}"></script>
