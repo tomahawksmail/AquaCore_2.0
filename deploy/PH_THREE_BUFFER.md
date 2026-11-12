@@ -31,6 +31,131 @@ migration, its queries for the new fields fail. No relay service restart is
 required. New installations using `deploy/sql/sensor_calibration.sql`
 already get all the columns.
 
+## Temperature sensor hardware wiring — ADS1115 A1
+
+**Sensor:** waterproof two-wire **NTC 10 kΩ at 25°C, B3950** thermistor.
+**Additional component:** a separate **10 kΩ fixed resistor** (1% tolerance
+preferred). AquaCore implements a **3.3 V voltage divider**, not a direct
+analog connection to the Orange Pi GPIO.
+
+### Electrical schematic (actual AquaCore conversion polarity)
+
+```text
+      Orange Pi Zero 2W / ADS1115                  Waterproof probe
+
+                 +3.3 V
+                    |
+                    +---------------------------> ADS1115 VDD
+                    |
+                [10 kΩ fixed resistor]
+                    |
+                    +---------------------------> ADS1115 A1
+                    |
+                [NTC thermistor]
+                [10 kΩ / B3950]
+                    |
+     GND ------------+---------------------------> ADS1115 GND
+
+     Orange Pi I²C SDA --------------------------> ADS1115 SDA
+     Orange Pi I²C SCL --------------------------> ADS1115 SCL
+     Orange Pi GND ------------------------------> ADS1115 GND
+
+     ADS1115 ADDR -> GND for address 0x48 (if the breakout
+                      uses a configurable ADDR pin)
+```
+
+**Important details:**
+
+- Connect the **fixed 10 kΩ resistor between +3.3 V and the junction
+  attached to A1**; connect the **NTC between A1 and GND**. Reversing their
+  order makes the default temperature conversion incorrect.
+- The two wires of a bare NTC have **no polarity**.
+- The Orange Pi and ADS1115 must **share a common ground**. Use **3.3 V** for
+  both the ADC supply and the divider; do **not** feed 5 V into the ADC input
+  or Orange Pi 3.3 V GPIO/I²C pins.
+- The existing AquaCore sensor map is **A0 = pH module analog output**,
+  **A1 = NTC voltage divider**, and **A3 = TDS analog output**.
+  Do not leave an old pH-module **T1/T2** signal connected to A1 at the
+  same time as the NTC.
+- Use the correct **SDA and SCL header pins for the Orange Pi Zero 2W's
+  active `/dev/i2c-2` bus**. Physical header pin numbering is intentionally
+  omitted here because it should be checked against the board's specific
+  header/pinmux configuration.
+- Disconnect power before changing wiring; inspect for shorts and exposed
+  metal near the aquarium.
+
+### Sanity check before enabling NTC
+
+At **25°C**, the NTC is approximately 10 kΩ and the A1 voltage should be
+around **1.65 V** on a 3.3 V supply with a 10 kΩ fixed resistor.
+With **warmer water**, NTC resistance and A1 voltage **decrease**; colder
+water increases both. Readings vary with part tolerance.
+
+The actual software equation in `sensor_conversion.py` is
+
+```text
+R_NTC = 10,000 Ω × V_A1 / (3.3 V − V_A1)
+```
+
+followed by the B3950 thermistor beta equation. This formula assumes the
+specific resistor ordering drawn above.
+
+Check the hardware as the service user **after wiring**:
+
+```bash
+sudo -u aquacore -g i2c \
+  /opt/aquacore/.venv/bin/python /opt/aquacore/sensorstest.py \
+  --bus 2 --all-channels --ntc --once
+```
+
+Look for `A1=... V` and `water_temp=... C` (the thermistor temperature).
+A floating/disconnected A1 may still show an arbitrary voltage; **a raw A1
+voltage is not proof the NTC is correctly installed**. In the earlier AquaCore
+web API response, `ntc_enabled=false`, so water temperature was deliberately
+not being calculated. Only enable the feature after installing the divider.
+
+### Enable NTC and calibrate it
+
+Edit the Orange Pi service environment file:
+
+```bash
+sudoedit /etc/aquacore/web.env
+```
+
+Set or update these values (do not add duplicate variable names):
+
+```ini
+NTC_ENABLED=1
+NTC_SUPPLY_V=3.3
+```
+
+Then restart **only** the web UI and TDS collector, not the relay/cooler
+controller:
+
+```bash
+sudo systemctl restart aquacore.service aquacore-tds.service
+```
+
+In **Settings → Sensor calibration → Temperature**:
+
+1. Immerse the NTC probe and a separate **glass aquarium thermometer** in the
+   same water; allow them to reach the same stable temperature.
+2. Check live **A1 voltage** and the uncalibrated temperature estimate.
+3. Click **Capture A1** to record a stable reference. The API collects a median
+   of 12 voltage samples and rejects highly unstable readings.
+4. Type the actual glass thermometer reading (°C) in the reference input
+   (permitted range **5–40°C**).
+5. Click **Save temperature**. The server stores an offset so the calculated
+   temperature matches your reference at that measurement point. It rejects
+   an offset larger than **5°C** and requires the reference capture to be
+   younger than **15 minutes**.
+6. Return the probe to the aquarium. New collector samples will use
+   `raw_NTC_C × temp_factor + temp_offset_c`. Old history is not rewritten.
+
+If there is no NTC or the divider is incorrect, leave `NTC_ENABLED=0`.
+Manually entering **buffer-liquid temperature** in the pH tab is independent
+of having an NTC sensor installed.
+
 ## Use the dialog
 
 1. Open Settings > Sensor calibration.
@@ -57,7 +182,56 @@ already get all the columns.
    (4.01→6.86 and 6.86→9.18), and the previous pH slope multiplier is reset
    to 1.0 to avoid double calibration. Old sample history stays unchanged.
 
-### Temperature compensation
+## pH calibration checklist (4.01 / 6.86 / 9.18)
+
+This is a **three-buffer calibration**, not the older two-buffer pH 7.00/4.00
+workflow. All values refer to the actual **buffer solutions**, not tap water
+or aquarium water.
+
+1. Prepare each powdered buffer in a clean, separately labeled glass with
+   **distilled/deionized water**, using the exact volume stated on its
+   packet. Allow the solution to reach room temperature.
+2. If the electrode has been stored dry, hydrate it as its manufacturer
+   instructs (usually in the correct electrode storage solution, not
+   distilled water). Rinse with distilled water between different buffers,
+   gently **blot**, and avoid rubbing the sensitive bulb.
+3. Start with **6.86**. Place the pH electrode fully enough into the buffer
+   to cover the sensing bulb and junction. Wait for **A0 live voltage** to
+   settle. Read the buffer's actual temperature with a **glass thermometer**,
+   enter it in the **one shared pH liquid-temperature input**, and press
+   **Capture 6.86**.
+4. Rinse gently, move to **4.01**, adjust the shared temperature field if
+   necessary, and press **Capture 4.01** after stabilization.
+5. Rinse gently, move to **9.18**, adjust the temperature field if necessary,
+   and press **Capture 9.18** after stabilization.
+6. Confirm that all **three capture cards** show their captured voltage and
+   temperature; the progress indicator reads **3/3**. Click
+   **Save pH calibration**. **There is no extra confirmation checkbox.**
+   The server checks the stored captures, rejects stale captures (over 15 min),
+   saturated and non-monotonic voltages, and keeps the previous saved pH curve
+   if validation fails.
+7. After saving, verify the probe in a **fresh buffer**. The new collector
+   uses the saved three-point piecewise-linear curve for subsequent aquarium
+   readings. Do not use an unverified pH result to automatically regulate CO₂.
+
+At **22.5°C**, the current AquaCore reference table gives approximately:
+
+| Buffer packet nominal value (at 25°C) | Reference used at 22.5°C |
+| --- | ---: |
+| 4.01 | 4.005 |
+| 6.86 | 6.870 |
+| 9.18 | 9.200 |
+
+These values are from AquaCore's built-in table. **The buffer powder's
+manufacturer-specific temperature chart takes precedence** if it differs.
+This adjusts calibration buffer values only; it is not a full Nernst-based
+live compensation for changing aquarium temperatures.
+
+**Note:** Voltage captured from a probe in aquarium water is **not** a
+certified pH reference. Do not treat a raw A0 reading, such as 1.08906 V,
+as if it directly indicates a particular pH.
+
+### Buffer temperature compensation
 
 The supplied packet labels are valid at 25°C, but the actual buffer pH
 varies with solution temperature. The code linearly interpolates a standard
@@ -69,7 +243,24 @@ calibration applies these reference values during capture. It does not
 implement full Nernst-based electrode compensation between calibration
 temperature and later aquarium measurement temperature.
 
-### ADS1115 concurrency
+## TDS calibration checklist (A3)
+
+1. Read the **live A3 voltage** in the TDS tab. The displayed ppm estimate
+   uses a provisional coefficient until compared against a **known TDS or
+   conductivity standard**.
+2. Follow the standard's specified temperature and ppm/EC convention.
+   If using a TDS standard, ensure its ppm conversion scale matches the
+   one you intend to use.
+3. Adjust the **TDS multiplier**, compare the estimated value with the
+   reference, then explicitly click **Save TDS factor**.
+4. The collector applies the saved TDS multiplier to new readings; it does not
+   recalculate older measurements.
+
+**Do not calibrate TDS from distilled water alone**, because near-zero TDS
+does not establish a useful scaling factor. Raw ADS1115 voltage by itself
+does not establish a certified TDS value.
+
+## ADS1115 concurrency
 
 The Web 500ms live preview and the background collector use the same
 ADS1115 I²C mux. All calls through `sensorstest.adc_read` use an exclusive
@@ -78,7 +269,7 @@ their mux writes/reads cannot overlap across processes. This requires the
 normal writable `/run/lock` directory on Armbian. The web process needs
 membership in the `i2c` group.
 
-### Troubleshooting
+## Troubleshooting
 
 ```bash
 sudo journalctl -u aquacore.service -n 80 --no-pager
@@ -94,7 +285,7 @@ still entered manually from the glass thermometer.
 
 No web/Orange Pi hardware verification is implied by source-only tests.
 
-### Live voltage troubleshooting
+## Live voltage troubleshooting
 
 Live A0, A1, and A3 readings are independent. A disconnected/saturated
 A1 thermistor or A3 TDS input must **not** hide a healthy pH A0 voltage.
