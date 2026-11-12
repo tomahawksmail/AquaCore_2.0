@@ -447,7 +447,7 @@
           <div><h3>TDS calibration</h3><p>ADS1115 · Channel A3</p></div>
         </div>
         <div class="sensor-readings-grid">
-          <div class="sensor-live-readout"><span>Live voltage</span><strong id="sensor-live-a3">—</strong><small>A3 · refreshed every 0.5 s</small></div>
+          <div class="sensor-live-readout"><span>Live voltage</span><strong id="sensor-live-a3">—</strong><small id="sensor-voltage-error-a3" class="sensor-voltage-error" aria-live="off"></small><small>A3 · refreshed every 0.5 s</small></div>
           <div class="sensor-live-readout"><span>Estimated concentration</span><strong id="sensor-live-tds">—</strong><small>Provisional until checked with a standard</small></div>
         </div>
         <div class="sensor-guided-card">
@@ -465,7 +465,7 @@
           <div><h3>Temperature calibration</h3><p>NTC 10K B3950 · Channel A1</p></div>
         </div>
         <div class="sensor-readings-grid">
-          <div class="sensor-live-readout"><span>Live voltage</span><strong id="sensor-live-a1">—</strong><small>A1 · raw sensor input</small></div>
+          <div class="sensor-live-readout"><span>Live voltage</span><strong id="sensor-live-a1">—</strong><small id="sensor-voltage-error-a1" class="sensor-voltage-error" aria-live="off"></small><small>A1 · raw sensor input</small></div>
           <div class="sensor-live-readout"><span>Sensor temperature</span><strong id="sensor-live-temp">—</strong><small>Current saved correction applied</small></div>
         </div>
         <div class="sensor-guided-card">
@@ -490,7 +490,7 @@
           <div><h3>Three-buffer pH calibration</h3><p>pH electrode · Channel A0 · 4.01 / 6.86 / 9.18</p></div>
         </div>
         <div class="sensor-readings-grid">
-          <div class="sensor-live-readout"><span>Live electrode voltage</span><strong id="sensor-live-a0">—</strong><small>A0 · refreshed every 0.5 s</small></div>
+          <div class="sensor-live-readout"><span>Live electrode voltage</span><strong id="sensor-live-a0">—</strong><small id="sensor-voltage-error-a0" class="sensor-voltage-error" aria-live="off"></small><small>A0 · refreshed every 0.5 s</small></div>
           <div class="sensor-live-readout"><span>Current pH estimate</span><strong id="sensor-live-ph">—</strong><small>Uses the previously saved calibration</small></div>
         </div>
         <div class="sensor-guided-card sensor-temperature-card">
@@ -545,7 +545,7 @@
     </footer>
   </div>
 </dialog>
-<script defer src="{{ url_for('static', filename='sensor-calibration.js', v='20261112-independent-live-v3') }}"></script>
+<script defer src="{{ url_for('static', filename='sensor-calibration.js', v='20261112-active-voltage-v4') }}"></script>
 <script>window.AQUACORE_CSRF = {{ csrf_token()|tojson }};</script>
 <script defer src="{{ url_for('static', filename='controls.js') }}"></script>
 <script defer src="{{ url_for('static', filename='fertilizer-manual2.js', v='20261109-close-after-save-v1') }}"></script>
