@@ -242,10 +242,16 @@ def live():
         # when calibration DB/migration is temporarily unavailable.
         config_error = str(exc)
 
-    readings = {}
+    # Poll only the active sensor for half-second browser previews;
+    # retain "all" for older clients and diagnostics.
+    selected = request.args.get("channel", "all")
+    if selected not in ("all", "a0", "a1", "a3"):
+        return jsonify(error="channel must be a0, a1 or a3"), 400
+    readings = {"a0": None, "a1": None, "a3": None}
     errors = {}
     bus = int(os.getenv("TDS_I2C_BUS", "2"))
-    for channel in (0, 1, 3):
+    channels = (0, 1, 3) if selected == "all" else (int(selected[1]),)
+    for channel in channels:
         key = f"a{channel}"
         try:
             samples = []
@@ -289,6 +295,7 @@ def live():
 
     response = jsonify(
         volts=readings,
+        requested_channel=selected,
         voltage_errors=errors,
         calibration_db_error=config_error,
         ph_raw=raw_ph,
