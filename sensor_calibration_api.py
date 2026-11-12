@@ -224,29 +224,30 @@ def save_factors():
 def live():
     """Read each ADS1115 channel independently; failed A1/A3 must not hide pH A0."""
     _admin()
-    config = {}
-    config_error = None
-    try:
-        with _db() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT temp_offset_c,ph7_voltage,ph4_voltage,"
-                    "tds_factor,ph_factor,temp_factor,"
-                    "ph401_voltage,ph686_voltage,ph918_voltage,"
-                    "ph401_reference,ph686_reference,ph918_reference "
-                    "FROM sensor_calibration WHERE id=1"
-                )
-                config = cur.fetchone() or {}
-    except pymysql.MySQLError as exc:
-        # The raw-voltage preview is diagnostic and must remain usable even
-        # when calibration DB/migration is temporarily unavailable.
-        config_error = str(exc)
-
-    # Poll only the active sensor for half-second browser previews;
-    # retain "all" for older clients and diagnostics.
+    # Poll the currently active input without waiting for other channels.
+    # TDS live voltage uses no calibration DB values; skip the database
+    # completely for a3 so a slow/missing calibration row cannot block A3.
     selected = request.args.get("channel", "all")
     if selected not in ("all", "a0", "a1", "a3"):
         return jsonify(error="channel must be a0, a1 or a3"), 400
+
+    config = {}
+    config_error = None
+    if selected != "a3":
+        try:
+            with _db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT temp_offset_c,ph7_voltage,ph4_voltage,"
+                        "tds_factor,ph_factor,temp_factor,"
+                        "ph401_voltage,ph686_voltage,ph918_voltage,"
+                        "ph401_reference,ph686_reference,ph918_reference "
+                        "FROM sensor_calibration WHERE id=1"
+                    )
+                    config = cur.fetchone() or {}
+        except pymysql.MySQLError as exc:
+            # Raw volts can still be shown despite calibration DB errors.
+            config_error = str(exc)
     readings = {"a0": None, "a1": None, "a3": None}
     errors = {}
     bus = int(os.getenv("TDS_I2C_BUS", "2"))
