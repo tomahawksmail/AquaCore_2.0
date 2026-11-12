@@ -94,7 +94,55 @@ still entered manually from the glass thermometer.
 
 No web/Orange Pi hardware verification is implied by source-only tests.
 
-### Live voltage troubleshooting
+### How live pH, dashboard values and charts are sampled
+
+**The AquaCore collector now captures five A0 pH voltages spread over
+about four seconds**, approximately one second between measurements,
+rather than taking all five nearly at once. It calculates the
+**median voltage**, converts that once with the saved pH calibration
+curve, then inserts the resulting single pH value in the MariaDB
+`data.ph` column. It does not write each raw sub-sample into the history.
+
+- By default, `aquacore-tds.service` runs the collector using
+  `--samples 5 --interval 30`. The interval waits **after** a completed
+  acquisition, so the typical time between saved rows may be slightly
+  longer than 30 seconds. The `--samples` option supports 1–30; use
+  **5** for spike-resistant filtering.
+- The dashboard's **current pH** card reads the latest saved row in
+  `data`. The **history chart** reads the same table but uses SQL
+  `AVG(ph)` to aggregate values into time buckets. Both therefore use
+  the collector's median-filtered measurements; the chart is not a
+  separate direct sensor input.
+- The pH calibration dialog requests A0 at roughly **0.5-second
+  intervals**. It displays **raw A0 voltage** without smoothing, so the
+  operator can judge stability. Only the *calculated current pH
+  estimate* is smoothed using a rolling median of the last **up to
+  five** successful pH estimates. This does not change the calibration
+  voltage captured by a buffer button.
+- Temperature and TDS already use the median of up to five quick ADC
+  samples in the collector. They have not been changed by the pH
+  filtering update. Buffer *calibration captures* retain their separate
+  12-sample stable-reading validation.
+
+**What median filtering can/cannot fix:** One isolated erroneous
+read among five will not dominate the median. A sustained shift
+(e.g. pH 4.01 → 4.50 over several seconds) can still pass through the
+filter, because it may reflect probe equilibration, wiring/grounding
+noise, incorrect buffer preparation, or a genuine changing solution.
+Do not silently clamp such changes or treat a displayed median as
+proof of correct calibration. Let the pH electrode settle in each
+reference buffer before capturing; verify power supply noise and
+the saved 4.01/6.86/9.18 calibration curve.
+
+Check the collector's actual saved pH and logging:
+
+```bash
+sudo journalctl -u aquacore-tds.service -n 40 --no-pager
+sudo mariadb _AquaCore_ -e \
+  "SELECT Datetime, temp, ph, tds FROM data ORDER BY Id DESC LIMIT 10;"
+```
+
+## Live voltage troubleshooting
 
 Live A0, A1, and A3 readings are independent. A disconnected/saturated
 A1 thermistor or A3 TDS input must **not** hide a healthy pH A0 voltage.
