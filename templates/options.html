@@ -426,6 +426,7 @@
       <button type="button" id="sensor-calibration-close" class="outline small" aria-label="Close sensor calibration"><i class="mdi mdi-close"></i></button>
     </div>
     <p id="sensor-existing" class="control-state">Checking saved calibration…</p>
+    <p id="sensor-calibration-status" class="fertilizer-modal-status" role="status" aria-live="polite"></p>
     <div class="sensor-tabs" role="tablist" aria-label="Calibration sensor">
       <button type="button" id="sensor-tab-tds" class="sensor-tab is-active" role="tab" aria-controls="sensor-panel-tds" aria-selected="true" tabindex="0">1 · TDS</button>
       <button type="button" id="sensor-tab-temp" class="sensor-tab" role="tab" aria-controls="sensor-panel-temp" aria-selected="false" tabindex="-1">2 · Temperature</button>
@@ -489,7 +490,6 @@
       <p class="fertilizer-modal-help">All three captures must be saved within 15 minutes of their readings. A failed calibration leaves your previous saved pH curve unchanged.</p>
     </section>
     <p id="sensor-live-updated" class="control-state" role="status">Waiting for live ADC data…</p>
-    <p id="sensor-calibration-status" class="fertilizer-modal-status" role="status" aria-live="polite"></p>
   </div>
 </dialog>
 <script defer src="{{ url_for('static', filename='sensor-calibration.js', v='20261111-three-tabs-v1') }}"></script>
