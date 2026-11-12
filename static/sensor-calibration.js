@@ -217,7 +217,9 @@
     try {
       await api('/factors', {tds_factor: value});
       setStatus('TDS multiplier saved: ' + value + '. New collector samples use this value.', 'saved');
-      await present();
+      await present().catch(error => {
+        setStatus('Saved, but details could not be refreshed: ' + error.message, 'saved');
+      });
     } catch (error) { setStatus('TDS not saved: ' + error.message, 'error'); }
     finally { save.disabled = false; }
   });
@@ -251,7 +253,9 @@
       temperatureCaptured = false;
       setStatus('Temperature calibration saved · offset ' +
         result.temp_offset_c.toFixed(3) + ' °C.', 'saved');
-      await present();
+      await present().catch(error => {
+        setStatus('Saved, but details could not be refreshed: ' + error.message, 'saved');
+      });
     } catch (error) { setStatus('Temperature not saved: ' + error.message, 'error'); }
     finally { updateTempSave(); }
   });
@@ -304,7 +308,9 @@
         '6.86 = ' + data.ph686_voltage.toFixed(5) + ' V; ' +
         '9.18 = ' + data.ph918_voltage.toFixed(5) +
         ' V. The collector will use the new curve on its next sample.', 'saved');
-      await present();
+      await present().catch(error => {
+        setStatus('Saved, but details could not be refreshed: ' + error.message, 'saved');
+      });
       await refreshLive();
     } catch (error) {
       setStatus('pH calibration NOT saved: ' + error.message, 'error');
