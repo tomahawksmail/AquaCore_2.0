@@ -1,6 +1,7 @@
 """Opt-in sensor calibration API; samples ADC without driving equipment GPIO."""
 import math
 import os
+import pymysql
 import statistics
 import time
 from datetime import datetime
@@ -127,8 +128,8 @@ def save():
             session.pop("sensor_reference_temp", None)
             result = {"ok": True, "temp_offset_c": round(offset, 3)}
         elif kind == "ph3":
-            if body.get("confirmed_buffers") is not True:
-                raise ValueError("Confirm the three correctly prepared 4.01, 6.86 and 9.18 buffers")
+            # Three fresh, independently captured buffers are required.
+            # No confirmation checkbox/flag: the server verifies the samples.
             captures = []
             for name in ("ph401", "ph686", "ph918"):
                 record = session.get("sensor_reference_" + name)
@@ -221,44 +222,62 @@ def save_factors():
 
 @bp.get("/live")
 def live():
-    """Read-only ADC snapshot for browser preview; never touches relays or DB writes."""
+    """Read each ADS1115 channel independently; failed A1/A3 must not hide pH A0."""
     _admin()
+    config = {}
+    config_error = None
     try:
         with _db() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT temp_offset_c,ph7_voltage,ph4_voltage,"
-                            "tds_factor,ph_factor,temp_factor,"
-                            "ph401_voltage,ph686_voltage,ph918_voltage,"
-                            "ph401_reference,ph686_reference,ph918_reference "
-                            "FROM sensor_calibration WHERE id=1")
+                cur.execute(
+                    "SELECT temp_offset_c,ph7_voltage,ph4_voltage,"
+                    "tds_factor,ph_factor,temp_factor,"
+                    "ph401_voltage,ph686_voltage,ph918_voltage,"
+                    "ph401_reference,ph686_reference,ph918_reference "
+                    "FROM sensor_calibration WHERE id=1"
+                )
                 config = cur.fetchone() or {}
-        # The installed web service user needs read access to /dev/i2c-2.
-        # Use the same ADS1115 PGA as the collector (currently +/-4.096 V).
-        readings = {}
-        bus = int(os.getenv("TDS_I2C_BUS", "2"))
-        for channel in (0, 1, 3):
-            values = []
-            for _ in range(2):  # keep 3-channel live refresh below 500 ms
+    except pymysql.MySQLError as exc:
+        # The raw-voltage preview is diagnostic and must remain usable even
+        # when calibration DB/migration is temporarily unavailable.
+        config_error = str(exc)
+
+    readings = {}
+    errors = {}
+    bus = int(os.getenv("TDS_I2C_BUS", "2"))
+    for channel in (0, 1, 3):
+        key = f"a{channel}"
+        try:
+            samples = []
+            for _ in range(2):
                 raw, volts = adc_read(bus, 0x48, channel)
                 if raw >= 32767:
-                    raise ValueError(f"ADS1115 A{channel} saturated")
-                values.append(volts)
+                    raise ValueError(f"ADS1115 {key.upper()} saturated")
+                if not math.isfinite(volts) or not 0 <= volts < 4.096:
+                    raise ValueError(f"Invalid {key.upper()} voltage")
+                samples.append(volts)
                 time.sleep(0.010)
-            readings[f"a{channel}"] = round(statistics.median(values), 6)
-        enabled_ntc = os.getenv("NTC_ENABLED", "").lower() in ("1", "true", "yes")
-        raw_temp = None
-        temp_error = None
-        if enabled_ntc:
-            try:
-                raw_temp = ntc_celsius(readings["a1"], supply_v=float(
-                    os.getenv("NTC_SUPPLY_V", "3.3")))
-            except ValueError as exc:
-                temp_error = str(exc)
+            readings[key] = round(statistics.median(samples), 6)
+        except (OSError, ValueError) as exc:
+            readings[key] = None
+            errors[key] = str(exc)
+
+    enabled_ntc = os.getenv("NTC_ENABLED", "").lower() in ("1", "true", "yes")
+    raw_temp = None
+    temp_error = errors.get("a1")
+    if enabled_ntc and readings["a1"] is not None:
+        try:
+            raw_temp = ntc_celsius(readings["a1"], supply_v=float(
+                os.getenv("NTC_SUPPLY_V", "3.3")))
+        except ValueError as exc:
+            temp_error = str(exc)
+
+    raw_ph = None
+    ph_error = errors.get("a0")
+    if readings["a0"] is not None:
         v7, v4 = config.get("ph7_voltage"), config.get("ph4_voltage")
-        raw_ph = None
-        ph_error = None
-        new_keys = ("ph401_voltage","ph686_voltage","ph918_voltage",
-                    "ph401_reference","ph686_reference","ph918_reference")
+        new_keys = ("ph401_voltage", "ph686_voltage", "ph918_voltage",
+                    "ph401_reference", "ph686_reference", "ph918_reference")
         try:
             if all(config.get(key) is not None for key in new_keys):
                 raw_ph = calibrated_ph_three_points(
@@ -267,18 +286,19 @@ def live():
                 raw_ph = calibrated_ph(readings["a0"], float(v7), float(v4))
         except ValueError as exc:
             ph_error = str(exc)
-        response = jsonify(
-            volts=readings,
-            ph_raw=raw_ph,
-            ph_error=ph_error,
-            temp_raw=raw_temp,
-            temp_error=temp_error,
-            ntc_enabled=enabled_ntc,
-            temp_offset_c=float(config.get("temp_offset_c") or 0),
-            fallback_temperature_c=float(os.getenv("TDS_WATER_TEMP_C", "22")),
-            tds_voltage=readings["a3"],
-            captured_at=time.strftime("%Y-%m-%d %H:%M:%S"))
-        response.headers["Cache-Control"] = "no-store"
-        return response
-    except (OSError, ValueError) as exc:
-        return jsonify(error=f"Sensor read failed: {exc}"), 503
+
+    response = jsonify(
+        volts=readings,
+        voltage_errors=errors,
+        calibration_db_error=config_error,
+        ph_raw=raw_ph,
+        ph_error=ph_error,
+        temp_raw=raw_temp,
+        temp_error=temp_error,
+        ntc_enabled=enabled_ntc,
+        temp_offset_c=float(config.get("temp_offset_c") or 0),
+        fallback_temperature_c=float(os.getenv("TDS_WATER_TEMP_C", "22")),
+        tds_voltage=readings["a3"],
+        captured_at=time.strftime("%Y-%m-%d %H:%M:%S"))
+    response.headers["Cache-Control"] = "no-store"
+    return response

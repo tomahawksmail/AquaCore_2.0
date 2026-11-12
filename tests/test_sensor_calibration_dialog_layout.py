@@ -36,10 +36,21 @@ class CalibrationDialogLayoutTests(unittest.TestCase):
                 self.assertIn('id="' + prefix + kind + '"', self.page)
         self.assertIn('id="sensor-ph-liquid-temp"', self.page)
         self.assertIn('id="sensor-ph-progress-bar"', self.page)
-        self.assertIn('id="sensor-confirm-buffers"', self.page)
+        self.assertNotIn('id="sensor-confirm-buffers"', self.page)
+        self.assertNotIn('sensor-confirm-buffers', self.js)
+        self.assertIn("count !== 3;", self.js)
         self.assertIn("byId('sensor-ph-progress-bar').value = count", self.js)
         self.assertIn("setCaptureBusy(true)", self.js)
         self.assertIn("setCaptureBusy(false)", self.js)
+
+    def test_live_voltage_failure_is_channel_specific(self):
+        api = (ROOT / "sensor_calibration_api.py").read_text(encoding="utf8")
+        self.assertIn("voltage_errors=errors", api)
+        self.assertIn("readings[key] = None", api)
+        self.assertIn("readings[\"a0\"] is not None", api)
+        self.assertIn("snapshot.voltage_errors?.[channel]", self.js)
+        self.assertIn("value !== null && value !== undefined", self.js)
+        self.assertNotIn("confirmed_buffers", api[api.index('elif kind == "ph3"'):api.index('elif kind == "ph":')])
 
     def test_scrolling_is_vertical_inside_dialog_and_buttons_remain_visible(self):
         self.assertIn(".sensor-dialog-scroll { flex:1 1 auto;", self.css)
@@ -51,10 +62,10 @@ class CalibrationDialogLayoutTests(unittest.TestCase):
 
     def test_only_ui_changes_and_refreshes_stylesheet_assets(self):
         self.assertIn("20261112-calibration-ux-v2", self.base)
-        self.assertIn("20261112-calibration-ux-v2", self.page)
+        self.assertIn("20261112-independent-live-v3", self.page)
         self.assertIn("setInterval(refreshLive, 500)", self.js)
         self.assertIn("captured[name] = data", self.js)
-        self.assertIn("await api('/save', {kind:'ph3', confirmed_buffers:true})", self.js)
+        self.assertIn("await api('/save', {kind:'ph3'})", self.js)
 
 
 if __name__ == "__main__":
