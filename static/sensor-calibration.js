@@ -219,33 +219,47 @@
     render();
   };
 
-  open.addEventListener('click', async () => {
-    setStatus('');
-    captured = {};
-    temperatureCaptured = false;
-
-    for (const name of bufferNames) {
-      byId('sensor-voltage-' + name).textContent = '— V · waiting for capture';
+  // A dialog may open through the UI, keyboard, or another caller. Keep the
+  // live loop tied to the dialog's open attribute, not the calibration form
+  // initialization. A capture UI error must never prevent voltage polling.
+  const syncLivePolling = () => {
+    if (modal.open) {
+      if (timer === null) {
+        timer = window.setInterval(refreshLive, 500);
+        void refreshLive();
+      }
+    } else if (timer !== null) {
+      window.clearInterval(timer);
+      timer = null;
+      snapshot = null;
     }
-    byId('sensor-voltage-temp').textContent = 'No reading captured';
-    updatePhSave();
-    updateTempSave();
-    modal.showModal();
-    selectTab('tds');
-    byId('sensor-live-a3').textContent = 'Reading…';
-    byId('sensor-live-updated').textContent = 'Connecting to live ADC (A3)…';
-    refreshLive();
-    if (timer !== null) window.clearInterval(timer);
-    timer = window.setInterval(refreshLive, 500);
+  };
+  const dialogObserver = new MutationObserver(syncLivePolling);
+  dialogObserver.observe(modal, {attributes:true, attributeFilter:['open']});
+
+  open.addEventListener('click', async () => {
+    // Start the live loop before touching any of the optional capture widgets.
+    if (!modal.open) modal.showModal();
+    syncLivePolling();
     try {
+      setStatus('');
+      captured = {};
+      temperatureCaptured = false;
+      for (const name of bufferNames) {
+        byId('sensor-voltage-' + name).textContent = '— V · waiting for capture';
+      }
+      byId('sensor-voltage-temp').textContent = 'No reading captured';
+      updatePhSave();
+      updateTempSave();
+      selectTab('tds');
+      byId('sensor-live-updated').textContent = 'Connecting to live ADC (A3)…';
       await present();
-    } catch (error) { setStatus('Cannot load calibration settings: ' + error.message); }
+    } catch (error) {
+      setStatus('Calibration controls could not initialize: ' + error.message, 'error');
+      // Live voltage polling is intentionally independent and continues.
+    }
   });
-  modal.addEventListener('close', () => {
-    if (timer !== null) window.clearInterval(timer);
-    timer = null;
-    snapshot = null;
-  });
+  modal.addEventListener('close', syncLivePolling);
   byId('sensor-calibration-close').addEventListener('click', () => modal.close());
   byId('sensor-factor-tds_factor').addEventListener('input', render);
   byId('sensor-temp-reference').addEventListener('input', updateTempSave);
