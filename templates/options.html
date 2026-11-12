@@ -419,60 +419,80 @@
     </div>
   </div>
 </dialog>
-<dialog id="sensor-calibration-dialog" class="fertilizer-modal" aria-labelledby="sensor-calibration-title">
+<dialog id="sensor-calibration-dialog" class="fertilizer-modal sensor-calibration-modal" aria-labelledby="sensor-calibration-title">
   <div class="fertilizer-modal-content">
     <div class="fertilizer-modal-heading">
       <h2 id="sensor-calibration-title"><i class="mdi mdi-test-tube"></i> Sensor calibration</h2>
       <button type="button" id="sensor-calibration-close" class="outline small" aria-label="Close sensor calibration"><i class="mdi mdi-close"></i></button>
     </div>
     <p id="sensor-existing" class="control-state">Checking saved calibration…</p>
-    <h3>Live sensor readings</h3>
-    <p class="fertilizer-modal-help">Refreshes every 5 seconds while this window is open. Changing K factors previews the result immediately without saving. Only Save multipliers writes to MariaDB. Values marked unavailable need sensor installation or buffer calibration.</p>
-    <div class="settings-fields" aria-live="off">
-      <div><strong>pH (A0)</strong><p id="sensor-live-ph">—</p><small id="sensor-live-a0">—</small></div>
-      <div><strong>TDS (A3)</strong><p id="sensor-live-tds">—</p><small id="sensor-live-a3">—</small></div>
-      <div><strong>Temperature (A1)</strong><p id="sensor-live-temp">—</p><small id="sensor-live-a1">—</small></div>
+    <p id="sensor-calibration-status" class="fertilizer-modal-status" role="status" aria-live="polite"></p>
+    <div class="sensor-tabs" role="tablist" aria-label="Calibration sensor">
+      <button type="button" id="sensor-tab-tds" class="sensor-tab is-active" role="tab" aria-controls="sensor-panel-tds" aria-selected="true" tabindex="0">1 · TDS</button>
+      <button type="button" id="sensor-tab-temp" class="sensor-tab" role="tab" aria-controls="sensor-panel-temp" aria-selected="false" tabindex="-1">2 · Temperature</button>
+      <button type="button" id="sensor-tab-ph" class="sensor-tab" role="tab" aria-controls="sensor-panel-ph" aria-selected="false" tabindex="-1">3 · pH</button>
     </div>
-    <p id="sensor-live-updated" class="control-state">Not sampled yet</p>
-    <button type="button" id="sensor-live-refresh" class="outline small">Refresh now</button>
-    <h3>Sensor correction multipliers</h3>
-    <p class="fertilizer-modal-help">Saved in MariaDB and applied to new collector samples only. Existing history is unchanged. TDS adjusts the provisional ppm estimate; pH scales deviation from pH 7; temperature scales the NTC result before the temperature offset. Leave pH and temperature at 1.000 unless checked against reliable references.</p>
-    <div class="fertilizer-modal-inputs">
-      <label for="sensor-factor-tds_factor">TDS multiplier (0.001–10)
-        <input id="sensor-factor-tds_factor" type="number" min="0.001" max="10" step="0.0001" value="0.2626" required>
-      </label>
-      <label for="sensor-factor-ph_factor">pH slope multiplier (0.5–1.5)
-        <input id="sensor-factor-ph_factor" type="number" min="0.5" max="1.5" step="0.001" value="1" required>
-      </label>
-      <label for="sensor-factor-temp_factor">Temperature multiplier (0.8–1.2)
-        <input id="sensor-factor-temp_factor" type="number" min="0.8" max="1.2" step="0.001" value="1" required>
-      </label>
-      <button id="sensor-save-factors" type="button" class="primary">Save multipliers</button>
-    </div>
-    <h3>Temperature · NTC 10K B3950 (ADS1115 A1)</h3>
-    <p class="fertilizer-modal-help">Only after installing the NTC + 10k resistor divider on A1. Immerse probe and a reliable thermometer in the same water. Allow readings to stabilize.</p>
-    <div class="fertilizer-modal-inputs">
-      <button type="button" id="sensor-capture-temp" class="outline">Capture A1</button>
-      <span id="sensor-voltage-temp">No reading</span>
-      <label>Reference temperature (°C)
-        <input id="sensor-temp-reference" type="number" min="5" max="40" step="0.01" placeholder="e.g. 21.60">
+
+    <section class="sensor-tab-panel" id="sensor-panel-tds" role="tabpanel" aria-labelledby="sensor-tab-tds">
+      <h3>TDS · ADS1115 A3</h3>
+      <p class="fertilizer-modal-help">Live ADC voltage updates approximately every 0.5 seconds while this dialog is open. TDS ppm is an estimate until you calibrate against a known conductivity/TDS standard.</p>
+      <div class="sensor-live-readout"><span>Live A3 voltage</span><strong id="sensor-live-a3">—</strong></div>
+      <div class="sensor-live-readout"><span>Estimated TDS</span><strong id="sensor-live-tds">—</strong></div>
+      <div class="fertilizer-modal-inputs">
+        <label for="sensor-factor-tds_factor">TDS multiplier (0.001–10)
+          <input id="sensor-factor-tds_factor" type="number" min="0.001" max="10" step="0.0001" value="0.2626" required>
+        </label>
+      </div>
+      <button id="sensor-save-tds" type="button" class="primary">Save TDS multiplier</button>
+    </section>
+
+    <section class="sensor-tab-panel" id="sensor-panel-temp" role="tabpanel" aria-labelledby="sensor-tab-temp" hidden>
+      <h3>Temperature · NTC B3950 · ADS1115 A1</h3>
+      <p class="fertilizer-modal-help">Place your aquarium glass thermometer and the A1 temperature probe in the same water. Wait for the readings to stabilize, then capture the A1 voltage and enter the thermometer value.</p>
+      <div class="sensor-live-readout"><span>Live A1 voltage</span><strong id="sensor-live-a1">—</strong></div>
+      <div class="sensor-live-readout"><span>Temperature estimate</span><strong id="sensor-live-temp">—</strong></div>
+      <div class="sensor-capture-row">
+        <button type="button" id="sensor-capture-temp" class="outline">Capture stable A1</button>
+        <span id="sensor-voltage-temp">Not captured</span>
+      </div>
+      <label class="sensor-measured-temp" for="sensor-temp-reference">Measured temperature (°C) · glass thermometer
+        <input id="sensor-temp-reference" type="number" min="5" max="40" step="0.01" placeholder="e.g. 22.50" required>
       </label>
       <button type="button" id="sensor-save-temp" class="primary">Save temperature calibration</button>
-    </div>
-    <h3>pH · two reference solutions (ADS1115 A0)</h3>
-    <p class="fertilizer-modal-help">Use certified pH 7.00 buffer first, rinse, then certified pH 4.00 buffer. Wait for stable voltage each time. Ordinary drinking water and vinegar are NOT known-pH calibration standards.</p>
-    <div class="fertilizer-modal-inputs">
-      <button type="button" id="sensor-capture-ph7" class="outline">Capture pH 7.00</button>
-      <span id="sensor-voltage-ph7">No reading</span>
-      <button type="button" id="sensor-capture-ph4" class="outline">Capture pH 4.00</button>
-      <span id="sensor-voltage-ph4">No reading</span>
-    </div>
-    <label><input type="checkbox" id="sensor-confirm-buffers"> I used certified pH 7.00 and pH 4.00 buffers.</label>
-    <button type="button" id="sensor-save-ph" class="primary">Save pH calibration</button>
-    <p id="sensor-calibration-status" class="fertilizer-modal-status" role="status" aria-live="polite"></p>
+      <p class="fertilizer-modal-help">Requires NTC_ENABLED=1 and the 10k resistor divider on A1. No temperature data is invented if A1 is absent.</p>
+    </section>
+
+    <section class="sensor-tab-panel" id="sensor-panel-ph" role="tabpanel" aria-labelledby="sensor-tab-ph" hidden>
+      <h3>pH · ADS1115 A0 · three buffers</h3>
+      <p class="fertilizer-modal-help">Use distilled water to prepare the powders, then rinse the electrode between cups. For each capture: immerse the electrode, read the actual liquid temperature with your glass thermometer, enter it below, wait until the voltage settles, and press that buffer's button.</p>
+      <div class="sensor-live-readout"><span>Live A0 voltage</span><strong id="sensor-live-a0">—</strong></div>
+      <div class="sensor-live-readout"><span>Current pH (existing saved calibration)</span><strong id="sensor-live-ph">—</strong></div>
+      <label class="sensor-measured-temp" for="sensor-ph-liquid-temp">Current buffer liquid temperature (°C)
+        <input id="sensor-ph-liquid-temp" type="number" min="0" max="50" step="0.1" placeholder="e.g. 22.5" required>
+      </label>
+      <p class="fertilizer-modal-help">One temperature input is shared by all three buttons. If the next cup has a different temperature, change this value before capturing it. The software uses a standard buffer temperature table; follow your powder manufacturer's chart when it differs.</p>
+      <div class="sensor-buffer-rows">
+        <div class="sensor-capture-row">
+          <button type="button" id="sensor-capture-ph918" class="outline">Capture pH 9.18</button>
+          <span id="sensor-voltage-ph918">Not captured · — V</span>
+        </div>
+        <div class="sensor-capture-row">
+          <button type="button" id="sensor-capture-ph401" class="outline">Capture pH 4.01</button>
+          <span id="sensor-voltage-ph401">Not captured · — V</span>
+        </div>
+        <div class="sensor-capture-row">
+          <button type="button" id="sensor-capture-ph686" class="outline">Capture pH 6.86</button>
+          <span id="sensor-voltage-ph686">Not captured · — V</span>
+        </div>
+      </div>
+      <label class="sensor-confirm"><input type="checkbox" id="sensor-confirm-buffers"> All three prepared buffers are correct, and each electrode reading has stabilized.</label>
+      <button type="button" id="sensor-save-ph" class="primary" disabled>Save three-point pH calibration</button>
+      <p class="fertilizer-modal-help">All three captures must be saved within 15 minutes of their readings. A failed calibration leaves your previous saved pH curve unchanged.</p>
+    </section>
+    <p id="sensor-live-updated" class="control-state" role="status">Waiting for live ADC data…</p>
   </div>
 </dialog>
-<script defer src="{{ url_for('static', filename='sensor-calibration.js', v='20261105-live-sensors-v2') }}"></script>
+<script defer src="{{ url_for('static', filename='sensor-calibration.js', v='20261111-three-tabs-v1') }}"></script>
 <script>window.AQUACORE_CSRF = {{ csrf_token()|tojson }};</script>
 <script defer src="{{ url_for('static', filename='controls.js') }}"></script>
 <script defer src="{{ url_for('static', filename='fertilizer-manual2.js', v='20261109-close-after-save-v1') }}"></script>

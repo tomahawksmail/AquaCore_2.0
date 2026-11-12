@@ -7,6 +7,15 @@ CREATE TABLE IF NOT EXISTS sensor_calibration (
   temp_factor DOUBLE NOT NULL DEFAULT 1.0,
   ph7_voltage DOUBLE NULL,
   ph4_voltage DOUBLE NULL,
+  ph401_voltage DOUBLE NULL,
+  ph686_voltage DOUBLE NULL,
+  ph918_voltage DOUBLE NULL,
+  ph401_reference DOUBLE NULL,
+  ph686_reference DOUBLE NULL,
+  ph918_reference DOUBLE NULL,
+  ph401_temp_c DOUBLE NULL,
+  ph686_temp_c DOUBLE NULL,
+  ph918_temp_c DOUBLE NULL,
   temp_updated_at DATETIME NULL,
   ph_updated_at DATETIME NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

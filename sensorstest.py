@@ -24,10 +24,26 @@ def adc_read(bus, address, channel, pga=4.096):
         raise ValueError("Unsupported ADS1115 PGA")
     mux = 4 + channel
     config = (1 << 15) | (mux << 12) | (pga_bits[pga] << 9) | (1 << 8) | (4 << 5) | 3
-    with SMBus(bus) as device:
-        device.write_i2c_block_data(address, 0x01, [config >> 8, config & 0xff])
-        time.sleep(0.012)
-        data = device.read_i2c_block_data(address, 0x00, 2)
+    # The ADS1115 has one shared mux/config register. The 500 ms web preview,
+    # background TDS collector and operator calibration must not change channels
+    # while another process is converting. /run/lock is shared despite PrivateTmp.
+    import fcntl
+    lock_path = f"/run/lock/aquacore-ads1115-{bus}-{address:02x}.lock"
+    lock_fd = os.open(lock_path, os.O_RDONLY | os.O_CREAT |
+                      getattr(os, "O_NOFOLLOW", 0), 0o644)
+    try:
+        try:
+            os.fchmod(lock_fd, 0o644)  # also allow a manual root test first
+        except PermissionError:
+            pass
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        with SMBus(bus) as device:
+            device.write_i2c_block_data(address, 0x01, [config >> 8, config & 0xff])
+            time.sleep(0.012)
+            data = device.read_i2c_block_data(address, 0x00, 2)
+    finally:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        os.close(lock_fd)
     raw = (data[0] << 8) | data[1]
     if raw >= 32768:
         raw -= 65536

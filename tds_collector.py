@@ -2,7 +2,7 @@
 """Collect ADS1115 TDS, optional NTC water temperature and calibrated pH.
 
 A1 NTC requires a 10k B3950 probe with 10k pull-up to 3.3V.
-A0 pH requires real pH 7 and 4 buffer reference voltages.
+A0 pH uses measured 4.01/6.86/9.18 voltages when present, or legacy 7/4.
 Unconfigured or invalid measurements are stored as NULL, never invented.
 TDS factor 0.2626 is a provisional estimate, not certified calibration.
 """
@@ -15,7 +15,7 @@ import time
 import pymysql
 from dotenv import load_dotenv
 from sensorstest import adc_read, estimate_tds_ppm, DEFAULT_TDS_FACTOR
-from sensor_conversion import calibrated_ph, ntc_celsius
+from sensor_conversion import calibrated_ph, calibrated_ph_three_points, ntc_celsius
 
 LOG = logging.getLogger("aquacore.tds")
 
@@ -57,7 +57,10 @@ def calibration_settings():
     )
     try:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT temp_offset_c,ph7_voltage,ph4_voltage,tds_factor,ph_factor,temp_factor FROM sensor_calibration WHERE id=1")
+            cursor.execute("SELECT temp_offset_c,ph7_voltage,ph4_voltage,tds_factor,ph_factor,temp_factor,"
+                           "ph401_voltage,ph686_voltage,ph918_voltage,"
+                           "ph401_reference,ph686_reference,ph918_reference "
+                           "FROM sensor_calibration WHERE id=1")
             return cursor.fetchone() or {}
     finally:
         connection.close()
@@ -121,13 +124,20 @@ def main():
             ph = None
             v7 = calibration.get('ph7_voltage') if calibration.get('ph7_voltage') is not None else args.ph7_voltage
             v4 = calibration.get('ph4_voltage') if calibration.get('ph4_voltage') is not None else args.ph4_voltage
-            if v7 is not None and v4 is not None:
+            three_keys = ('ph401_voltage','ph686_voltage','ph918_voltage',
+                          'ph401_reference','ph686_reference','ph918_reference')
+            has_three = all(calibration.get(key) is not None for key in three_keys)
+            if has_three or (v7 is not None and v4 is not None):
                 try:
                     ph_samples = [adc_read(args.bus, args.address, 0) for _ in range(args.samples)]
                     if any(raw >= 32767 for raw, _ in ph_samples):
                         raise ValueError("ADS1115 A0 saturated")
-                    ph_raw = calibrated_ph(statistics.median(v for _, v in ph_samples),
-                                           float(v7), float(v4))
+                    ph_voltage = statistics.median(v for _, v in ph_samples)
+                    if has_three:
+                        ph_raw = calibrated_ph_three_points(
+                            ph_voltage, *(float(calibration[key]) for key in three_keys))
+                    else:
+                        ph_raw = calibrated_ph(ph_voltage, float(v7), float(v4))
                     ph = 7.0 + (ph_raw - 7.0) * float(
                         calibration.get('ph_factor') if calibration.get('ph_factor') is not None else 1.0)
                     if not 0 <= ph <= 14:

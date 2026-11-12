@@ -1796,3 +1796,37 @@ status trends preserved */
   color:#b7cfda;
   font-family:ui-monospace, SFMono-Regular, Consolas, monospace;
 }
+
+
+/* Sensor calibration: three accessible tabs and 500 ms live ADC readouts. */
+.sensor-calibration-modal { width:min(670px,calc(100vw - 28px)); }
+.sensor-tabs { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
+.sensor-tab { padding:11px 7px; border:1px solid #345970; border-radius:9px;
+  background:#0d2232; color:#c7d9e5; font-weight:700; cursor:pointer; }
+.sensor-tab.is-active, .sensor-tab[aria-selected="true"] {
+  border-color:#61e3ce; color:#102b37; background:#65ddca;
+}
+.sensor-tab:focus-visible { outline:2px solid #a5fff1; outline-offset:2px; }
+.sensor-tab-panel { display:grid; gap:13px; min-width:0; }
+.sensor-tab-panel[hidden] { display:none !important; }
+.sensor-tab-panel h3 { margin:0; font-size:16px; }
+.sensor-live-readout { display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:10px 14px; background:#0d2434; border:1px solid #34536a; border-radius:9px; }
+.sensor-live-readout span { font-size:12px; color:#a7c9d6; }
+.sensor-live-readout strong { color:#d4fff5; font-size:17px; font-variant-numeric:tabular-nums; }
+.sensor-capture-row { display:grid; grid-template-columns:minmax(130px,210px) 1fr; gap:12px;
+  align-items:center; padding:10px; background:#102a3a; border:1px solid #2b4a60; border-radius:9px; }
+.sensor-capture-row span { font-size:12px; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.sensor-buffer-rows { display:grid; gap:8px; }
+.sensor-measured-temp { display:grid; gap:7px; font-size:13px; color:#b4d3e3; font-weight:600; }
+.sensor-measured-temp input { max-width:210px; min-width:0; padding:10px; font-size:16px;
+  background:#0b1c2c; border:1px solid #42677c; color:#e9f5fc; }
+.sensor-confirm { display:flex; align-items:start; gap:9px; font-size:12px; line-height:1.4; }
+.sensor-confirm input { margin-top:2px; flex:none; }
+.sensor-tab-panel .primary { justify-self:start; }
+.sensor-tab-panel button:disabled { opacity:.52; cursor:not-allowed; }
+@media(max-width:540px) {
+  .sensor-tab { font-size:12px; }
+  .sensor-capture-row { grid-template-columns:1fr; }
+  .sensor-live-readout strong { font-size:15px; }
+}
