@@ -49,6 +49,10 @@ class CalibrationDialogLayoutTests(unittest.TestCase):
         self.assertIn("readings[key] = None", api)
         self.assertIn("readings[\"a0\"] is not None", api)
         self.assertIn("snapshot.voltage_errors?.[channel]", self.js)
+        self.assertIn("api('/live?channel=' + activeChannel)", self.js)
+        for channel in ("a0", "a1", "a3"):
+            self.assertIn('id="sensor-voltage-error-' + channel + '"', self.page)
+        self.assertIn("Read failed", self.js)
         self.assertIn("value !== null && value !== undefined", self.js)
         self.assertNotIn("confirmed_buffers", api[api.index('elif kind == "ph3"'):api.index('elif kind == "ph":')])
 
@@ -62,7 +66,7 @@ class CalibrationDialogLayoutTests(unittest.TestCase):
 
     def test_only_ui_changes_and_refreshes_stylesheet_assets(self):
         self.assertIn("20261112-calibration-ux-v2", self.base)
-        self.assertIn("20261112-independent-live-v3", self.page)
+        self.assertIn("20261112-active-voltage-v4", self.page)
         self.assertIn("setInterval(refreshLive, 500)", self.js)
         self.assertIn("captured[name] = data", self.js)
         self.assertIn("await api('/save', {kind:'ph3'})", self.js)
