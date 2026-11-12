@@ -13,6 +13,15 @@
   let timer = null, inFlight = false, captureBusy = false;
   let snapshot = null, settings = null, activeTab = 'tds';
   let captured = {};
+  // Only smooth the *pH estimate*, never the raw A0 voltage required for
+  // observing probe stabilization or capturing reference buffers.
+  const livePhWindow = [];
+  const median = values => {
+    const sorted = [...values].sort((a, b) => a - b);
+    const center = Math.floor(sorted.length / 2);
+    return sorted.length % 2 ? sorted[center] :
+      (sorted[center - 1] + sorted[center]) / 2;
+  };
   const setStatus = (message, state = 'idle') => {
     status.textContent = message;
     status.dataset.state = state;
@@ -57,6 +66,7 @@
     activeTab = name;
     if (changed) {
       snapshot = null;
+      livePhWindow.length = 0;
       const channel = {tds:'a3', temp:'a1', ph:'a0'}[name];
       byId('sensor-live-' + channel).textContent = 'Reading…';
       byId('sensor-voltage-error-' + channel).textContent = '';
@@ -137,8 +147,7 @@
       (snapshot.ntc_enabled ? 'A1 unavailable' : 'NTC disabled') :
       calibratedTemp.toFixed(2) + ' °C';
 
-    const ph = snapshot.ph_raw == null ? null :
-      7 + (snapshot.ph_raw - 7) * Number(settings?.ph_factor ?? 1);
+    const ph = livePhWindow.length ? median(livePhWindow) : null;
     byId('sensor-live-ph').textContent = ph == null || !Number.isFinite(ph) ?
       'Not calibrated' : ph.toFixed(2) + ' pH';
 
@@ -169,6 +178,17 @@
       const result = await api('/live?channel=' + activeChannel);
       if (!modal.open || requestedTab !== activeTab) return; // stale tab response
       snapshot = result;
+      if (activeChannel === 'a0') {
+        const rawPh = Number(result.ph_raw);
+        const factor = Number(settings?.ph_factor ?? 1);
+        const ph = result.ph_raw == null ? NaN : 7 + (rawPh - 7) * factor;
+        if (Number.isFinite(ph) && ph >= 0 && ph <= 14) {
+          livePhWindow.push(ph);
+          if (livePhWindow.length > 5) livePhWindow.shift();
+        } else {
+          livePhWindow.length = 0;
+        }
+      }
       render();
       const errors = snapshot.voltage_errors || {};
       const activeError = errors[activeChannel];
@@ -180,6 +200,7 @@
     } catch (error) {
       if (!modal.open || requestedTab !== activeTab) return;
       snapshot = null;
+      if (activeChannel === 'a0') livePhWindow.length = 0;
       byId('sensor-live-' + activeChannel).textContent = 'Read failed';
       byId('sensor-voltage-error-' + activeChannel).textContent = error.message;
       byId('sensor-live-updated').textContent =
@@ -232,6 +253,7 @@
       window.clearInterval(timer);
       timer = null;
       snapshot = null;
+      livePhWindow.length = 0;
     }
   };
   const dialogObserver = new MutationObserver(syncLivePolling);
@@ -245,6 +267,7 @@
       setStatus('');
       captured = {};
       temperatureCaptured = false;
+      livePhWindow.length = 0;
       for (const name of bufferNames) {
         byId('sensor-voltage-' + name).textContent = '— V · waiting for capture';
       }
@@ -359,6 +382,7 @@
     try {
       const data = await api('/save', {kind:'ph3'});
       captured = {};
+      livePhWindow.length = 0;
       setStatus('pH calibration saved: ' +
         '4.01 = ' + data.ph401_voltage.toFixed(5) + ' V; ' +
         '6.86 = ' + data.ph686_voltage.toFixed(5) + ' V; ' +
