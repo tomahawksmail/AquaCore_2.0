@@ -48,8 +48,9 @@ already get all the columns.
    into the *one shared* input, then click its matching Capture button.
    Change the field if the next glass is at a different temperature.
 5. All three saved voltage labels show their capture voltage, thermometer
-   temperature, and temperature-adjusted buffer reference. Check the boxes
-   and click **Save three-point pH calibration** after all three readings.
+   temperature, and temperature-adjusted buffer reference. The Save
+   button enables automatically once all three captures are complete—there
+   is no extra confirmation checkbox. Click **Save pH calibration**.
    If the voltages are crossed, almost identical, saturated, or stale
    (>15 min), the server rejects them and retains the older calibration.
 6. After saving, new pH samples use the **piecewise linear three-point curve**
@@ -92,3 +93,23 @@ tab cannot calibrate an absent thermistor. pH calibration temperature is
 still entered manually from the glass thermometer.
 
 No web/Orange Pi hardware verification is implied by source-only tests.
+
+### Live voltage troubleshooting
+
+Live A0, A1, and A3 readings are independent. A disconnected/saturated
+A1 thermistor or A3 TDS input must **not** hide a healthy pH A0 voltage.
+An unavailable channel displays `— V`, with the channel-specific error
+in the modal's footer. The 500ms UI poll skips overlapping requests.
+If the calibration database cannot be read, raw live voltages are still
+returned, with a warning that the saved calibration configuration is unavailable.
+To troubleshoot permission/I²C errors:
+
+```bash
+sudo journalctl -u aquacore.service -n 80 --no-pager
+sudo -u aquacore /opt/aquacore/.venv/bin/python /opt/aquacore/sensorstest.py \
+  --bus 2 --all-channels --once
+```
+
+Do not claim a voltage is current when the channel read fails. When a pH
+reading is unavailable, verify the A0 wiring and the ADS1115 on I²C bus 2,
+address 0x48. Never connect probe-module outputs above the ADC supply.
