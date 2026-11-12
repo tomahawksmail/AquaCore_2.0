@@ -1,5 +1,16 @@
 # AquaCore — MariaDB + Modern Web (Phase 1)
 
+## Sensor calibration and wiring (AquaCore 2.0)
+
+For the current Orange Pi Zero 2W ADS1115 A0 pH, A1 waterproof NTC B3950
+thermistor, and A3 TDS system, see **[Sensor calibration guide + NTC A1
+wiring schematic](deploy/PH_THREE_BUFFER.md)**. It includes the 3.3 V / 10 kΩ
+pull-up circuit, manual thermometer temperature offset, certified
+4.01/6.86/9.18 pH buffer procedure, and TDS calibration notes. The guide
+covers the **current running application**; the legacy Phase 1 notes below
+are historical background.
+
+
 This is a *parallel* modernization of your original Flask web interface, using the **same table/column names** in your AquaCore SQL dump. It is NOT AquaCore 2.0's new backend and does not start GPIO, sensors, or Telegram. The web shows live MariaDB values, supports admin editing of documented `options` fields, and leaves your old automation in charge of hardware.
 
 ## 1. Create TEST database (MariaDB)
