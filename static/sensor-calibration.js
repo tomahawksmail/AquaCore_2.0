@@ -38,7 +38,14 @@
 
   const selectTab = name => {
     if (!tabs.includes(name)) return;
+    const changed = activeTab !== name;
     activeTab = name;
+    if (changed) {
+      snapshot = null;
+      const channel = {tds:'a3', temp:'a1', ph:'a0'}[name];
+      byId('sensor-live-' + channel).textContent = 'Reading…';
+      byId('sensor-voltage-error-' + channel).textContent = '';
+    }
     for (const tab of tabs) {
       const selected = tab === name;
       const tabEl = byId('sensor-tab-' + tab);
@@ -56,6 +63,7 @@
       tab === 'temp' ? 'Capture A1, then enter your glass thermometer reading.' :
       'View the live TDS estimate and adjust the factor if needed.');
     render();
+    if (changed && modal.open) refreshLive();
   };
 
   for (const name of tabs) {
@@ -100,8 +108,11 @@
     for (const channel of ['a0', 'a1', 'a3']) {
       const value = volts[channel];
       const el = byId('sensor-live-' + channel);
-      el.textContent = valid(value) ? Number(value).toFixed(5) + ' V' : '— V';
-      el.title = snapshot.voltage_errors?.[channel] || '';
+      el.textContent = valid(value) ? Number(value).toFixed(5) + ' V' :
+        (snapshot.voltage_errors?.[channel] ? 'Read failed' : '— V');
+      const error = snapshot.voltage_errors?.[channel] || '';
+      el.title = error;
+      byId('sensor-voltage-error-' + channel).textContent = error;
     }
     const tempFactor = Number(settings?.temp_factor ?? 1);
     const calibratedTemp = snapshot.temp_raw == null ? null :
@@ -136,10 +147,10 @@
     if (!modal.open || inFlight || captureBusy || document.hidden) return;
     inFlight = true;
     try {
-      snapshot = await api('/live');
+      const activeChannel = {ph:'a0', temp:'a1', tds:'a3'}[activeTab];
+      snapshot = await api('/live?channel=' + activeChannel);
       render();
       const errors = snapshot.voltage_errors || {};
-      const activeChannel = {ph:'a0', temp:'a1', tds:'a3'}[activeTab];
       const activeError = errors[activeChannel];
       const dbWarning = snapshot.calibration_db_error ? ' · Calibration DB unavailable' : '';
       byId('sensor-live-updated').textContent = activeError ?
@@ -148,11 +159,11 @@
           new Date().toLocaleTimeString() + ' · 0.5 s polling' + dbWarning);
     } catch (error) {
       snapshot = null;
-      for (const id of ['sensor-live-a0','sensor-live-a1','sensor-live-a3',
-                        'sensor-live-ph','sensor-live-temp','sensor-live-tds']) {
-        byId(id).textContent = '—';
-      }
-      byId('sensor-live-updated').textContent = 'Live sensor read failed: ' + error.message;
+      const activeChannel = {ph:'a0', temp:'a1', tds:'a3'}[activeTab];
+      byId('sensor-live-' + activeChannel).textContent = 'Read failed';
+      byId('sensor-voltage-error-' + activeChannel).textContent = error.message;
+      byId('sensor-live-updated').textContent =
+        'Live ' + activeChannel.toUpperCase() + ' request failed: ' + error.message;
     } finally {
       inFlight = false;
     }

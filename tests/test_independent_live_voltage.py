@@ -51,6 +51,27 @@ class IndependentVoltageTests(unittest.TestCase):
         self.assertIn("A1 thermistor disconnected", result["voltage_errors"]["a1"])
         self.assertNotIn("a0", result["voltage_errors"])
 
+    def test_selected_a3_channel_does_not_read_a0_or_a1(self):
+        visited = []
+
+        def read(_bus, _address, channel):
+            visited.append(channel)
+            return (6000, 0.8125)
+
+        with self.app.test_request_context(
+                "/api/sensors/calibration/live?channel=a3"), \
+             patch.object(calibration, "_admin"), \
+             patch.object(calibration, "_db", return_value=FakeDB()), \
+             patch.object(calibration, "adc_read", side_effect=read), \
+             patch.object(calibration.time, "sleep"):
+            result = calibration.live().get_json()
+        self.assertEqual(visited, [3, 3])
+        self.assertEqual(result["requested_channel"], "a3")
+        self.assertAlmostEqual(result["volts"]["a3"], 0.8125)
+        self.assertIsNone(result["volts"]["a0"])
+        self.assertIsNone(result["volts"]["a1"])
+        self.assertEqual(result["voltage_errors"], {})
+
     def test_raw_a0_reading_survives_calibration_database_error(self):
         with self.app.test_request_context("/api/sensors/calibration/live"), \
              patch.object(calibration, "_admin"), \

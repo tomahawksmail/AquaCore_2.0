@@ -1959,3 +1959,12 @@ status trends preserved */
 @media(prefers-reduced-motion:reduce) {
   .sensor-buffer-card { transition:none; }
 }
+
+
+/* Voltage read failures remain visible inside the active sensor card. */
+.sensor-calibration-modal .sensor-live-readout .sensor-voltage-error:not(:empty) {
+  color:#ffb19c;
+  font-size:11px;
+  line-height:1.45;
+  overflow-wrap:anywhere;
+}
