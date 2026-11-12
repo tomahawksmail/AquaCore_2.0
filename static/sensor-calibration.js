@@ -89,17 +89,19 @@
       byId('sensor-buffer-' + name).classList.toggle('is-captured', Boolean(captured[name]));
       byId('sensor-state-' + name).textContent = captured[name] ? '✓ Captured' : 'Not captured';
     }
-    byId('sensor-save-ph').disabled = captureBusy || count !== 3 ||
-      !byId('sensor-confirm-buffers').checked;
+    byId('sensor-save-ph').disabled = captureBusy || count !== 3;
   };
 
   const render = () => {
     if (!snapshot) return;
-    const volts = snapshot.volts;
+    const volts = snapshot.volts || {};
+    const valid = value => value !== null && value !== undefined &&
+      Number.isFinite(Number(value));
     for (const channel of ['a0', 'a1', 'a3']) {
       const value = volts[channel];
-      byId('sensor-live-' + channel).textContent =
-        Number.isFinite(value) ? value.toFixed(5) + ' V' : 'Unavailable';
+      const el = byId('sensor-live-' + channel);
+      el.textContent = valid(value) ? Number(value).toFixed(5) + ' V' : '— V';
+      el.title = snapshot.voltage_errors?.[channel] || '';
     }
     const tempFactor = Number(settings?.temp_factor ?? 1);
     const calibratedTemp = snapshot.temp_raw == null ? null :
@@ -118,12 +120,16 @@
     const factor = factorField.value.trim() ? Number(factorField.value) : NaN;
     const tdsTemp = calibratedTemp != null && Number.isFinite(calibratedTemp) ?
       calibratedTemp : snapshot.fallback_temperature_c;
-    const normalized = Math.max(0, volts.a3) / (1 + 0.02 * (tdsTemp - 25));
-    const base = Math.max(0, (133.42 * normalized ** 3 -
-      255.86 * normalized ** 2 + 857.39 * normalized) * 0.5);
-    byId('sensor-live-tds').textContent =
-      Number.isFinite(factor) && factor >= 0.001 && factor <= 10 ?
-        (base * factor).toFixed(1) + ' ppm (estimate)' : 'Enter valid TDS multiplier';
+    if (!valid(volts.a3)) {
+      byId('sensor-live-tds').textContent = 'TDS voltage unavailable';
+    } else {
+      const normalized = Math.max(0, Number(volts.a3)) / (1 + 0.02 * (tdsTemp - 25));
+      const base = Math.max(0, (133.42 * normalized ** 3 -
+        255.86 * normalized ** 2 + 857.39 * normalized) * 0.5);
+      byId('sensor-live-tds').textContent =
+        Number.isFinite(factor) && factor >= 0.001 && factor <= 10 ?
+          (base * factor).toFixed(1) + ' ppm (estimate)' : 'Enter valid TDS multiplier';
+    }
   };
 
   const refreshLive = async () => {
@@ -132,8 +138,14 @@
     try {
       snapshot = await api('/live');
       render();
-      byId('sensor-live-updated').textContent =
-        'Live voltage · 0.5 s polling · last update ' + new Date().toLocaleTimeString();
+      const errors = snapshot.voltage_errors || {};
+      const activeChannel = {ph:'a0', temp:'a1', tds:'a3'}[activeTab];
+      const activeError = errors[activeChannel];
+      const dbWarning = snapshot.calibration_db_error ? ' · Calibration DB unavailable' : '';
+      byId('sensor-live-updated').textContent = activeError ?
+        ('Live ' + activeChannel.toUpperCase() + ' unavailable: ' + activeError + dbWarning) :
+        ('Live ' + activeChannel.toUpperCase() + ' voltage · updated ' +
+          new Date().toLocaleTimeString() + ' · 0.5 s polling' + dbWarning);
     } catch (error) {
       snapshot = null;
       for (const id of ['sensor-live-a0','sensor-live-a1','sensor-live-a3',
@@ -180,7 +192,7 @@
     setStatus('');
     captured = {};
     temperatureCaptured = false;
-    byId('sensor-confirm-buffers').checked = false;
+
     for (const name of bufferNames) {
       byId('sensor-voltage-' + name).textContent = '— V · waiting for capture';
     }
@@ -260,8 +272,6 @@
     finally { updateTempSave(); }
   });
 
-  byId('sensor-confirm-buffers').addEventListener('change', updatePhSave);
-
   for (const name of bufferNames) {
     const button = byId('sensor-capture-' + name);
     button.addEventListener('click', async () => {
@@ -291,18 +301,16 @@
   }
 
   byId('sensor-save-ph').addEventListener('click', async () => {
-    if (bufferNames.some(name => !captured[name]) ||
-        !byId('sensor-confirm-buffers').checked) {
-      setStatus('Capture all three buffers and confirm their preparation first.');
+    if (bufferNames.some(name => !captured[name])) {
+      setStatus('Capture all three buffers before saving.');
       return;
     }
     const button = byId('sensor-save-ph'); button.disabled = true;
     setCaptureBusy(true);
     setStatus('Saving three-point pH calibration…', 'saving');
     try {
-      const data = await api('/save', {kind:'ph3', confirmed_buffers:true});
+      const data = await api('/save', {kind:'ph3'});
       captured = {};
-      byId('sensor-confirm-buffers').checked = false;
       setStatus('pH calibration saved: ' +
         '4.01 = ' + data.ph401_voltage.toFixed(5) + ' V; ' +
         '6.86 = ' + data.ph686_voltage.toFixed(5) + ' V; ' +
