@@ -231,6 +231,18 @@ live compensation for changing aquarium temperatures.
 certified pH reference. Do not treat a raw A0 reading, such as 1.08906 V,
 as if it directly indicates a particular pH.
 
+### Buffer temperature compensation
+
+The supplied packet labels are valid at 25°C, but the actual buffer pH
+varies with solution temperature. The code linearly interpolates a standard
+reference table for 0–50°C; e.g. **22.5°C → pH 4.005, 6.870, 9.200**.
+This is a **typical reference**, not a guarantee for every buffer powder.
+If a powder manufacturer supplies a different temperature chart, their
+chart is authoritative and may require updating the table. The new
+calibration applies these reference values during capture. It does not
+implement full Nernst-based electrode compensation between calibration
+temperature and later aquarium measurement temperature.
+
 ## TDS calibration checklist (A3)
 
 1. Read the **live A3 voltage** in the TDS tab. The displayed ppm estimate
@@ -248,19 +260,7 @@ as if it directly indicates a particular pH.
 does not establish a useful scaling factor. Raw ADS1115 voltage by itself
 does not establish a certified TDS value.
 
-### Temperature compensation
-
-The supplied packet labels are valid at 25°C, but the actual buffer pH
-varies with solution temperature. The code linearly interpolates a standard
-reference table for 0–50°C; e.g. **22.5°C → pH 4.005, 6.870, 9.200**.
-This is a **typical reference**, not a guarantee for every buffer powder.
-If a powder manufacturer supplies a different temperature chart, their
-chart is authoritative and may require updating the table. The new
-calibration applies these reference values during capture. It does not
-implement full Nernst-based electrode compensation between calibration
-temperature and later aquarium measurement temperature.
-
-### ADS1115 concurrency
+## ADS1115 concurrency
 
 The Web 500ms live preview and the background collector use the same
 ADS1115 I²C mux. All calls through `sensorstest.adc_read` use an exclusive
@@ -269,7 +269,7 @@ their mux writes/reads cannot overlap across processes. This requires the
 normal writable `/run/lock` directory on Armbian. The web process needs
 membership in the `i2c` group.
 
-### Troubleshooting
+## Troubleshooting
 
 ```bash
 sudo journalctl -u aquacore.service -n 80 --no-pager
@@ -285,7 +285,7 @@ still entered manually from the glass thermometer.
 
 No web/Orange Pi hardware verification is implied by source-only tests.
 
-### Live voltage troubleshooting
+## Live voltage troubleshooting
 
 Live A0, A1, and A3 readings are independent. A disconnected/saturated
 A1 thermistor or A3 TDS input must **not** hide a healthy pH A0 voltage.
