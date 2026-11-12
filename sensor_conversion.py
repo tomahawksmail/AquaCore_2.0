@@ -69,3 +69,64 @@ def calibrated_ph_from_points(volts, ph_a, volts_a, ph_b, volts_b):
     if not 0 <= result <= 14:
         raise ValueError("pH estimate outside physical 0-14 range")
     return result
+
+
+# Typical NIST-compatible pH buffer temperature tables for 4.01, 6.86 and 9.18.
+# The nominal label is specified at 25 C. For other manufacturers use their
+# buffer temperature chart if it differs. See Hanna Instruments HI510 annex.
+PH_BUFFER_TABLE = {
+    "ph401": ((0,4.01),(5,4.00),(10,4.00),(15,4.00),(20,4.00),
+              (25,4.01),(30,4.02),(35,4.03),(40,4.04),(45,4.05),(50,4.06)),
+    "ph686": ((0,6.98),(5,6.95),(10,6.92),(15,6.90),(20,6.88),
+              (25,6.86),(30,6.85),(35,6.84),(40,6.84),(45,6.83),(50,6.83)),
+    "ph918": ((0,9.46),(5,9.39),(10,9.33),(15,9.27),(20,9.22),
+              (25,9.18),(30,9.14),(35,9.11),(40,9.07),(45,9.04),(50,9.01)),
+}
+
+
+def buffer_reference_ph(kind, temperature_c):
+    """Interpolate the expected pH of a named calibration buffer at liquid temp."""
+    if kind not in PH_BUFFER_TABLE:
+        raise ValueError("Unsupported pH buffer")
+    if not math.isfinite(temperature_c) or not 0 <= temperature_c <= 50:
+        raise ValueError("Buffer temperature must be 0–50 °C")
+    points = PH_BUFFER_TABLE[kind]
+    for (t0, p0), (t1, p1) in zip(points, points[1:]):
+        if t0 <= temperature_c <= t1:
+            return p0 + (p1 - p0) * (temperature_c - t0) / (t1 - t0)
+    raise ValueError("No buffer reference for this temperature")
+
+
+def validate_ph_three_points(v401, v686, v918, p401, p686, p918):
+    """Reject crossed, saturated, non-monotonic, or near-identical references."""
+    values = (v401, v686, v918, p401, p686, p918)
+    if not all(isinstance(v, (int, float)) and math.isfinite(v) for v in values):
+        raise ValueError("Three finite buffer readings are required")
+    if not all(0.02 < v < 4.095 for v in (v401, v686, v918)):
+        raise ValueError("Buffer voltages outside safe ADC range")
+    if not (3.5 < p401 < 4.5 and 6.5 < p686 < 7.2 and 8.7 < p918 < 9.6):
+        raise ValueError("Invalid buffer reference pH")
+    d1 = v686 - v401
+    d2 = v918 - v686
+    if abs(d1) < 0.03 or abs(d2) < 0.03 or d1 * d2 <= 0:
+        raise ValueError("pH electrode response must be monotonic with >=0.03 V per interval")
+
+
+def calibrated_ph_three_points(volts, v401, v686, v918,
+                                p401, p686, p918):
+    """Three measured buffers, piecewise linear between bracketing references.
+
+    Extrapolate from the nearest segment outside 4.01..9.18.
+    Values outside pH 0–14 are rejected, not artificially clipped.
+    """
+    validate_ph_three_points(v401, v686, v918, p401, p686, p918)
+    if not math.isfinite(volts):
+        raise ValueError("Invalid pH ADC voltage")
+    fraction = (volts - v401) / (v686 - v401)
+    if fraction <= 1.0:
+        result = p401 + fraction * (p686 - p401)
+    else:
+        result = p686 + (volts - v686) / (v918 - v686) * (p918 - p686)
+    if not 0 <= result <= 14:
+        raise ValueError("pH estimate outside physical 0-14 range")
+    return result
