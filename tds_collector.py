@@ -8,6 +8,7 @@ TDS factor 0.2626 is a provisional estimate, not certified calibration.
 """
 import argparse
 import logging
+import math
 import os
 import statistics
 import time
@@ -18,6 +19,34 @@ from sensorstest import adc_read, estimate_tds_ppm, DEFAULT_TDS_FACTOR
 from sensor_conversion import calibrated_ph, calibrated_ph_three_points, ntc_celsius
 
 LOG = logging.getLogger("aquacore.tds")
+
+
+def median_ph_voltage(bus, address, count=5, spacing_s=1.0, *,
+                      reader=None, sleeper=None):
+    """Sample A0 over time; return one robust median voltage for storage.
+
+    Five samples spaced one second apart span roughly four seconds (plus
+    conversion time). A single spurious electrical spike cannot dominate
+    the stored pH. Only the median goes into the pH calibration curve, then
+    into the database used by both dashboard and charts.
+
+    Parameters are injectable for deterministic tests without I²C hardware.
+    """
+    if not isinstance(count, int) or not 1 <= count <= 30:
+        raise ValueError("pH samples must be an integer between 1 and 30")
+    if not math.isfinite(spacing_s) or not 0 <= spacing_s <= 5:
+        raise ValueError("Invalid pH sample interval")
+    reader = reader or adc_read
+    sleeper = sleeper or time.sleep
+    values = []
+    for index in range(count):
+        raw, volts = reader(bus, address, 0)
+        if raw >= 32767 or raw <= -32768 or not math.isfinite(volts) or not 0 < volts < 4.096:
+            raise ValueError("Invalid or saturated ADS1115 A0 voltage")
+        values.append(volts)
+        if index < count - 1 and spacing_s:
+            sleeper(spacing_s)
+    return statistics.median(values)
 
 
 def save_sample(ppm, temp=None, ph=None):
@@ -129,10 +158,11 @@ def main():
             has_three = all(calibration.get(key) is not None for key in three_keys)
             if has_three or (v7 is not None and v4 is not None):
                 try:
-                    ph_samples = [adc_read(args.bus, args.address, 0) for _ in range(args.samples)]
-                    if any(raw >= 32767 for raw, _ in ph_samples):
-                        raise ValueError("ADS1115 A0 saturated")
-                    ph_voltage = statistics.median(v for _, v in ph_samples)
+                    # A0 is sampled across multiple seconds rather than
+                    # taking five nearly simultaneous reads. This rejects
+                    # isolated spikes before pH conversion and DB storage.
+                    ph_voltage = median_ph_voltage(
+                        args.bus, args.address, count=args.samples, spacing_s=1.0)
                     if has_three:
                         ph_raw = calibrated_ph_three_points(
                             ph_voltage, *(float(calibration[key]) for key in three_keys))
