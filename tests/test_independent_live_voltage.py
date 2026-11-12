@@ -51,6 +51,18 @@ class IndependentVoltageTests(unittest.TestCase):
         self.assertIn("A1 thermistor disconnected", result["voltage_errors"]["a1"])
         self.assertNotIn("a0", result["voltage_errors"])
 
+    def test_a3_raw_volts_do_not_wait_for_database(self):
+        with self.app.test_request_context(
+                "/api/sensors/calibration/live?channel=a3"), \
+             patch.object(calibration, "_admin"), \
+             patch.object(calibration, "_db", side_effect=AssertionError(
+                 "TDS live voltage must not query MariaDB")), \
+             patch.object(calibration, "adc_read", return_value=(6000, 0.8125)), \
+             patch.object(calibration.time, "sleep"):
+            result = calibration.live().get_json()
+        self.assertAlmostEqual(result["volts"]["a3"], 0.8125)
+        self.assertIsNone(result["calibration_db_error"])
+
     def test_selected_a3_channel_does_not_read_a0_or_a1(self):
         visited = []
 

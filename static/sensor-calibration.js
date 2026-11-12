@@ -25,15 +25,30 @@
   };
 
   const api = async (path, payload) => {
-    const response = await fetch('/api/sensors/calibration' + path, {
-      method: payload === undefined ? 'GET' : 'POST',
-      credentials: 'same-origin', cache: 'no-store',
-      headers: {'Content-Type': 'application/json', 'X-CSRF-Token': window.AQUACORE_CSRF},
-      body: payload === undefined ? undefined : JSON.stringify(payload)
-    });
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(body.error || 'HTTP ' + response.status);
-    return body;
+    // Live requests must never leave the dialog stuck displaying "Reading…".
+    // If Gunicorn, MariaDB or an I²C lock stalls, abort the preview and show
+    // a useful error. Reference captures and writes retain their normal flow.
+    const isLive = path.startsWith('/live');
+    const controller = isLive ? new AbortController() : null;
+    const deadline = isLive ? window.setTimeout(() => controller.abort(), 5000) : null;
+    try {
+      const response = await fetch('/api/sensors/calibration' + path, {
+        method: payload === undefined ? 'GET' : 'POST',
+        credentials: 'same-origin', cache: 'no-store',
+        headers: {'Content-Type': 'application/json', 'X-CSRF-Token': window.AQUACORE_CSRF},
+        body: payload === undefined ? undefined : JSON.stringify(payload),
+        signal: controller?.signal
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || 'HTTP ' + response.status);
+      return body;
+    } catch (error) {
+      if (error.name === 'AbortError' && isLive)
+        throw new Error('Live API timeout after 5 seconds. Check web-service log, database and ADS1115 lock.');
+      throw error;
+    } finally {
+      if (deadline !== null) window.clearTimeout(deadline);
+    }
   };
 
   const selectTab = name => {
@@ -144,11 +159,16 @@
   };
 
   const refreshLive = async () => {
-    if (!modal.open || inFlight || captureBusy || document.hidden) return;
+    // Explicitly opened calibration windows should always request a preview,
+    // even if the browser temporarily considers the page hidden.
+    if (!modal.open || inFlight || captureBusy) return;
     inFlight = true;
+    const requestedTab = activeTab;
+    const activeChannel = {ph:'a0', temp:'a1', tds:'a3'}[requestedTab];
     try {
-      const activeChannel = {ph:'a0', temp:'a1', tds:'a3'}[activeTab];
-      snapshot = await api('/live?channel=' + activeChannel);
+      const result = await api('/live?channel=' + activeChannel);
+      if (!modal.open || requestedTab !== activeTab) return; // stale tab response
+      snapshot = result;
       render();
       const errors = snapshot.voltage_errors || {};
       const activeError = errors[activeChannel];
@@ -158,8 +178,8 @@
         ('Live ' + activeChannel.toUpperCase() + ' voltage · updated ' +
           new Date().toLocaleTimeString() + ' · 0.5 s polling' + dbWarning);
     } catch (error) {
+      if (!modal.open || requestedTab !== activeTab) return;
       snapshot = null;
-      const activeChannel = {ph:'a0', temp:'a1', tds:'a3'}[activeTab];
       byId('sensor-live-' + activeChannel).textContent = 'Read failed';
       byId('sensor-voltage-error-' + activeChannel).textContent = error.message;
       byId('sensor-live-updated').textContent =
@@ -212,7 +232,10 @@
     updateTempSave();
     modal.showModal();
     selectTab('tds');
+    byId('sensor-live-a3').textContent = 'Reading…';
+    byId('sensor-live-updated').textContent = 'Connecting to live ADC (A3)…';
     refreshLive();
+    if (timer !== null) window.clearInterval(timer);
     timer = window.setInterval(refreshLive, 500);
     try {
       await present();

@@ -66,7 +66,11 @@ class CalibrationDialogLayoutTests(unittest.TestCase):
 
     def test_only_ui_changes_and_refreshes_stylesheet_assets(self):
         self.assertIn("20261112-calibration-ux-v2", self.base)
-        self.assertIn("20261112-active-voltage-v4", self.page)
+        self.assertIn("20261112-poll-startup-v5", self.page)
+        self.assertIn("new AbortController()", self.js)
+        self.assertIn("timeout after 5 seconds", self.js)
+        self.assertNotIn("|| document.hidden", self.js)
+        self.assertIn("refreshLive();", self.js)
         self.assertIn("setInterval(refreshLive, 500)", self.js)
         self.assertIn("captured[name] = data", self.js)
         self.assertIn("await api('/save', {kind:'ph3'})", self.js)
