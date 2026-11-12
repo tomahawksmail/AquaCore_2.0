@@ -73,6 +73,14 @@
     });
   }
 
+  const setCaptureBusy = busy => {
+    captureBusy = busy;
+    for (const name of bufferNames) byId('sensor-capture-' + name).disabled = busy;
+    byId('sensor-capture-temp').disabled = busy;
+    updatePhSave();
+    updateTempSave();
+  };
+
   const updatePhSave = () => {
     const count = bufferNames.filter(name => Boolean(captured[name])).length;
     byId('sensor-ph-progress').textContent = count + ' of 3 captured';
@@ -216,8 +224,8 @@
 
   byId('sensor-capture-temp').addEventListener('click', async () => {
     const button = byId('sensor-capture-temp');
-    captureBusy = true; temperatureCaptured = false;
-    button.disabled = true; updatePhSave(); updateTempSave();
+    temperatureCaptured = false;
+    setCaptureBusy(true);
     setStatus('Capturing stable A1 thermistor voltage…', 'saving');
     try {
       const sample = await api('/sample', {kind:'temp'});
@@ -226,7 +234,7 @@
       temperatureCaptured = true;
       setStatus('A1 captured. Enter the glass thermometer temperature, then Save.', 'saved');
     } catch (error) { setStatus('Temperature capture failed: ' + error.message, 'error'); }
-    finally { captureBusy = false; button.disabled = false; updatePhSave(); updateTempSave(); refreshLive(); }
+    finally { setCaptureBusy(false); refreshLive(); }
   });
 
   byId('sensor-save-temp').addEventListener('click', async () => {
@@ -260,7 +268,7 @@
         setStatus('Enter the current liquid temperature measured by your glass thermometer.');
         return;
       }
-      captureBusy = true; button.disabled = true; updatePhSave();
+      setCaptureBusy(true);
       setStatus('Capturing stable pH ' + bufferLabels[name] +
         ' voltage at ' + temp.toFixed(1) + ' °C…', 'saving');
       try {
@@ -273,7 +281,7 @@
         delete captured[name];
         setStatus('pH ' + bufferLabels[name] + ' capture failed: ' + error.message, 'error');
       } finally {
-        captureBusy = false; button.disabled = false; updatePhSave(); refreshLive();
+        setCaptureBusy(false); refreshLive();
       }
     });
   }
@@ -285,7 +293,7 @@
       return;
     }
     const button = byId('sensor-save-ph'); button.disabled = true;
-    captureBusy = true;
+    setCaptureBusy(true);
     setStatus('Saving three-point pH calibration…', 'saving');
     try {
       const data = await api('/save', {kind:'ph3', confirmed_buffers:true});
@@ -301,7 +309,7 @@
     } catch (error) {
       setStatus('pH calibration NOT saved: ' + error.message, 'error');
     } finally {
-      captureBusy = false; updatePhSave();
+      setCaptureBusy(false);
     }
   });
 })();
