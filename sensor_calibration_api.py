@@ -110,7 +110,13 @@ def save():
             reference = float(body.get("reference_c"))
             if not math.isfinite(reference) or not 5 <= reference <= 40:
                 raise ValueError("Temperature reference must be between 5 and 40 °C")
-            offset = reference - ntc_celsius(volts, supply_v=float(os.getenv("NTC_SUPPLY_V", "3.3")))
+            raw_temperature = ntc_celsius(volts, supply_v=float(os.getenv("NTC_SUPPLY_V", "3.3")))
+            with _db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT temp_factor FROM sensor_calibration WHERE id=1")
+                    temp_settings = cur.fetchone() or {}
+            multiplier = float(temp_settings.get("temp_factor") or 1.0)
+            offset = reference - raw_temperature * multiplier
             if abs(offset) > 5:
                 raise ValueError("Temperature offset exceeds 5 °C; check NTC probe and resistor")
             with _db() as conn:
@@ -143,7 +149,8 @@ def save():
                         "ph401_temp_c=%s,ph686_temp_c=%s,ph918_temp_c=%s, "
                         "ph_factor=1.0,ph_updated_at=NOW() WHERE id=1",
                         (v401,v686,v918,p401,p686,p918,t401,t686,t918))
-                    if cur.rowcount != 1:
+                    cur.execute("SELECT id FROM sensor_calibration WHERE id=1")
+                    if cur.fetchone() is None:
                         raise ValueError("Missing sensor_calibration id=1 row")
                 conn.commit()
             for name in ("ph401", "ph686", "ph918"):
