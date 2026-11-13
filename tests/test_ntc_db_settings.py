@@ -1,4 +1,4 @@
-"""NTC hardware configuration is database-owned, 5 V, disabled until installed."""
+"""NTC configuration is in MariaDB; 3.3 V divider defaults OFF until installed."""
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -47,7 +47,7 @@ class NTCDBSettingsTests(unittest.TestCase):
         self.assertAlmostEqual(ntc_celsius(1.65), 25.0, places=3)
         self.assertAlmostEqual(ntc_celsius(1.65, supply_v=3.3), 25.0, places=3)
 
-    def test_default_row_is_off_and_five_volts(self):
+    def test_default_row_is_off_and_3p3_volts(self):
         self.assertEqual(calibration._ntc_settings({}), (False, 3.3))
         self.assertEqual(calibration._ntc_settings(
             {"ntc_enabled": 0, "ntc_supply_v": 3.3}), (False, 3.3))
@@ -56,6 +56,14 @@ class NTCDBSettingsTests(unittest.TestCase):
         for sql in (migration, fresh):
             self.assertIn("ntc_enabled TINYINT(1) NOT NULL DEFAULT 0", sql)
             self.assertIn("ntc_supply_v DOUBLE NOT NULL DEFAULT 3.3", sql)
+
+    def test_upgrade_from_disabled_5v_default_preserves_uninstalled_state(self):
+        upgrade = (ROOT / "deploy/sql/ntc_33v_divider_migration.sql").read_text()
+        self.assertIn("MODIFY COLUMN ntc_supply_v DOUBLE NOT NULL DEFAULT 3.3", upgrade)
+        self.assertIn("SET ntc_supply_v = 3.3", upgrade)
+        self.assertIn("WHERE ntc_enabled = 0", upgrade)
+        self.assertIn("ABS(ntc_supply_v - 5.0)", upgrade)
+        self.assertNotIn("UPDATE sensor_calibration SET ntc_enabled = 1", upgrade)
 
     def test_disabled_db_ignores_old_env_and_does_not_sample(self):
         record = {"ntc_enabled": 0, "ntc_supply_v": 3.3}
@@ -100,7 +108,7 @@ class NTCDBSettingsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             calibration._calibrated_ntc_temperature(1.65, record)
 
-    def test_admin_can_save_off_5v_to_db(self):
+    def test_admin_can_save_off_3p3v_to_db(self):
         db = FakeDB({"id":1})
         with self.app.test_request_context(
             "/api/sensors/calibration/ntc-settings", method="POST",
