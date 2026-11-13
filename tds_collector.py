@@ -142,7 +142,10 @@ def main():
                 time.sleep(0.1)
             volts = statistics.median(readings)
             water_temp = None
-            if ntc_enabled:
+            if ntc_enabled and calibration.get('temp_updated_at') is None:
+                LOG.warning("A1 enabled but temperature calibration has not been saved; "
+                            "leaving temp NULL and pH ATC OFF")
+            if ntc_enabled and calibration.get('temp_updated_at') is not None:
                 try:
                     ntc_samples = [adc_read(args.bus, args.address, 1) for _ in range(args.samples)]
                     if any(raw >= 32767 for raw, _ in ntc_samples):
