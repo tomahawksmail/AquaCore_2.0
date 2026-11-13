@@ -103,8 +103,15 @@ def save_ntc_settings():
 
     with _db() as conn:
         with conn.cursor() as cur:
-            cur.execute("UPDATE sensor_calibration SET ntc_enabled=%s,ntc_supply_v=%s WHERE id=1",
-                        (int(body["enabled"]), volts))
+            cur.execute(
+                "UPDATE sensor_calibration SET "
+                "temp_updated_at=CASE WHEN ntc_enabled<>%s OR ntc_supply_v<>%s "
+                "THEN NULL ELSE temp_updated_at END, "
+                "temp_offset_c=CASE WHEN ntc_enabled<>%s OR ntc_supply_v<>%s "
+                "THEN 0 ELSE temp_offset_c END, "
+                "ntc_enabled=%s,ntc_supply_v=%s WHERE id=1",
+                (int(body["enabled"]), volts, int(body["enabled"]), volts,
+                 int(body["enabled"]), volts))
             if cur.rowcount == 0:
                 cur.execute("SELECT id FROM sensor_calibration WHERE id=1")
                 if cur.fetchone() is None:
