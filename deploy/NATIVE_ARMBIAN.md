@@ -450,6 +450,7 @@ New and existing installations must add the DB columns before deploying
 the matching web and collector changes:
 
 ```bash
+sudo mariadb-dump _AquaCore_ > ~/aquacore-before-ntc-db.sql
 sudo systemctl stop aquacore.service aquacore-tds.service
 sudo -u aquacore git -C /opt/aquacore pull --ff-only origin master
 sudo mariadb _AquaCore_ < /opt/aquacore/deploy/sql/ntc_settings_migration.sql
