@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Collect ADS1115 TDS, optional NTC water temperature and calibrated pH.
 
-A1 NTC requires a 10k B3950 probe with 10k pull-up to 3.3V.
+A1 NTC requires a 10k B3950 probe with 10k pull-up to 5.0V.
 A0 pH uses measured 4.01/6.86/9.18 voltages when present, or legacy 7/4.
 Unconfigured or invalid measurements are stored as NULL, never invented.
 TDS factor 0.2626 is a provisional estimate, not certified calibration.
@@ -87,7 +87,7 @@ def calibration_settings():
     )
     try:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT temp_offset_c,temp_updated_at,ph7_voltage,ph4_voltage,tds_factor,ph_factor,temp_factor,"
+            cursor.execute("SELECT ntc_enabled,ntc_supply_v,temp_offset_c,temp_updated_at,ph7_voltage,ph4_voltage,tds_factor,ph_factor,temp_factor,"
                            "ph401_voltage,ph686_voltage,ph918_voltage,"
                            "ph401_temp_c,ph686_temp_c,ph918_temp_c,"
                            "ph401_reference,ph686_reference,ph918_reference "
@@ -103,10 +103,6 @@ def main():
     parser.add_argument("--address", type=lambda s: int(s, 0), default=0x48)
     parser.add_argument("--temperature", type=float, default=float(os.getenv("TDS_WATER_TEMP_C", "22")))
     parser.add_argument("--tds-factor", type=float, default=DEFAULT_TDS_FACTOR)
-    parser.add_argument("--ntc", action="store_true",
-                        default=os.getenv("NTC_ENABLED", "").lower() in ("1","true","yes"),
-                        help="Enable A1 thermistor (10k B3950 with 10k pull-up to 3.3V)")
-    parser.add_argument("--ntc-supply", type=float, default=float(os.getenv("NTC_SUPPLY_V", "3.3")))
     parser.add_argument("--ph7-voltage", type=float, default=float(os.environ["PH7_V"]) if os.getenv("PH7_V") else None)
     parser.add_argument("--ph4-voltage", type=float, default=float(os.environ["PH4_V"]) if os.getenv("PH4_V") else None)
     parser.add_argument("--interval", type=float, default=30)
@@ -117,8 +113,6 @@ def main():
         parser.error("Invalid bus, interval or sample count")
     if not -2 <= args.temperature <= 55 or not 0 < args.tds_factor <= 10:
         parser.error("Invalid temperature or provisional factor")
-    if not 2.5 <= args.ntc_supply <= 3.5:
-        parser.error("Invalid NTC supply voltage")
     if (args.ph7_voltage is None) != (args.ph4_voltage is None):
         parser.error("Provide both pH buffer voltages or neither")
     if args.ph7_voltage is not None:
@@ -128,11 +122,19 @@ def main():
             parser.error(str(exc))
     load_dotenv(os.getenv("AQUACORE_ENV", os.path.join(os.path.dirname(__file__), ".env")))
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    LOG.warning("TDS remains PROVISIONAL; NTC=%s pH calibrated=%s, fallback temp %.1f C",
-                args.ntc, args.ph7_voltage is not None, args.temperature)
+    LOG.warning("TDS remains PROVISIONAL; NTC enabled and supply are read from MariaDB each cycle; "
+                "pH CLI calibrated=%s, fallback TDS temp %.1f C",
+                args.ph7_voltage is not None, args.temperature)
     while True:
         try:
             calibration = calibration_settings()
+            ntc_enabled = bool(int(calibration.get('ntc_enabled') or 0))
+            ntc_supply_v = float(calibration.get('ntc_supply_v') if
+                                 calibration.get('ntc_supply_v') is not None else 5.0)
+            if not math.isfinite(ntc_supply_v) or not 4.5 <= ntc_supply_v <= 5.5:
+                if ntc_enabled:
+                    LOG.warning("Invalid NTC divider supply in MariaDB; A1 disabled for this sample")
+                ntc_enabled = False
             readings = []
             for _ in range(args.samples):
                 raw, voltage = adc_read(args.bus, args.address, 3)
@@ -140,13 +142,16 @@ def main():
                 time.sleep(0.1)
             volts = statistics.median(readings)
             water_temp = None
-            if args.ntc:
+            if ntc_enabled and calibration.get('temp_updated_at') is None:
+                LOG.warning("A1 enabled but temperature calibration has not been saved; "
+                            "leaving temp NULL and pH ATC OFF")
+            if ntc_enabled and calibration.get('temp_updated_at') is not None:
                 try:
                     ntc_samples = [adc_read(args.bus, args.address, 1) for _ in range(args.samples)]
                     if any(raw >= 32767 for raw, _ in ntc_samples):
                         raise ValueError("ADS1115 A1 saturated")
                     temp_raw = ntc_celsius(statistics.median(v for _, v in ntc_samples),
-                                             supply_v=args.ntc_supply)
+                                             supply_v=ntc_supply_v)
                     water_temp = temp_raw * float(calibration.get('temp_factor') if calibration.get('temp_factor') is not None else 1.0) + float(calibration.get('temp_offset_c') or 0)
                     if not -2 <= water_temp <= 55:
                         raise ValueError('Calibrated water temperature outside supported range')

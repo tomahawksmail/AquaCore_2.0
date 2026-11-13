@@ -464,6 +464,21 @@
           <span class="sensor-panel-icon"><i class="mdi mdi-thermometer-water" aria-hidden="true"></i></span>
           <div><h3>Temperature calibration</h3><p>NTC 10K B3950 · Channel A1</p></div>
         </div>
+        <div class="sensor-guided-card">
+          <div class="sensor-step-heading"><span class="sensor-step-bubble"><i class="mdi mdi-cog-outline" aria-hidden="true"></i></span><div><strong>A1 thermistor hardware settings</strong><small>Stored in MariaDB, not in service environment variables</small></div></div>
+          <label class="sensor-field sensor-auto-temp-label" for="sensor-ntc-enabled">
+            <input id="sensor-ntc-enabled" type="checkbox">
+            <span>Enable A1 NTC (only after the thermistor and 10 kΩ resistor are installed)</span>
+          </label>
+          <label class="sensor-field" for="sensor-ntc-supply"><span>NTC voltage divider supply (V)</span>
+            <input id="sensor-ntc-supply" type="number" min="4.5" max="5.5" step="0.01" value="5.00" required>
+          </label>
+          <div class="sensor-capture-controls">
+            <button type="button" id="sensor-save-ntc-settings" class="outline sensor-capture-button"><i class="mdi mdi-content-save-outline" aria-hidden="true"></i> Save A1 hardware settings</button>
+            <span id="sensor-ntc-config-status" class="sensor-capture-value" aria-live="polite">NTC disabled until installed</span>
+          </div>
+          <p class="sensor-hint">Your ADS1115 and PH-4502C use 5 V. Wire the 10 kΩ fixed resistor from 5 V to A1, and the NTC from A1 to GND; leave this unchecked until the hardware is installed.</p>
+        </div>
         <div class="sensor-readings-grid">
           <div class="sensor-live-readout"><span>Live voltage</span><strong id="sensor-live-a1">—</strong><small id="sensor-voltage-error-a1" class="sensor-voltage-error" aria-live="off"></small><small>A1 · raw sensor input</small></div>
           <div class="sensor-live-readout"><span>Sensor temperature</span><strong id="sensor-live-temp">—</strong><small>Current saved correction applied</small></div>
@@ -481,7 +496,7 @@
             <input id="sensor-temp-reference" type="number" min="5" max="40" step="0.01" placeholder="22.50" required>
           </label>
         </div>
-        <p class="sensor-hint"><i class="mdi mdi-alert-circle-outline" aria-hidden="true"></i> Requires NTC_ENABLED=1 and the proper 10k resistor divider on A1. If the probe is not installed, no temperature reading is assumed.</p>
+        <p class="sensor-hint"><i class="mdi mdi-alert-circle-outline" aria-hidden="true"></i> A1 is disabled in MariaDB until you explicitly enable it after wiring. Calibrate it against your thermometer before using pH temperature compensation.</p>
       </section>
 
       <section class="sensor-tab-panel" id="sensor-panel-ph" role="tabpanel" aria-labelledby="sensor-tab-ph" hidden>
@@ -551,7 +566,7 @@
     </footer>
   </div>
 </dialog>
-<script defer src="{{ url_for('static', filename='sensor-calibration.js', v='20261112-ph-ntc-atc-v8') }}"></script>
+<script defer src="{{ url_for('static', filename='sensor-calibration.js', v='20261112-ntc-db-5v-v9') }}"></script>
 <script>window.AQUACORE_CSRF = {{ csrf_token()|tojson }};</script>
 <script defer src="{{ url_for('static', filename='controls.js') }}"></script>
 <script defer src="{{ url_for('static', filename='fertilizer-manual2.js', v='20261109-close-after-save-v1') }}"></script>

@@ -20,8 +20,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install lightweight test dependencies
-        run: python -m pip install 'python-dotenv>=1,<2'
+      - name: Install offline unit-test dependencies
+        run: python -m pip install 'python-dotenv>=1,<2' 'Flask>=3,<4' 'PyMySQL>=1.1,<2'
       - name: Check Bash health script syntax
         run: bash -n deploy/check_health.sh
       - name: Check Python syntax

@@ -72,9 +72,9 @@ def main():
     p.add_argument("--all-channels", action="store_true",
                    help="Read A0 pH, A1 raw/optional NTC and adjusted TDS on A3")
     p.add_argument("--ntc", action="store_true",
-                   help="Convert A1 as 10k B3950 NTC using 10k pull-up to 3.3V")
-    p.add_argument("--ntc-supply", type=float, default=3.3,
-                   help="Measured divider supply voltage, normally 3.3V")
+                   help="Convert A1 as 10k B3950 NTC using 10k pull-up to 5.0V")
+    p.add_argument("--ntc-supply", type=float, default=5.0,
+                   help="Measured divider supply voltage, nominally 5.0V")
     p.add_argument("--pga", type=float, choices=(4.096, 6.144), default=4.096,
                    help="ADS1115 full-scale range (+/- volts); default 4.096")
     p.add_argument("--ph-high", type=float, default=6.86,
@@ -109,8 +109,8 @@ def main():
                                       args.ph_low_voltage)
     except ValueError as exc:
         p.error(str(exc))
-    if not (2.5 <= args.ntc_supply <= 3.5):
-        p.error('--ntc-supply must be 2.5-3.5 V')
+    if not (4.5 <= args.ntc_supply <= 5.5):
+        p.error('--ntc-supply must be 4.5-5.5 V')
     if not (-2 <= args.temperature <= 55):
         p.error("--temperature must be between -2 and 55 C")
 
@@ -120,7 +120,7 @@ def main():
     else:
         print(f"A0 pH:       buffers pH {args.ph_high:.2f}={args.ph_high_voltage:.3f} V, pH {args.ph_low:.2f}={args.ph_low_voltage:.3f} V")
     print(f"ADS1115 PGA: +/-{args.pga:.3f} V (input must not exceed chip supply limits)")
-    print("A1:          NTC B3950 via 10k pull-up to 3.3V" if args.ntc else "A1:          raw voltage only (use --ntc after re-wiring)")
+    print("A1:          NTC B3950 via 10k pull-up to 5.0V" if args.ntc else "A1:          raw voltage only (use --ntc after re-wiring)")
     print(f"TDS:         ADS1115 A3; temperature {args.temperature:.1f} C; provisional factor {args.tds_factor:.4f} (NOT calibrated)")
     buses = glob.glob("/dev/i2c-*")
     print("Detected I2C bus devices:", ", ".join(sorted(buses)) or "none")
