@@ -221,6 +221,7 @@ real voltages before attaching hardware.
 **Required database migration (before deploying the web/collector code):**
 
 ```bash
+sudo mariadb-dump _AquaCore_ > ~/aquacore-before-ntc-db.sql
 sudo systemctl stop aquacore.service aquacore-tds.service
 sudo -u aquacore git -C /opt/aquacore pull --ff-only origin master
 sudo mariadb _AquaCore_ < /opt/aquacore/deploy/sql/ntc_settings_migration.sql
