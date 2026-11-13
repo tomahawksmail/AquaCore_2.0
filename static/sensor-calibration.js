@@ -251,7 +251,7 @@
     const ntcEnabled = Boolean(Number(settings.ntc_enabled ?? 0));
     byId('sensor-ntc-enabled').checked = ntcEnabled;
     byId('sensor-ntc-supply').value =
-      Number(settings.ntc_supply_v ?? 5.0).toFixed(2);
+      Number(settings.ntc_supply_v ?? 3.3).toFixed(2);
     byId('sensor-ntc-config-status').textContent = ntcEnabled ?
       'A1 enabled; calibrate temperature if needed' :
       'A1 disabled until the thermistor is installed';
@@ -350,9 +350,9 @@
     const supply_v = Number(input.value);
     const enabled = byId('sensor-ntc-enabled').checked;
     if (!input.value.trim() || !Number.isFinite(supply_v) ||
-        supply_v < 4.5 || supply_v > 5.5) {
+        supply_v < 3.0 || supply_v > 3.6) {
       input.reportValidity();
-      setStatus('Enter the measured 5 V NTC divider supply (4.5–5.5 V).', 'error');
+      setStatus('Enter the measured 3.3 V NTC divider supply (3.0–3.6 V).', 'error');
       return;
     }
     const button = byId('sensor-save-ntc-settings');
