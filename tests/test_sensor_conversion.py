@@ -6,14 +6,14 @@ from sensor_conversion import calibrated_ph, ntc_celsius
 
 class SensorConversionTests(unittest.TestCase):
     def test_ntc_25c_midpoint(self):
-        self.assertAlmostEqual(ntc_celsius(2.5), 25.0, places=3)
+        self.assertAlmostEqual(ntc_celsius(1.65), 25.0, places=3)
 
     def test_ntc_warm_cool(self):
-        self.assertGreater(ntc_celsius(2.1), 25.0)
-        self.assertLess(ntc_celsius(2.9), 25.0)
+        self.assertGreater(ntc_celsius(1.3), 25.0)
+        self.assertLess(ntc_celsius(2.0), 25.0)
 
     def test_ntc_rejects_invalid(self):
-        for voltage in (0, 5.0, 5.1, float("nan")):
+        for voltage in (0, 3.3, 4.09588, float("nan")):
             with self.subTest(voltage=voltage), self.assertRaises(ValueError):
                 ntc_celsius(voltage)
 
