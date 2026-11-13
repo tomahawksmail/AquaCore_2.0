@@ -16,7 +16,8 @@ import time
 import pymysql
 from dotenv import load_dotenv
 from sensorstest import adc_read, estimate_tds_ppm, DEFAULT_TDS_FACTOR
-from sensor_conversion import calibrated_ph, calibrated_ph_three_points, ntc_celsius
+from sensor_conversion import (calibrated_ph, calibrated_ph_three_points,
+                               temperature_compensated_ph_three_points, ntc_celsius)
 
 LOG = logging.getLogger("aquacore.tds")
 
@@ -86,8 +87,9 @@ def calibration_settings():
     )
     try:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT temp_offset_c,ph7_voltage,ph4_voltage,tds_factor,ph_factor,temp_factor,"
+            cursor.execute("SELECT temp_offset_c,temp_updated_at,ph7_voltage,ph4_voltage,tds_factor,ph_factor,temp_factor,"
                            "ph401_voltage,ph686_voltage,ph918_voltage,"
+                           "ph401_temp_c,ph686_temp_c,ph918_temp_c,"
                            "ph401_reference,ph686_reference,ph918_reference "
                            "FROM sensor_calibration WHERE id=1")
             return cursor.fetchone() or {}
@@ -151,6 +153,7 @@ def main():
                 except (OSError, ValueError) as exc:
                     LOG.warning("NTC measurement unavailable: %s", exc)
             ph = None
+            ph_atc = False
             v7 = calibration.get('ph7_voltage') if calibration.get('ph7_voltage') is not None else args.ph7_voltage
             v4 = calibration.get('ph4_voltage') if calibration.get('ph4_voltage') is not None else args.ph4_voltage
             three_keys = ('ph401_voltage','ph686_voltage','ph918_voltage',
@@ -163,7 +166,21 @@ def main():
                     # isolated spikes before pH conversion and DB storage.
                     ph_voltage = median_ph_voltage(
                         args.bus, args.address, count=args.samples, spacing_s=1.0)
-                    if has_three:
+                    temp_keys = ('ph401_temp_c', 'ph686_temp_c', 'ph918_temp_c')
+                    # Never silently use the collector's fallback temperature
+                    # as measured water temperature. ATC needs a real NTC
+                    # reading and a completed temperature calibration.
+                    ph_atc = bool(has_three and water_temp is not None
+                                 and calibration.get('temp_updated_at') is not None
+                                 and all(calibration.get(k) is not None for k in temp_keys)
+                                 and 0 <= water_temp <= 50)
+                    if ph_atc:
+                        ph_raw = temperature_compensated_ph_three_points(
+                            ph_voltage,
+                            *(float(calibration[k]) for k in three_keys),
+                            *(float(calibration[k]) for k in temp_keys),
+                            water_temp)
+                    elif has_three:
                         ph_raw = calibrated_ph_three_points(
                             ph_voltage, *(float(calibration[key]) for key in three_keys))
                     else:
@@ -180,9 +197,10 @@ def main():
                 raise ValueError("Invalid database TDS factor")
             ppm = estimate_tds_ppm(volts, temperature) * tds_factor
             save_sample(ppm, water_temp, ph)
-            LOG.info("Saved temp=%s C pH=%s TDS=%.2f ppm (A3 %.5f V; TDS factor %.4f; comp temp %.1f C)",
+            LOG.info("Saved temp=%s C pH=%s TDS=%.2f ppm (pH ATC=%s; A3 %.5f V; TDS factor %.4f; TDS temp %.1f C)",
                      f"{water_temp:.2f}" if water_temp is not None else "NULL",
                      f"{ph:.2f}" if ph is not None else "NULL",
+                     "ON" if ph_atc else "OFF",
                      ppm, volts, tds_factor, temperature)
         except (OSError, ValueError, pymysql.MySQLError) as exc:
             LOG.exception("TDS reading not saved: %s", exc)

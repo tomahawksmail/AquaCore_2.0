@@ -8,6 +8,7 @@ from datetime import datetime
 
 from flask import Blueprint, abort, jsonify, request, session
 from sensor_conversion import (ntc_celsius, calibrated_ph, calibrated_ph_three_points,
+                               temperature_compensated_ph_three_points,
                                validate_ph_three_points, buffer_reference_ph)
 from sensorstest import estimate_tds_ppm
 from sensorstest import adc_read
@@ -43,12 +44,25 @@ def _sample(channel):
     return statistics.median(vals)
 
 
+def _calibrated_ntc_temperature(voltage, calibration):
+    """Require completed A1 calibration before using it for pH corrections."""
+    if calibration.get("temp_updated_at") is None:
+        raise ValueError("Calibrate the A1 temperature sensor against a thermometer first")
+    raw = ntc_celsius(voltage, supply_v=float(os.getenv("NTC_SUPPLY_V", "3.3")))
+    factor = float(calibration.get("temp_factor") or 1.0)
+    offset = float(calibration.get("temp_offset_c") or 0.0)
+    temperature = raw * factor + offset
+    if not math.isfinite(temperature) or not 0 <= temperature <= 50:
+        raise ValueError("Calibrated A1 temperature outside 0-50 C")
+    return temperature
+
+
 @bp.get("")
 def status():
     _admin()
     with _db() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT temp_offset_c,ph7_voltage,ph4_voltage,tds_factor,ph_factor,temp_factor, "
+            cur.execute("SELECT temp_offset_c,temp_updated_at,ph7_voltage,ph4_voltage,tds_factor,ph_factor,temp_factor, "
                         "ph401_voltage,ph686_voltage,ph918_voltage, "
                         "ph401_reference,ph686_reference,ph918_reference, "
                         "ph401_temp_c,ph686_temp_c,ph918_temp_c "
@@ -68,14 +82,30 @@ def sample():
         return jsonify(error="Invalid reference"), 400
     try:
         temperature = None
+        temperature_source = None
         reference_ph = None
         if kind in ("ph401", "ph686", "ph918"):
-            raw_temp = body.get("temperature_c")
-            if isinstance(raw_temp, bool) or raw_temp is None:
-                raise ValueError("Enter measured liquid temperature before capturing a buffer")
-            temperature = float(raw_temp)
-            if not math.isfinite(temperature):
-                raise ValueError("Invalid liquid temperature")
+            temperature_source = body.get("temperature_source", "manual")
+            if temperature_source == "ntc":
+                # Only use A1 if the operator confirms it is in the SAME
+                # buffer as A0. Never infer a calibration-glass temperature
+                # from an NTC still installed in the aquarium.
+                if os.getenv("NTC_ENABLED", "").lower() not in ("1", "true", "yes"):
+                    raise ValueError("Enable NTC_ENABLED=1 after wiring A1")
+                with _db() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "SELECT temp_updated_at,temp_factor,temp_offset_c "
+                            "FROM sensor_calibration WHERE id=1")
+                        config = cur.fetchone() or {}
+                temperature = _calibrated_ntc_temperature(_sample(1), config)
+            elif temperature_source == "manual":
+                raw_temp = body.get("temperature_c")
+                if isinstance(raw_temp, bool) or raw_temp is None:
+                    raise ValueError("Enter the actual buffer temperature from a thermometer")
+                temperature = float(raw_temp)
+            else:
+                raise ValueError("temperature_source must be manual or ntc")
             reference_ph = buffer_reference_ph(kind, temperature)
         volts = _sample(1 if kind == "temp" else 0)
         base = (ntc_celsius(volts, supply_v=float(os.getenv("NTC_SUPPLY_V", "3.3")))
@@ -84,10 +114,12 @@ def sample():
         return jsonify(error=str(exc)), 409
     session["sensor_reference_" + kind] = {
         "volts": volts, "ts": time.time(),
-        "temperature_c": temperature, "reference_ph": reference_ph,
+        "temperature_c": temperature, "temperature_source": temperature_source,
+        "reference_ph": reference_ph,
     }
     resp = jsonify(kind=kind, voltage=round(volts, 5),
-                   temperature_c=temperature, reference_ph=reference_ph,
+                   temperature_c=temperature, temperature_source=temperature_source,
+                   reference_ph=reference_ph,
                    temperature_uncalibrated=round(base, 2) if base is not None else None)
     resp.headers["Cache-Control"] = "no-store"
     return resp
@@ -238,9 +270,10 @@ def live():
             with _db() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        "SELECT temp_offset_c,ph7_voltage,ph4_voltage,"
+                        "SELECT temp_offset_c,temp_updated_at,ph7_voltage,ph4_voltage,"
                         "tds_factor,ph_factor,temp_factor,"
                         "ph401_voltage,ph686_voltage,ph918_voltage,"
+                        "ph401_temp_c,ph686_temp_c,ph918_temp_c,"
                         "ph401_reference,ph686_reference,ph918_reference "
                         "FROM sensor_calibration WHERE id=1"
                     )
@@ -251,7 +284,12 @@ def live():
     readings = {"a0": None, "a1": None, "a3": None}
     errors = {}
     bus = int(os.getenv("TDS_I2C_BUS", "2"))
-    channels = (0, 1, 3) if selected == "all" else (int(selected[1]),)
+    enabled_ntc = os.getenv("NTC_ENABLED", "").lower() in ("1", "true", "yes")
+    # When the pH tab is active, read A1 as well as A0 so the same
+    # temperature-aware pH value appears in the calibration preview.
+    channels = ((0, 1, 3) if selected == "all" else
+                (0, 1) if selected == "a0" and enabled_ntc else
+                (int(selected[1]),))
     for channel in channels:
         key = f"a{channel}"
         try:
@@ -269,7 +307,6 @@ def live():
             readings[key] = None
             errors[key] = str(exc)
 
-    enabled_ntc = os.getenv("NTC_ENABLED", "").lower() in ("1", "true", "yes")
     raw_temp = None
     temp_error = errors.get("a1")
     if enabled_ntc and readings["a1"] is not None:
@@ -281,16 +318,49 @@ def live():
 
     raw_ph = None
     ph_error = errors.get("a0")
+    ph_temperature_c = None
+    ph_temperature_compensated = False
+    ph_temperature_note = "A1 not enabled or calibrated"
+    if enabled_ntc and raw_temp is not None:
+        try:
+            ph_temperature_c = (raw_temp * float(config.get("temp_factor") or 1.0)
+                + float(config.get("temp_offset_c") or 0.0))
+            if not math.isfinite(ph_temperature_c) or not 0 <= ph_temperature_c <= 50:
+                ph_temperature_c = None
+                ph_temperature_note = "A1 temperature outside supported range"
+            elif config.get("temp_updated_at") is None:
+                ph_temperature_note = "Calibrate A1 temperature before pH ATC"
+            else:
+                ph_temperature_note = "A1 calibrated and available"
+        except (ValueError, TypeError):
+            ph_temperature_c = None
+            ph_temperature_note = "Invalid A1 temperature configuration"
+    elif enabled_ntc:
+        ph_temperature_note = temp_error or "A1 temperature unavailable"
+
     if readings["a0"] is not None:
         v7, v4 = config.get("ph7_voltage"), config.get("ph4_voltage")
         new_keys = ("ph401_voltage", "ph686_voltage", "ph918_voltage",
                     "ph401_reference", "ph686_reference", "ph918_reference")
+        temp_keys = ("ph401_temp_c", "ph686_temp_c", "ph918_temp_c")
         try:
-            if all(config.get(key) is not None for key in new_keys):
+            has_three = all(config.get(key) is not None for key in new_keys)
+            if has_three and ph_temperature_c is not None and (
+                    config.get("temp_updated_at") is not None) and all(
+                    config.get(key) is not None for key in temp_keys):
+                raw_ph = temperature_compensated_ph_three_points(
+                    readings["a0"], *(float(config[key]) for key in new_keys),
+                    *(float(config[key]) for key in temp_keys), ph_temperature_c)
+                ph_temperature_compensated = True
+                ph_temperature_note = "Nernst slope compensated with measured A1 temperature"
+            elif has_three:
                 raw_ph = calibrated_ph_three_points(
                     readings["a0"], *(float(config[key]) for key in new_keys))
+                if ph_temperature_c is not None and config.get("temp_updated_at") is not None:
+                    ph_temperature_note = "Saved pH calibration has no buffer temperatures"
             elif v7 is not None and v4 is not None:
                 raw_ph = calibrated_ph(readings["a0"], float(v7), float(v4))
+                ph_temperature_note = "Legacy pH 7/4 curve: recalibrate with three buffers for ATC"
         except ValueError as exc:
             ph_error = str(exc)
 
@@ -301,6 +371,9 @@ def live():
         calibration_db_error=config_error,
         ph_raw=raw_ph,
         ph_error=ph_error,
+        ph_temperature_c=ph_temperature_c,
+        ph_temperature_compensated=ph_temperature_compensated,
+        ph_temperature_note=ph_temperature_note,
         temp_raw=raw_temp,
         temp_error=temp_error,
         ntc_enabled=enabled_ntc,

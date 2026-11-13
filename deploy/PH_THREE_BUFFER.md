@@ -142,6 +142,92 @@ sudo mariadb _AquaCore_ -e \
   "SELECT Datetime, temp, ph, tds FROM data ORDER BY Id DESC LIMIT 10;"
 ```
 
+## A1 temperature-aware pH calibration and measurement
+
+When the optional **10 kΩ NTC B3950** probe is installed on ADS1115 **A1**,
+AquaCore can use it for two separate purposes:
+
+1. **During buffer capture:** the pH dialog has a checkbox **Use A1 NTC
+   temperature instead (both probes in the SAME buffer)**. This is
+   deliberately **off by default**. To enable it, wire and configure A1,
+   then calibrate A1 against a trusted thermometer on the Temperature tab.
+   For every pH 6.86 / 4.01 / 9.18 capture, immerse **both** the pH probe
+   and the temperature probe in that specific reference glass. When the
+   checkbox is selected, the server reads a fresh A1 sample during the
+   capture, applies the saved A1 calibration, uses the matching
+   **temperature-adjusted standard-buffer pH**, and saves both reference
+   voltage and buffer temperature. No temperature is guessed from the
+   aquarium. Manual temperature entry remains available if the NTC stays
+   permanently in the aquarium while pH buffers are tested elsewhere.
+2. **During regular monitoring:** when calibrated A1 is measuring the
+   **same aquarium water** as the pH electrode, and a completed three-point
+   pH calibration with recorded temperatures is present, the collector and
+   calibration preview adjust the **pH electrode slope** using the Nernst
+   absolute-temperature relationship. AquaCore uses the measured slope of
+   each 4.01↔6.86 or 6.86↔9.18 calibration interval and scales it by
+   `(T_calibration + 273.15) / (T_water + 273.15)`. The pH 6.86
+   calibration point is the near-neutral anchor. Temperature-compensated
+   pH is saved in `data.ph`, used for the current dashboard, and averaged
+   into the historical chart. Existing saved records are not modified.
+
+This is **electrode slope compensation**, not a conversion of aquarium
+water chemistry to a hypothetical pH at 25°C. The actual pH of any water
+can change with temperature. The Nernst calculation is a first-order
+approximation; it assumes the amplifier's gain and electrode reference
+offset remain stable. For best calibration, allow the three reference
+buffers to reach similar temperatures, use the *manufacturer's* buffer
+temperature chart when available, and verify the result in a fresh
+reference solution. See [HORIBA's guide to pH ATC](https://www.horiba.com/pol/water-quality/support/technical-tips/bench-meters/automatic-temperature-compensation-in-ph-measurement/).
+
+If A1 is unplugged, disabled, unreadable, or has **not** been calibrated
+(`temp_updated_at` is empty), AquaCore keeps the existing
+non-temperature-compensated pH calculation and reports **ATC OFF**; it
+must not substitute the collector's nominal `--temperature 22` fallback
+as if it were a measured pH temperature.
+
+### Wiring and startup
+
+```text
+               +3.3 V
+                  |
+           10 kΩ fixed resistor
+                  |
+ADS1115 A1 -------+---- NTC 10 kΩ B3950 ---- GND
+
+ADS1115 A0 <----- PH-4502C analog PO
+                  (pH electrode attached via BNC)
+```
+
+The NTC must use its own **3.3 V divider**, even if your ADS1115 breakout
+is powered at 5 V. Supply is configured independently by
+`NTC_SUPPLY_V=3.3`; the A1 divider will be around **1.65 V at 25°C**.
+Keep a shared GND and never apply 5 V to Orange Pi GPIO or unprotected
+3.3 V I²C lines. A typical 5 V-powered ADS1115 breakout can have SDA/SCL
+pull-ups to 5 V; verify the board and use a suitable bidirectional I²C
+level shifter before continuing direct connection to 3.3 V Orange Pi.
+
+In `/etc/aquacore/web.env` set:
+
+```ini
+NTC_ENABLED=1
+NTC_SUPPLY_V=3.3
+```
+
+Restart only the web UI and sensor collector (leave relay controller
+unchanged):
+
+```bash
+sudo systemctl restart aquacore.service aquacore-tds.service
+```
+
+Then **calibrate A1 first**: Settings → Sensor calibration → Temperature;
+immerse A1 and a trusted glass thermometer in the same water, Capture A1,
+enter measured °C, Save temperature. For fresh pH reference liquids, move
+the two sensors into the *same* buffer before selecting the A1 checkbox
+and pressing Capture; otherwise leave the checkbox off and enter the
+glass thermometer temperature manually. The pH preview shows ATC ON/OFF
+and the currently measured temperature when available.
+
 ## Live voltage troubleshooting
 
 Live A0, A1, and A3 readings are independent. A disconnected/saturated

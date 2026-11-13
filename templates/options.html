@@ -493,12 +493,18 @@
           <div class="sensor-live-readout"><span>Live electrode voltage</span><strong id="sensor-live-a0">—</strong><small id="sensor-voltage-error-a0" class="sensor-voltage-error" aria-live="off"></small><small>A0 · refreshed every 0.5 s</small></div>
           <div class="sensor-live-readout"><span>Current pH estimate</span><strong id="sensor-live-ph">—</strong><small>Median of up to 5 recent readings · saved calibration</small></div>
         </div>
+        <p id="sensor-ph-atc-status" class="sensor-hint">Live pH temperature compensation: checking A1…</p>
         <div class="sensor-guided-card sensor-temperature-card">
-          <div class="sensor-step-heading"><span class="sensor-step-bubble"><i class="mdi mdi-thermometer" aria-hidden="true"></i></span><div><strong>Buffer liquid temperature</strong><small>Measure the current glass with your aquarium thermometer</small></div></div>
-          <label class="sensor-field" for="sensor-ph-liquid-temp"><span>Measured liquid temperature (°C)</span>
+          <div class="sensor-step-heading"><span class="sensor-step-bubble"><i class="mdi mdi-thermometer" aria-hidden="true"></i></span><div><strong>Buffer liquid temperature</strong><small>Choose how to measure each calibration glass</small></div></div>
+          <label class="sensor-field" for="sensor-ph-liquid-temp"><span>Manual buffer temperature (°C)</span>
             <input id="sensor-ph-liquid-temp" type="number" min="0" max="50" step="0.1" placeholder="22.5" required>
           </label>
-          <p class="sensor-hint">One temperature entry is shared by all three buttons. Change it before the next capture if the liquid temperature differs.</p>
+          <label class="sensor-field sensor-auto-temp-label" for="sensor-ph-auto-temperature">
+            <input id="sensor-ph-auto-temperature" type="checkbox" disabled>
+            <span>Use A1 NTC temperature instead (both probes in the SAME buffer)</span>
+          </label>
+          <p class="sensor-hint" id="sensor-ph-ntc-status">Checking A1 temperature availability…</p>
+          <p class="sensor-hint">By default, enter the temperature of each calibration glass manually. Only check A1 when the pH electrode and the NTC are immersed together in that glass. A1 must be calibrated first.</p>
         </div>
         <div class="sensor-progress-heading">
           <div><strong>Capture your three reference buffers</strong><small>Rinse the electrode between each glass. Wait for stable voltage before capture.</small></div>
@@ -545,7 +551,7 @@
     </footer>
   </div>
 </dialog>
-<script defer src="{{ url_for('static', filename='sensor-calibration.js', v='20261112-ph-median-v7') }}"></script>
+<script defer src="{{ url_for('static', filename='sensor-calibration.js', v='20261112-ph-ntc-atc-v8') }}"></script>
 <script>window.AQUACORE_CSRF = {{ csrf_token()|tojson }};</script>
 <script defer src="{{ url_for('static', filename='controls.js') }}"></script>
 <script defer src="{{ url_for('static', filename='fertilizer-manual2.js', v='20261109-close-after-save-v1') }}"></script>
