@@ -47,9 +47,9 @@ def _sample(channel):
 def _ntc_settings(config):
     """MariaDB is the sole authority for A1 enable state and 5V divider voltage."""
     enabled = bool(int(config.get("ntc_enabled") or 0))
-    supply_v = float(config.get("ntc_supply_v") if config.get("ntc_supply_v") is not None else 5.0)
-    if not math.isfinite(supply_v) or not 4.5 <= supply_v <= 5.5:
-        raise ValueError("NTC divider voltage in DB must be 4.5-5.5 V")
+    supply_v = float(config.get("ntc_supply_v") if config.get("ntc_supply_v") is not None else 3.3)
+    if not math.isfinite(supply_v) or not 3.0 <= supply_v <= 3.6:
+        raise ValueError("NTC divider voltage in DB must be 3.0-3.6 V")
     return enabled, supply_v
 
 
@@ -96,8 +96,8 @@ def save_ntc_settings():
         return jsonify(error="enabled must be true/false and supply_v a number"), 400
     try:
         volts = float(body["supply_v"])
-        if not math.isfinite(volts) or not 4.5 <= volts <= 5.5:
-            raise ValueError("Supply voltage must be 4.5 to 5.5 V (5.0 V nominal)")
+        if not math.isfinite(volts) or not 3.0 <= volts <= 3.6:
+            raise ValueError("Supply voltage must be 3.0 to 3.6 V (3.3 V nominal)")
     except (ValueError, TypeError, OverflowError) as exc:
         return jsonify(error=str(exc)), 400
 
