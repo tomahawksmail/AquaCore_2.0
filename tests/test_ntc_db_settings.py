@@ -71,7 +71,7 @@ class NTCDBSettingsTests(unittest.TestCase):
                           side_effect=AssertionError("A1 must stay off")):
             response, status = calibration.sample()
         self.assertEqual(status, 409)
-        self.assertIn("enable A1", response.get_json()["error"].lower())
+        self.assertIn("enable a1", response.get_json()["error"].lower())
 
     def test_a0_still_reads_when_ntc_disabled(self):
         channels = []
