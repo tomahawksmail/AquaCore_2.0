@@ -499,9 +499,9 @@
           <label class="sensor-field" for="sensor-ph-liquid-temp"><span>Manual buffer temperature (°C)</span>
             <input id="sensor-ph-liquid-temp" type="number" min="0" max="50" step="0.1" placeholder="22.5" required>
           </label>
-          <label class="sensor-field" for="sensor-ph-auto-temperature">
-            <span><input id="sensor-ph-auto-temperature" type="checkbox" disabled>
-              Use A1 NTC temperature instead (both probes in the SAME buffer)</span>
+          <label class="sensor-field sensor-auto-temp-label" for="sensor-ph-auto-temperature">
+            <input id="sensor-ph-auto-temperature" type="checkbox" disabled>
+            <span>Use A1 NTC temperature instead (both probes in the SAME buffer)</span>
           </label>
           <p class="sensor-hint" id="sensor-ph-ntc-status">Checking A1 temperature availability…</p>
           <p class="sensor-hint">By default, enter the temperature of each calibration glass manually. Only check A1 when the pH electrode and the NTC are immersed together in that glass. A1 must be calibrated first.</p>
