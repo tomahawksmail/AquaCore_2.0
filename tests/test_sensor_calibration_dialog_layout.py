@@ -66,7 +66,13 @@ class CalibrationDialogLayoutTests(unittest.TestCase):
 
     def test_only_ui_changes_and_refreshes_stylesheet_assets(self):
         self.assertIn("20261112-calibration-ux-v2", self.base)
-        self.assertIn("20261112-live-lifecycle-v6", self.page)
+        self.assertIn("20261112-ph-ntc-atc-v8", self.page)
+        self.assertIn('id="sensor-ph-auto-temperature"', self.page)
+        self.assertIn('id="sensor-ph-atc-status"', self.page)
+        self.assertIn('id="sensor-ph-ntc-status"', self.page)
+        self.assertIn("syncBufferTemperatureMode()", self.js)
+        self.assertIn("temperature_source:'ntc'", self.js)
+        self.assertIn("temperature_source:'manual'", self.js)
         self.assertIn("new MutationObserver(syncLivePolling)", self.js)
         self.assertIn("attributeFilter:['open']", self.js)
         self.assertIn("modal.addEventListener('close', syncLivePolling)", self.js)
