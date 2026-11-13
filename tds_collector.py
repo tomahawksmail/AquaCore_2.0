@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Collect ADS1115 TDS, optional NTC water temperature and calibrated pH.
 
-A1 NTC requires a 10k B3950 probe with 10k pull-up to 5.0V.
+A1 NTC requires a 10k B3950 probe with 10k pull-up to 3.3V.
 A0 pH uses measured 4.01/6.86/9.18 voltages when present, or legacy 7/4.
 Unconfigured or invalid measurements are stored as NULL, never invented.
 TDS factor 0.2626 is a provisional estimate, not certified calibration.
@@ -130,8 +130,8 @@ def main():
             calibration = calibration_settings()
             ntc_enabled = bool(int(calibration.get('ntc_enabled') or 0))
             ntc_supply_v = float(calibration.get('ntc_supply_v') if
-                                 calibration.get('ntc_supply_v') is not None else 5.0)
-            if not math.isfinite(ntc_supply_v) or not 4.5 <= ntc_supply_v <= 5.5:
+                                 calibration.get('ntc_supply_v') is not None else 3.3)
+            if not math.isfinite(ntc_supply_v) or not 3.0 <= ntc_supply_v <= 3.6:
                 if ntc_enabled:
                     LOG.warning("Invalid NTC divider supply in MariaDB; A1 disabled for this sample")
                 ntc_enabled = False
