@@ -73,7 +73,7 @@ def main():
                    help="Read A0 pH, A1 raw/optional NTC and adjusted TDS on A3")
     p.add_argument("--ntc", action="store_true",
                    help="Convert A1 as 10k B3950 NTC using 10k pull-up to 3.3V")
-    p.add_argument("--ntc-supply", type=float, default=3.3,
+    p.add_argument("--ntc-supply", type=float, default=5.0,
                    help="Measured divider supply voltage, normally 3.3V")
     p.add_argument("--pga", type=float, choices=(4.096, 6.144), default=4.096,
                    help="ADS1115 full-scale range (+/- volts); default 4.096")
@@ -109,8 +109,8 @@ def main():
                                       args.ph_low_voltage)
     except ValueError as exc:
         p.error(str(exc))
-    if not (2.5 <= args.ntc_supply <= 3.5):
-        p.error('--ntc-supply must be 2.5-3.5 V')
+    if not (4.5 <= args.ntc_supply <= 5.5):
+        p.error('--ntc-supply must be 4.5-5.5 V')
     if not (-2 <= args.temperature <= 55):
         p.error("--temperature must be between -2 and 55 C")
 
