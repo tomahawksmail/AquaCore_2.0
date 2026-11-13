@@ -222,6 +222,7 @@ real voltages before attaching hardware.
 
 ```bash
 sudo systemctl stop aquacore.service aquacore-tds.service
+sudo -u aquacore git -C /opt/aquacore pull --ff-only origin master
 sudo mariadb _AquaCore_ < /opt/aquacore/deploy/sql/ntc_settings_migration.sql
 sudo systemctl start aquacore.service aquacore-tds.service
 sudo mariadb _AquaCore_ -e \
