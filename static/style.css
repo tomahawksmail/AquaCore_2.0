@@ -1968,3 +1968,14 @@ status trends preserved */
   line-height:1.45;
   overflow-wrap:anywhere;
 }
+
+/* Safe opt-in A1 temperature source in pH reference capture. */
+.sensor-calibration-modal .sensor-auto-temp-label {
+  display:flex; align-items:flex-start; gap:10px; line-height:1.5;
+  font-weight:600; cursor:pointer;
+}
+.sensor-calibration-modal .sensor-auto-temp-label input[type="checkbox"] {
+  display:block; flex:none; width:17px; min-width:17px; height:17px;
+  padding:0; margin:2px 0 0;
+}
+.sensor-calibration-modal .sensor-auto-temp-label input:disabled { cursor:not-allowed; }
