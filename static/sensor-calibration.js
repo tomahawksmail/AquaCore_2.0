@@ -31,6 +31,7 @@
     const input = byId('sensor-temp-reference');
     byId('sensor-save-temp').disabled = captureBusy || !temperatureCaptured ||
       !input.value.trim() || !input.checkValidity();
+    byId('sensor-capture-temp').disabled = captureBusy || !Boolean(settings?.ntc_enabled);
   };
   const autoBufferTemp = byId('sensor-ph-auto-temperature');
   const manualBufferTemp = byId('sensor-ph-liquid-temp');
@@ -117,7 +118,7 @@
   const setCaptureBusy = busy => {
     captureBusy = busy;
     for (const name of bufferNames) byId('sensor-capture-' + name).disabled = busy;
-    byId('sensor-capture-temp').disabled = busy;
+    byId('sensor-capture-temp').disabled = busy || !Boolean(settings?.ntc_enabled);
     updatePhSave();
     updateTempSave();
   };
@@ -247,6 +248,14 @@
 
   const present = async () => {
     settings = await api('');
+    const ntcEnabled = Boolean(Number(settings.ntc_enabled ?? 0));
+    byId('sensor-ntc-enabled').checked = ntcEnabled;
+    byId('sensor-ntc-supply').value =
+      Number(settings.ntc_supply_v ?? 5.0).toFixed(2);
+    byId('sensor-ntc-config-status').textContent = ntcEnabled ?
+      'A1 enabled; calibrate temperature if needed' :
+      'A1 disabled until the thermistor is installed';
+    updateTempSave();
     byId('sensor-factor-tds_factor').value =
       Number(settings.tds_factor ?? 0.2626).toString();
     const calibrated3 = bufferNames.every(name => settings[name + '_voltage'] != null);
@@ -334,6 +343,35 @@
       });
     } catch (error) { setStatus('TDS not saved: ' + error.message, 'error'); }
     finally { save.disabled = false; }
+  });
+
+  byId('sensor-save-ntc-settings').addEventListener('click', async () => {
+    const input = byId('sensor-ntc-supply');
+    const supply_v = Number(input.value);
+    const enabled = byId('sensor-ntc-enabled').checked;
+    if (!input.value.trim() || !Number.isFinite(supply_v) ||
+        supply_v < 4.5 || supply_v > 5.5) {
+      input.reportValidity();
+      setStatus('Enter the measured 5 V NTC divider supply (4.5–5.5 V).', 'error');
+      return;
+    }
+    const button = byId('sensor-save-ntc-settings');
+    button.disabled = true;
+    try {
+      await api('/ntc-settings', {enabled, supply_v});
+      temperatureCaptured = false;
+      byId('sensor-voltage-temp').textContent = 'No reading captured';
+      await present();
+      byId('sensor-ntc-config-status').textContent = enabled ?
+        'A1 enabled in MariaDB · calibrate with a thermometer' :
+        'A1 disabled in MariaDB · safe until installed';
+      setStatus('A1 hardware settings saved to MariaDB. ' +
+        (enabled ? 'Calibrate temperature before using pH ATC.' : 'Temperature sensor remains off.'),
+        'saved');
+      void refreshLive();
+    } catch (error) {
+      setStatus('A1 hardware settings NOT saved: ' + error.message, 'error');
+    } finally { button.disabled = false; }
   });
 
   byId('sensor-capture-temp').addEventListener('click', async () => {
