@@ -88,7 +88,7 @@ sudo mariadb _AquaCore_ -e "SELECT ph401_voltage,ph686_voltage,ph918_voltage,ph4
 
 If the displayed A0 voltage does not stabilize, check electrode wetting,
 distilled-water rinse, grounding/noise, ADC supply voltage, and probe
-connection. If A1 is not installed, leave NTC_ENABLED=0; the temperature
+connection. If A1 is not installed, leave `ntc_enabled=0` in MariaDB; the temperature
 tab cannot calibrate an absent thermistor. pH calibration temperature is
 still entered manually from the glass thermometer.
 
@@ -185,40 +185,56 @@ non-temperature-compensated pH calculation and reports **ATC OFF**; it
 must not substitute the collector's nominal `--temperature 22` fallback
 as if it were a measured pH temperature.
 
-### Wiring and startup
+### Wiring, MariaDB settings and startup
+
+**Current planned installation: all sensor/ADS1115 boards are powered at
+5 V. The NTC and its fixed resistor are NOT YET INSTALLED. Leave A1 disabled
+until the parts arrive.** Connect the passive divider only after powering down:
 
 ```text
-               +3.3 V
-                  |
-           10 kΩ fixed resistor
-                  |
-ADS1115 A1 -------+---- NTC 10 kΩ B3950 ---- GND
+                +5.0 V
+                   |
+            10 kΩ fixed resistor
+                   |
+ADS1115 A1 --------+---- NTC 10 kΩ B3950 ---- GND
 
-ADS1115 A0 <----- PH-4502C analog PO
-                  (pH electrode attached via BNC)
+ADS1115 A0 <------ PH-4502C analog PO
+                   (pH electrode attached via BNC)
+ADS1115 VDD <----- 5.0 V
+ADS1115 GND <----- common GND
 ```
 
-The NTC must use its own **3.3 V divider**, even if your ADS1115 breakout
-is powered at 5 V. Supply is configured independently by
-`NTC_SUPPLY_V=3.3`; the A1 divider will be around **1.65 V at 25°C**.
-Keep a shared GND and never apply 5 V to Orange Pi GPIO or unprotected
-3.3 V I²C lines. A typical 5 V-powered ADS1115 breakout can have SDA/SCL
-pull-ups to 5 V; verify the board and use a suitable bidirectional I²C
-level shifter before continuing direct connection to 3.3 V Orange Pi.
+With a matched 10 kΩ NTC at 25°C, the nominal A1 voltage is **2.50 V**.
+The NTC divider voltage is stored in
+`sensor_calibration.ntc_supply_v` (**5.0 V** by default), and
+`sensor_calibration.ntc_enabled` defaults to **0 / disabled**.
+**Do not set `NTC_ENABLED` or `NTC_SUPPLY_V` in
+`/etc/aquacore/web.env`: these are no longer used.**
 
-In `/etc/aquacore/web.env` set:
+Your Orange Pi GPIO is 3.3 V logic **even though the ADS1115 breakout is
+supplied at 5 V**. A breakout with 5 V I²C pull-ups must not connect directly
+to Orange Pi 3.3 V SDA/SCL; verify the actual breakout or install a suitable
+bidirectional level shifter. The ADC's PGA is still ±4.096 V, so inputs above
+that level saturate even when VDD is 5 V. Keep common ground and verify
+real voltages before attaching hardware.
 
-```ini
-NTC_ENABLED=1
-NTC_SUPPLY_V=3.3
-```
-
-Restart only the web UI and sensor collector (leave relay controller
-unchanged):
+**Required database migration (before deploying the web/collector code):**
 
 ```bash
-sudo systemctl restart aquacore.service aquacore-tds.service
+sudo systemctl stop aquacore.service aquacore-tds.service
+sudo mariadb _AquaCore_ < /opt/aquacore/deploy/sql/ntc_settings_migration.sql
+sudo systemctl start aquacore.service aquacore-tds.service
+sudo mariadb _AquaCore_ -e \
+  "SELECT ntc_enabled,ntc_supply_v FROM sensor_calibration WHERE id=1;"
 ```
+
+**After installing** the thermistor and fixed resistor, open
+**Settings → Sensor Calibration → Temperature**. Check
+**Enable A1 NTC**, verify **5.00 V**, click **Save A1 hardware settings**.
+The collector reads those values from MariaDB on every sample, so no
+environment edit is needed. Enabling A1 or changing its divider voltage
+requires recalibrating temperature (the old temperature calibration is
+invalidated). If no probe is installed, leave the checkbox unchecked.
 
 Then **calibrate A1 first**: Settings → Sensor calibration → Temperature;
 immerse A1 and a trusted glass thermometer in the same water, Capture A1,
