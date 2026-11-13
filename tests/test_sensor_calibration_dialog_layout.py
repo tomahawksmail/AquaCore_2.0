@@ -65,7 +65,7 @@ class CalibrationDialogLayoutTests(unittest.TestCase):
         self.assertIn("@media(max-width:630px)", self.css)
 
     def test_only_ui_changes_and_refreshes_stylesheet_assets(self):
-        self.assertIn("20261112-ntc-db-5v-v9", self.base)
+        self.assertIn("20261112-ntc-db-33v-v10", self.base)
         self.assertIn("20261112-ntc-db-5v-v9", self.page)
         self.assertIn('id="sensor-ph-auto-temperature"', self.page)
         self.assertIn('id="sensor-ph-atc-status"', self.page)
