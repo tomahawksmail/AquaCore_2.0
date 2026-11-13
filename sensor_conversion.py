@@ -1,7 +1,7 @@
 """AquaCore analog sensor conversion helpers.
 
 A1: 10k NTC B3950 connected from ADC A1 to GND with an external
-10k resistor from A1 to 5.0 V. Never connect the old pH module T1/T2
+10k resistor from A1 to 3.3 V. Never connect the old pH module T1/T2
 to this input at the same time.
 A0: pH voltage, requires two measured buffer reference voltages.
 """
@@ -11,7 +11,7 @@ NTC_R0_OHMS = 10000.0
 NTC_REFERENCE_C = 25.0
 NTC_BETA = 3950.0
 NTC_FIXED_OHMS = 10000.0
-NTC_SUPPLY_V = 5.0
+NTC_SUPPLY_V = 3.3
 
 
 def ntc_celsius(volts, *, supply_v=NTC_SUPPLY_V,
@@ -19,7 +19,7 @@ def ntc_celsius(volts, *, supply_v=NTC_SUPPLY_V,
                 beta=NTC_BETA):
     """Convert a 10k/B3950 thermistor voltage into degrees Celsius.
 
-    Divider: 5.0V -> 10k fixed resistor -> ADS1115 A1 -> NTC -> GND.
+    Divider: 3.3V -> 10k fixed resistor -> ADS1115 A1 -> NTC -> GND.
     Raise ValueError on open/short/saturated/implausible voltages.
     """
     if not all(math.isfinite(v) and v > 0 for v in
