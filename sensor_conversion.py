@@ -130,3 +130,42 @@ def calibrated_ph_three_points(volts, v401, v686, v918,
     if not 0 <= result <= 14:
         raise ValueError("pH estimate outside physical 0-14 range")
     return result
+
+
+def temperature_compensated_ph_three_points(volts, v401, v686, v918,
+                                             p401, p686, p918,
+                                             t401, t686, t918, sample_temp_c):
+    """Approximate pH electrode Nernst slope correction using live water temp.
+
+    Uses the measured slope of the applicable calibration segment, scaled
+    by absolute temperature (Kelvin). The pH 6.86 reference is the anchor.
+    The PH-4502C board's amplifier gain is already included in each measured
+    voltage difference; do not apply a generic mV/pH multiplier.
+
+    Buffer pH values must already be evaluated at each buffer's calibration
+    temperature. Temperature compensation does NOT adjust the actual sample
+    chemistry to an arbitrary reference temperature such as 25 C.
+    """
+    validate_ph_three_points(v401, v686, v918, p401, p686, p918)
+    temperatures = (t401, t686, t918, sample_temp_c)
+    if not all(isinstance(t, (int, float)) and math.isfinite(t)
+               and 0 <= t <= 50 for t in temperatures):
+        raise ValueError("pH temperature compensation requires valid 0-50 C readings")
+    if not math.isfinite(volts):
+        raise ValueError("Invalid pH ADC voltage")
+    # Choose the bracketing segment relative to the near-neutral pH buffer.
+    # This works whether the amplifier voltage rises or falls with pH.
+    on_acid_side = (volts - v686) * (v401 - v686) >= 0
+    if on_acid_side:
+        reference_voltage, reference_ph = v401, p401
+        calibration_temp = (t401 + t686) / 2.0
+    else:
+        reference_voltage, reference_ph = v918, p918
+        calibration_temp = (t918 + t686) / 2.0
+    relative = (volts - v686) / (reference_voltage - v686)
+    # dE/dpH is proportional to absolute temperature in the Nernst equation.
+    ph = p686 + relative * (reference_ph - p686) * (
+        (calibration_temp + 273.15) / (sample_temp_c + 273.15))
+    if not 0 <= ph <= 14:
+        raise ValueError("Temperature-compensated pH outside physical 0-14 range")
+    return ph
