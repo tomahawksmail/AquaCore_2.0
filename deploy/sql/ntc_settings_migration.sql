@@ -4,5 +4,5 @@
 -- Existing sensor_calibration data and pH references are not modified.
 ALTER TABLE sensor_calibration
   ADD COLUMN IF NOT EXISTS ntc_enabled TINYINT(1) NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS ntc_supply_v DOUBLE NOT NULL DEFAULT 5.0;
+  ADD COLUMN IF NOT EXISTS ntc_supply_v DOUBLE NOT NULL DEFAULT 3.3;
 INSERT IGNORE INTO sensor_calibration (id) VALUES (1);

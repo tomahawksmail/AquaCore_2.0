@@ -70,13 +70,13 @@ class PhTemperatureTests(unittest.TestCase):
         called = []
         def sample(channel):
             called.append(channel)
-            return 2.5 if channel == 1 else 1.8
+            return 1.65 if channel == 1 else 1.8
         with self.app.test_request_context(
             "/api/sensors/calibration/sample", method="POST",
             json={"kind": "ph686", "temperature_source": "ntc"}), \
              patch.object(api, "_admin"), \
                           patch.object(api, "_db", return_value=FakeCalibrationDB({
-                 "ntc_enabled": 1, "ntc_supply_v": 5.0,
+                 "ntc_enabled": 1, "ntc_supply_v": 3.3,
                  "temp_updated_at": "saved", "temp_factor": 1.0,
                  "temp_offset_c": 0.0})), \
              patch.object(api, "_sample", side_effect=sample):
@@ -92,9 +92,9 @@ class PhTemperatureTests(unittest.TestCase):
             json={"kind": "ph401", "temperature_source": "ntc"}), \
              patch.object(api, "_admin"), \
                           patch.object(api, "_db", return_value=FakeCalibrationDB({
-                 "ntc_enabled": 1, "ntc_supply_v": 5.0,
+                 "ntc_enabled": 1, "ntc_supply_v": 3.3,
                  "temp_updated_at": None})), \
-             patch.object(api, "_sample", return_value=2.5):
+             patch.object(api, "_sample", return_value=1.65):
             result, status = api.sample()
             self.assertEqual(status, 409)
             self.assertIn("Calibrate the A1", result.get_json()["error"])
@@ -115,7 +115,7 @@ class PhTemperatureTests(unittest.TestCase):
 
     def test_live_a0_uses_a1_if_ntc_calibrated(self):
         config = {
-            "ntc_enabled": 1, "ntc_supply_v": 5.0,
+            "ntc_enabled": 1, "ntc_supply_v": 3.3,
             "temp_updated_at": "saved", "temp_factor": 1, "temp_offset_c": 0,
             "ph401_voltage": 1.8, "ph686_voltage": 2.5, "ph918_voltage": 3,
             "ph401_reference": 4.01, "ph686_reference": 6.86,
@@ -125,7 +125,7 @@ class PhTemperatureTests(unittest.TestCase):
         calls = []
         def adc_read(_bus, _addr, channel):
             calls.append(channel)
-            return (10000, 2.5 if channel == 1 else 1.8)
+            return (10000, 1.65 if channel == 1 else 1.8)
         with self.app.test_request_context(
             "/api/sensors/calibration/live?channel=a0"), \
              patch.object(api, "_admin"), \
@@ -140,7 +140,7 @@ class PhTemperatureTests(unittest.TestCase):
 
     def test_a1_failure_does_not_hide_a0_ph(self):
         config = {
-            "ntc_enabled": 1, "ntc_supply_v": 5.0, "temp_updated_at": "saved",
+            "ntc_enabled": 1, "ntc_supply_v": 3.3, "temp_updated_at": "saved",
             "ph401_voltage": 1.8, "ph686_voltage": 2.5, "ph918_voltage": 3,
             "ph401_reference": 4.01, "ph686_reference": 6.86,
             "ph918_reference": 9.18, "ph401_temp_c": 25,

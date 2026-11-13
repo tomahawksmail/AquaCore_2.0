@@ -471,13 +471,13 @@
             <span>Enable A1 NTC (only after the thermistor and 10 kΩ resistor are installed)</span>
           </label>
           <label class="sensor-field" for="sensor-ntc-supply"><span>NTC voltage divider supply (V)</span>
-            <input id="sensor-ntc-supply" type="number" min="4.5" max="5.5" step="0.01" value="5.00" required>
+            <input id="sensor-ntc-supply" type="number" min="3.0" max="3.6" step="0.01" value="3.30" required>
           </label>
           <div class="sensor-capture-controls">
             <button type="button" id="sensor-save-ntc-settings" class="outline sensor-capture-button"><i class="mdi mdi-content-save-outline" aria-hidden="true"></i> Save A1 hardware settings</button>
             <span id="sensor-ntc-config-status" class="sensor-capture-value" aria-live="polite">NTC disabled until installed</span>
           </div>
-          <p class="sensor-hint">Your ADS1115 and PH-4502C use 5 V. Wire the 10 kΩ fixed resistor from 5 V to A1, and the NTC from A1 to GND; leave this unchecked until the hardware is installed.</p>
+          <p class="sensor-hint">The ADS1115 and PH-4502C remain powered by 5 V. Only the NTC divider uses 3.3 V: fixed 10 kΩ resistor from 3.3 V to A1, and NTC from A1 to GND. Leave disabled until installed.</p>
         </div>
         <div class="sensor-readings-grid">
           <div class="sensor-live-readout"><span>Live voltage</span><strong id="sensor-live-a1">—</strong><small id="sensor-voltage-error-a1" class="sensor-voltage-error" aria-live="off"></small><small>A1 · raw sensor input</small></div>
@@ -566,7 +566,7 @@
     </footer>
   </div>
 </dialog>
-<script defer src="{{ url_for('static', filename='sensor-calibration.js', v='20261112-ntc-db-5v-v9') }}"></script>
+<script defer src="{{ url_for('static', filename='sensor-calibration.js', v='20261112-ntc-db-33v-v10') }}"></script>
 <script>window.AQUACORE_CSRF = {{ csrf_token()|tojson }};</script>
 <script defer src="{{ url_for('static', filename='controls.js') }}"></script>
 <script defer src="{{ url_for('static', filename='fertilizer-manual2.js', v='20261109-close-after-save-v1') }}"></script>

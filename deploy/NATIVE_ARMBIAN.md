@@ -403,14 +403,14 @@ sudo systemctl restart aquacore.service aquacore-relays.service
 
 ## Water temperature (ADS1115 A1 NTC) and calibrated pH (ADS1115 A0)
 
-### Current AquaCore wiring: 5 V analog system, NTC not yet installed
+### Current AquaCore wiring: 5 V ADC and pH module, separate 3.3 V NTC divider
 
-PH-4502C and the ADS1115 breakout are supplied at **5 V**. The planned
-temperature sensor is a two-wire waterproof **10 kΩ B3950 NTC** with a
-separate fixed **10 kΩ pull-up resistor** to **5 V**:
+PH-4502C and the ADS1115 breakout remain powered at **5 V**. Only the
+planned temperature sensor divider uses **3.3 V**: a two-wire waterproof
+**10 kΩ B3950 NTC** and a separate fixed **10 kΩ pull-up resistor**:
 
 ```text
-                  +5.0 V
+                  +3.3 V (divider ONLY)
                      |
                   fixed 10 kΩ
                      |
@@ -421,10 +421,10 @@ PH-4502C PO --------> ADS1115 A0
 TDS analog output --> ADS1115 A3
 ```
 
-At 25°C, the 10 kΩ NTC and 10 kΩ fixed resistor produce about **2.50 V**
+At 25°C, the 10 kΩ NTC and 10 kΩ fixed resistor produce about **1.65 V**
 at A1. The NTC is nonpolarized. **Do not enable A1 until the hardware
 is physically installed**, and remove any previous PH-4502C T1/T2 signal
-from A1. The supply in AquaCore's NTC conversion is **5.0 V**, sourced
+from A1. The supply in AquaCore's NTC conversion is **3.3 V**, sourced
 from MariaDB.
 
 **Important:** 5 V power on ADS1115 does not imply its SDA/SCL lines can
@@ -454,16 +454,17 @@ sudo mariadb-dump _AquaCore_ > ~/aquacore-before-ntc-db.sql
 sudo systemctl stop aquacore.service aquacore-tds.service
 sudo -u aquacore git -C /opt/aquacore pull --ff-only origin master
 sudo mariadb _AquaCore_ < /opt/aquacore/deploy/sql/ntc_settings_migration.sql
+sudo mariadb _AquaCore_ < /opt/aquacore/deploy/sql/ntc_33v_divider_migration.sql
 sudo systemctl start aquacore.service aquacore-tds.service
 sudo mariadb _AquaCore_ -e \
   'SELECT ntc_enabled,ntc_supply_v FROM sensor_calibration WHERE id=1;'
 ```
 
 The migration is non-destructive. `ntc_enabled=0` (OFF) and
-`ntc_supply_v=5.0` (V) are the defaults. When your NTC and fixed resistor
+`ntc_supply_v=3.3` (V) are the defaults. When your NTC and fixed resistor
 arrive, wire them with power disconnected, then go to **Settings →
 Sensor Calibration → Temperature**, select **Enable A1 NTC**, confirm
-**5.00 V**, and click **Save A1 hardware settings**. Calibrate A1 against
+**3.30 V**, and click **Save A1 hardware settings**. Calibrate A1 against
 a separate thermometer before trusting its readings.
 
 The temperature sensor can also be used while calibrating pH **only if
@@ -474,7 +475,7 @@ Read-only ADC check after wiring:
 
 ```bash
 sudo -u aquacore -g i2c /opt/aquacore/.venv/bin/python \
-  /opt/aquacore/sensorstest.py --bus 2 --all-channels --ntc --ntc-supply 5.0 --once
+  /opt/aquacore/sensorstest.py --bus 2 --all-channels --ntc --ntc-supply 3.3 --once
 ```
 
 See [the complete three-buffer calibration and wiring guide](PH_THREE_BUFFER.md)
@@ -493,7 +494,7 @@ sudo systemctl restart aquacore.service aquacore-tds.service
 
 In **Settings → Sensor calibration → Calibrate sensors**, an admin can capture averaged, stability-checked ADS1115 A1 and A0 readings, then explicitly save. A reading must be captured within 15 minutes before saving; unsteady or ADC-saturated signals are rejected. Pump operations are unaffected.
 
-**Temperature:** The A1 NTC divider uses a **5 V fixed 10 kΩ pull-up** and NTC to common ground. Until it is installed, leave `sensor_calibration.ntc_enabled=0`. Enable the 5.0 V supply settings through the Temperature tab after wiring, then capture A1 in the same water as an independent thermometer, enter the measured °C (5–40°C), and save. The offset is bounded to ±5°C and stored in `sensor_calibration.temp_offset_c`.
+**Temperature:** The A1 NTC divider uses a **3.3 V fixed 10 kΩ pull-up** and NTC to common ground. Until it is installed, leave `sensor_calibration.ntc_enabled=0`. Enable the 3.3 V divider settings through the Temperature tab after wiring, then capture A1 in the same water as an independent thermometer, enter the measured °C (5–40°C), and save. The offset is bounded to ±5°C and stored in `sensor_calibration.temp_offset_c`.
 
 **pH:** Place the probe in certified pH 7.00 buffer and capture A0 after stabilization, rinse, place in certified pH 4.00 buffer and capture again, check the certification acknowledgement and save. The collector automatically uses the saved `ph7_voltage` and `ph4_voltage` from `sensor_calibration` for new data rows. Drinking water, homemade vinegar dilutions and 5% vinegar are **not** certified calibration buffers. No pH will be reported unless valid reference voltages are stored. The existing pH ADC wiring is not modified in this update. Calibration cannot fix unsafe 5V-to-3.3V I2C pull-up or A0 overvoltage: **check actual signals independently**.
 

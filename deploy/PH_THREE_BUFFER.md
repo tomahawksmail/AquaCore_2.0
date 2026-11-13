@@ -187,12 +187,13 @@ as if it were a measured pH temperature.
 
 ### Wiring, MariaDB settings and startup
 
-**Current planned installation: all sensor/ADS1115 boards are powered at
-5 V. The NTC and its fixed resistor are NOT YET INSTALLED. Leave A1 disabled
-until the parts arrive.** Connect the passive divider only after powering down:
+**Current planned installation: ADS1115 and PH-4502C remain powered at
+5 V, but ONLY the A1 NTC divider uses 3.3 V. The NTC and its fixed resistor
+are NOT YET INSTALLED. Leave A1 disabled until the parts arrive.**
+Connect the divider only after powering down:
 
 ```text
-                +5.0 V
+                +3.3 V (NTC divider ONLY)
                    |
             10 kΩ fixed resistor
                    |
@@ -204,9 +205,9 @@ ADS1115 VDD <----- 5.0 V
 ADS1115 GND <----- common GND
 ```
 
-With a matched 10 kΩ NTC at 25°C, the nominal A1 voltage is **2.50 V**.
+With a matched 10 kΩ NTC at 25°C, the nominal A1 voltage is **1.65 V**.
 The NTC divider voltage is stored in
-`sensor_calibration.ntc_supply_v` (**5.0 V** by default), and
+`sensor_calibration.ntc_supply_v` (**3.3 V** by default), and
 `sensor_calibration.ntc_enabled` defaults to **0 / disabled**.
 **Do not set `NTC_ENABLED` or `NTC_SUPPLY_V` in
 `/etc/aquacore/web.env`: these are no longer used.**
@@ -225,6 +226,7 @@ sudo mariadb-dump _AquaCore_ > ~/aquacore-before-ntc-db.sql
 sudo systemctl stop aquacore.service aquacore-tds.service
 sudo -u aquacore git -C /opt/aquacore pull --ff-only origin master
 sudo mariadb _AquaCore_ < /opt/aquacore/deploy/sql/ntc_settings_migration.sql
+sudo mariadb _AquaCore_ < /opt/aquacore/deploy/sql/ntc_33v_divider_migration.sql
 sudo systemctl start aquacore.service aquacore-tds.service
 sudo mariadb _AquaCore_ -e \
   "SELECT ntc_enabled,ntc_supply_v FROM sensor_calibration WHERE id=1;"
@@ -232,7 +234,7 @@ sudo mariadb _AquaCore_ -e \
 
 **After installing** the thermistor and fixed resistor, open
 **Settings → Sensor Calibration → Temperature**. Check
-**Enable A1 NTC**, verify **5.00 V**, click **Save A1 hardware settings**.
+**Enable A1 NTC**, verify **3.30 V**, click **Save A1 hardware settings**.
 The collector reads those values from MariaDB on every sample, so no
 environment edit is needed. Enabling A1 or changing its divider voltage
 requires recalibrating temperature (the old temperature calibration is
