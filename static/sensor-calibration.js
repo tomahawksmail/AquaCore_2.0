@@ -32,6 +32,14 @@
     byId('sensor-save-temp').disabled = captureBusy || !temperatureCaptured ||
       !input.value.trim() || !input.checkValidity();
   };
+  const autoBufferTemp = byId('sensor-ph-auto-temperature');
+  const manualBufferTemp = byId('sensor-ph-liquid-temp');
+  const syncBufferTemperatureMode = () => {
+    manualBufferTemp.disabled = autoBufferTemp.checked;
+    manualBufferTemp.required = !autoBufferTemp.checked;
+  };
+  autoBufferTemp.addEventListener('change', syncBufferTemperatureMode);
+  syncBufferTemperatureMode();
 
   const api = async (path, payload) => {
     // Live requests must never leave the dialog stuck displaying "Reading…".
@@ -150,6 +158,25 @@
     const ph = livePhWindow.length ? median(livePhWindow) : null;
     byId('sensor-live-ph').textContent = ph == null || !Number.isFinite(ph) ?
       'Not calibrated' : ph.toFixed(2) + ' pH';
+    if (activeTab === 'ph') {
+      const a1Ready = Boolean(snapshot.ntc_enabled && settings?.temp_updated_at &&
+        snapshot.ph_temperature_c != null && Number.isFinite(Number(snapshot.ph_temperature_c)));
+      autoBufferTemp.disabled = !a1Ready;
+      if (!a1Ready && autoBufferTemp.checked) {
+        autoBufferTemp.checked = false;
+        syncBufferTemperatureMode();
+      }
+      const t = a1Ready ? Number(snapshot.ph_temperature_c).toFixed(2) + '°C' : null;
+      byId('sensor-ph-ntc-status').textContent = a1Ready ?
+        ('A1 ready: ' + t + '. Select A1 only when BOTH probes are in this buffer.') :
+        ('A1 not ready: ' + (snapshot.ph_temperature_note || 'calibrate A1 first') +
+         '. Enter the buffer temperature manually.');
+      byId('sensor-ph-atc-status').textContent =
+        snapshot.ph_temperature_compensated ?
+          ('Live pH: electrode-slope compensation ON at ' + t + ' (A1).') :
+          ('Live pH: uncompensated electrode slope. ' +
+           (snapshot.ph_temperature_note || 'Enable and calibrate A1 to activate.'));
+    }
 
     const factorField = byId('sensor-factor-tds_factor');
     const factor = factorField.value.trim() ? Number(factorField.value) : NaN;
@@ -268,6 +295,8 @@
       captured = {};
       temperatureCaptured = false;
       livePhWindow.length = 0;
+      autoBufferTemp.checked = false;
+      syncBufferTemperatureMode();
       for (const name of bufferNames) {
         byId('sensor-voltage-' + name).textContent = '— V · waiting for capture';
       }
@@ -346,22 +375,30 @@
   for (const name of bufferNames) {
     const button = byId('sensor-capture-' + name);
     button.addEventListener('click', async () => {
-      const field = byId('sensor-ph-liquid-temp');
+      const field = manualBufferTemp;
+      const ntc = autoBufferTemp.checked;
       const temp = Number(field.value);
-      if (!field.value.trim() || !Number.isFinite(temp) || temp < 0 || temp > 50) {
+      if (!ntc && (!field.value.trim() || !Number.isFinite(temp) || temp < 0 || temp > 50)) {
         field.reportValidity();
-        setStatus('Enter the current liquid temperature measured by your glass thermometer.');
+        setStatus('Enter the actual temperature of the buffer solution.');
         return;
       }
+      const payload = ntc ?
+        {kind:name, temperature_source:'ntc'} :
+        {kind:name, temperature_source:'manual', temperature_c:temp};
       setCaptureBusy(true);
-      setStatus('Capturing stable pH ' + bufferLabels[name] +
-        ' voltage at ' + temp.toFixed(1) + ' °C…', 'saving');
+      setStatus('Capturing pH ' + bufferLabels[name] + (ntc ?
+        ' using calibrated A1 in the same buffer…' :
+        ' at ' + temp.toFixed(1) + '°C (manual reference)…'), 'saving');
       try {
-        const data = await api('/sample', {kind:name, temperature_c:temp});
+        const data = await api('/sample', payload);
         captured[name] = data;
-        byId('sensor-voltage-' + name).textContent = describeCapture(name, data);
-        setStatus('Captured pH ' + bufferLabels[name] +
-          '. Rinse the electrode before the next buffer.', 'saved');
+        byId('sensor-voltage-' + name).textContent = describeCapture(name, data) +
+          ' · ' + (data.temperature_source === 'ntc' ? 'A1 NTC' : 'manual temperature');
+        setStatus('Captured pH ' + bufferLabels[name] + ' at ' +
+          Number(data.temperature_c).toFixed(2) + '°C (' +
+          (data.temperature_source === 'ntc' ? 'A1' : 'manual') +
+          '). Rinse the electrode before the next buffer.', 'saved');
       } catch (error) {
         delete captured[name];
         setStatus('pH ' + bufferLabels[name] + ' capture failed: ' + error.message, 'error');
