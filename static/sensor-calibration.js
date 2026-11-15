@@ -158,7 +158,8 @@
 
     const ph = livePhWindow.length ? median(livePhWindow) : null;
     byId('sensor-live-ph').textContent = ph == null || !Number.isFinite(ph) ?
-      'Not calibrated' : ph.toFixed(2) + ' pH';
+      'Not calibrated' : ph.toFixed(2) + ' pH' +
+      (snapshot.ph_provisional ? ' (unverified)' : '');
     if (activeTab === 'ph') {
       const a1Ready = Boolean(snapshot.ntc_enabled && settings?.temp_updated_at &&
         snapshot.ph_temperature_c != null && Number.isFinite(Number(snapshot.ph_temperature_c)));
@@ -173,6 +174,8 @@
         ('A1 not ready: ' + (snapshot.ph_temperature_note || 'calibrate A1 first') +
          '. Enter the buffer temperature manually.');
       byId('sensor-ph-atc-status').textContent =
+        snapshot.ph_provisional ?
+          'UNVERIFIED pH estimate: 2.40 V is assumed to be near pH 7. Temperature compensation OFF.' :
         snapshot.ph_temperature_compensated ?
           ('Live pH: electrode-slope compensation ON at ' + t + ' (A1).') :
           ('Live pH: uncompensated electrode slope. ' +
@@ -248,6 +251,13 @@
 
   const present = async () => {
     settings = await api('');
+    const provisional = Boolean(Number(settings.ph_provisional_enabled ?? 0));
+    byId('sensor-ph-provisional-enabled').checked = provisional;
+    byId('sensor-ph-provisional-neutral').value =
+      Number(settings.ph_provisional_neutral_v ?? 2.40).toFixed(2);
+    byId('sensor-ph-provisional-status').textContent = provisional ?
+      'ON · UNVERIFIED pH estimate, not safe for dosing' :
+      'OFF · saved buffer calibration';
     const ntcEnabled = Boolean(Number(settings.ntc_enabled ?? 0));
     byId('sensor-ntc-enabled').checked = ntcEnabled;
     byId('sensor-ntc-supply').value =
@@ -260,7 +270,9 @@
       Number(settings.tds_factor ?? 0.2626).toString();
     const calibrated3 = bufferNames.every(name => settings[name + '_voltage'] != null);
     const legacy = settings.ph7_voltage != null && settings.ph4_voltage != null;
-    existing.textContent = 'pH: ' + (calibrated3 ? 'three-buffer calibrated' :
+    existing.textContent = 'pH: ' + (provisional ?
+      'UNVERIFIED temporary neutral-voltage estimate' :
+      calibrated3 ? 'three-buffer calibrated' :
       legacy ? 'legacy 7.00/4.00 calibrated' : 'not calibrated') +
       ' · Temperature offset: ' + Number(settings.temp_offset_c ?? 0).toFixed(2) +
       ' °C · TDS factor: ' + Number(settings.tds_factor ?? 0.2626);
@@ -371,6 +383,32 @@
       void refreshLive();
     } catch (error) {
       setStatus('A1 hardware settings NOT saved: ' + error.message, 'error');
+    } finally { button.disabled = false; }
+  });
+
+  byId('sensor-save-ph-provisional').addEventListener('click', async () => {
+    const input = byId('sensor-ph-provisional-neutral');
+    const enabled = byId('sensor-ph-provisional-enabled').checked;
+    const neutral_voltage = Number(input.value);
+    if (!input.value.trim() || !Number.isFinite(neutral_voltage) ||
+        neutral_voltage < 2.0 || neutral_voltage > 3.0) {
+      input.reportValidity();
+      setStatus('Enter a provisional neutral voltage from 2.0 to 3.0 V.', 'error');
+      return;
+    }
+    const button = byId('sensor-save-ph-provisional');
+    button.disabled = true;
+    try {
+      const result = await api('/ph-provisional', {enabled, neutral_voltage});
+      livePhWindow.length = 0;
+      await present();
+      setStatus(enabled ?
+        ('Temporary UNVERIFIED pH estimate enabled: ' + neutral_voltage.toFixed(2) +
+         ' V ≈ pH 7. Not suitable for CO₂ or dosing controls.') :
+        'Temporary pH estimate disabled; saved calibration restored.', 'saved');
+      void refreshLive();
+    } catch (error) {
+      setStatus('Provisional pH settings NOT saved: ' + error.message, 'error');
     } finally { button.disabled = false; }
   });
 
