@@ -511,7 +511,7 @@
         <div class="sensor-guided-card">
           <div class="sensor-step-heading">
             <span class="sensor-step-bubble"><i class="mdi mdi-alert-outline" aria-hidden="true"></i></span>
-            <div><strong>Temporary unverified pH estimate</strong><small>2.40 V corresponds to pH 7 in this provisional display, NOT a buffer calibration</small></div>
+            <div><strong>Temporary unverified pH estimate</strong><small>2.40 V ≈ pH 7 (assumed); slope ≈ 0.2103 V/pH from 7 external reference pairs</small></div>
           </div>
           <label class="sensor-field sensor-auto-temp-label" for="sensor-ph-provisional-enabled">
             <input id="sensor-ph-provisional-enabled" type="checkbox">
@@ -525,8 +525,26 @@
             <button id="sensor-save-ph-provisional" class="outline sensor-capture-button" type="button">Save provisional pH display</button>
             <span id="sensor-ph-provisional-status" class="sensor-capture-value" role="status">Temporary mode off</span>
           </div>
-          <p class="sensor-hint">UNVERIFIED: based on your chosen neutral voltage and the slope from earlier buffer readings. This does NOT measure or certify pH. Do not use it to automate CO₂, dosing or water corrections. A new three-buffer calibration automatically disables this override.</p>
+          <p class="sensor-hint">UNVERIFIED: slope derived from seven external pH 6.86 / pH 4.00 voltage pairs (averages 2.45143 V / 3.05286 V). The neutral anchor is your assumption; this is NOT calibration of your probe. Do not use for CO₂, dosing or water changes. Saving a fresh three-buffer calibration disables this override.</p>
         </div>
+        <details class="sensor-guided-card">
+          <summary><strong>Reference chart: pH 4.00 / 7.00 / 10.00 at different temperatures</strong></summary>
+          <p class="sensor-hint">Copied from your second chart, for these EXACT buffer families. This is not the reference chart for pH 6.86 or 9.18, and these values must never be substituted for aquarium water pH. AquaCore's 4.01 / 6.86 / 9.18 capture continues to use its matching buffer references.</p>
+          <div class="sensor-table-scroll">
+            <table>
+              <thead><tr><th>°C</th><th>pH 4.00</th><th>pH 7.00</th><th>pH 10.00</th></tr></thead>
+              <tbody>
+                <tr><td>10</td><td>4.00</td><td>7.06</td><td>10.18</td></tr>
+                <tr><td>15</td><td>4.00</td><td>7.04</td><td>10.12</td></tr>
+                <tr><td>20</td><td>4.00</td><td>7.02</td><td>10.06</td></tr>
+                <tr><td>25</td><td>4.01</td><td>7.00</td><td>10.01</td></tr>
+                <tr><td>30</td><td>4.01</td><td>6.99</td><td>9.97</td></tr>
+                <tr><td>35</td><td>4.02</td><td>6.98</td><td>9.93</td></tr>
+                <tr><td>40</td><td>4.03</td><td>6.97</td><td>9.89</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </details>
         <p id="sensor-ph-atc-status" class="sensor-hint">Live pH temperature compensation: checking A1…</p>
         <div class="sensor-guided-card sensor-temperature-card">
           <div class="sensor-step-heading"><span class="sensor-step-bubble"><i class="mdi mdi-thermometer" aria-hidden="true"></i></span><div><strong>Buffer liquid temperature</strong><small>Choose how to measure each calibration glass</small></div></div>
@@ -585,7 +603,7 @@
     </footer>
   </div>
 </dialog>
-<script defer src="{{ url_for('static', filename='sensor-calibration.js', v='20261114-ph-provisional-v11') }}"></script>
+<script defer src="{{ url_for('static', filename='sensor-calibration.js', v='20261114-ph-reference-table-v12') }}"></script>
 <script>window.AQUACORE_CSRF = {{ csrf_token()|tojson }};</script>
 <script defer src="{{ url_for('static', filename='controls.js') }}"></script>
 <script defer src="{{ url_for('static', filename='fertilizer-manual2.js', v='20261109-close-after-save-v1') }}"></script>

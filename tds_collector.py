@@ -183,11 +183,10 @@ def main():
                                  and 0 <= water_temp <= 50)
                     if provisional_on:
                         ph_atc = False
+                        # Explicit temporary estimate: use the reference-image
+                        # voltage/pH slope, not the stale three-buffer slope.
                         ph_raw = provisional_ph_neutral_anchor(
-                            ph_voltage, float(calibration.get('ph_provisional_neutral_v') or 2.40),
-                            *(float(calibration[k]) for k in (
-                                'ph401_voltage', 'ph686_voltage',
-                                'ph401_reference', 'ph686_reference')))
+                            ph_voltage, float(calibration.get('ph_provisional_neutral_v') or 2.40))
                     elif ph_atc:
                         ph_raw = temperature_compensated_ph_three_points(
                             ph_voltage,

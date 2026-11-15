@@ -29,6 +29,22 @@ class SaveAndChartTests(unittest.TestCase):
         self.assertIn("Bottle B schedule saved: ", content)
         self.assertIn("Server did not confirm the selected weekdays", content)
 
+    def test_dashboard_hides_zero_change_after_rounding(self):
+        html = (ROOT / "templates/dashboard.html").read_text(encoding="utf8")
+        css = (ROOT / "static/style.css").read_text(encoding="utf8")
+        # Initial Jinja render and the 60-second browser refresh agree:
+        # if the one-decimal difference is 0, no trend row is visible.
+        self.assertIn("shown_delta == 0 %}hidden", html)
+        self.assertIn("const shownDiff = Number(diff.toFixed(1));", html)
+        self.assertIn("if (shownDiff === 0)", html)
+        self.assertIn("trend.hidden = true;", html)
+        self.assertIn("trend.hidden = false;", html)
+        self.assertIn(".trend[hidden] { display:none !important; }", css)
+        # Still display nonzero changes and missing prior readings.
+        self.assertIn("shown_delta > 0", html)
+        self.assertIn("shown_delta < 0", html)
+        self.assertIn("No previous reading", html)
+
     def test_system_charts_draw_lines_without_false_zero_samples(self):
         content = (ROOT / "static" / "system.js").read_text(encoding="utf8")
         self.assertIn("three-sample moving-average lines", content)
