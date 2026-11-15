@@ -84,13 +84,30 @@ PH_BUFFER_TABLE = {
 }
 
 
+# Additional buffer temperature lookup transcribed from the user-supplied chart.
+# These correspond to pH 4.00 / 7.00 / 10.00 family, NOT the pH
+# 4.01 / 6.86 / 9.18 family above. The chart provides 10-40 C only:
+# no extrapolation outside those chart boundaries.
+PH_400_700_1000_TABLE = {
+    "ph400": ((10, 4.00), (15, 4.00), (20, 4.00), (25, 4.01),
+              (30, 4.01), (35, 4.02), (40, 4.03)),
+    "ph700": ((10, 7.06), (15, 7.04), (20, 7.02), (25, 7.00),
+              (30, 6.99), (35, 6.98), (40, 6.97)),
+    "ph1000": ((10, 10.18), (15, 10.12), (20, 10.06), (25, 10.01),
+               (30, 9.97), (35, 9.93), (40, 9.89)),
+}
+
+
 def buffer_reference_ph(kind, temperature_c):
-    """Interpolate the expected pH of a named calibration buffer at liquid temp."""
-    if kind not in PH_BUFFER_TABLE:
+    """Interpolate pH of a matching *named buffer* at liquid temperature.
+
+    Do not substitute pH 7.00/10.00 chart values for 6.86/9.18 buffers.
+    """
+    points = PH_BUFFER_TABLE.get(kind) or PH_400_700_1000_TABLE.get(kind)
+    if points is None:
         raise ValueError("Unsupported pH buffer")
-    if not math.isfinite(temperature_c) or not 0 <= temperature_c <= 50:
-        raise ValueError("Buffer temperature must be 0–50 °C")
-    points = PH_BUFFER_TABLE[kind]
+    if not math.isfinite(temperature_c) or not points[0][0] <= temperature_c <= points[-1][0]:
+        raise ValueError("Temperature outside the selected buffer chart range")
     for (t0, p0), (t1, p1) in zip(points, points[1:]):
         if t0 <= temperature_c <= t1:
             return p0 + (p1 - p0) * (temperature_c - t0) / (t1 - t0)
@@ -171,24 +188,39 @@ def temperature_compensated_ph_three_points(volts, v401, v686, v918,
     return ph
 
 
-def provisional_ph_neutral_anchor(volts, neutral_voltage, v401, v686, p401, p686):
-    """UNVERIFIED pH estimate: force neutral at an operator-chosen A0 voltage.
+# Seven paired voltages from the user's reference image (not measured on this
+# AquaCore electrode). The source does not specify the buffer temperature.
+# Use only the *slope* for an explicitly provisional, unverified estimate.
+REFERENCE_PH686_VOLTS = (2.40, 2.47, 2.47, 2.47, 2.40, 2.49, 2.46)
+REFERENCE_PH400_VOLTS = (3.05, 3.05, 3.06, 3.05, 3.06, 3.05, 3.05)
+REFERENCE_PH686 = 6.86
+REFERENCE_PH400 = 4.00
 
-    The *slope only* comes from previously captured pH 4.01 and 6.86
-    buffers. Their original voltage and pH pairs remain unchanged in DB.
-    Re-anchoring cannot repair electrode/reference offset drift and must
-    never be treated as a valid fresh-buffer calibration.
+
+def provisional_reference_ph_slope():
+    """Volts per pH unit derived from both columns of the provided chart."""
+    avg686 = sum(REFERENCE_PH686_VOLTS) / len(REFERENCE_PH686_VOLTS)
+    avg400 = sum(REFERENCE_PH400_VOLTS) / len(REFERENCE_PH400_VOLTS)
+    return (avg400 - avg686) / (REFERENCE_PH686 - REFERENCE_PH400)
+
+
+def provisional_ph_neutral_anchor(volts, neutral_voltage):
+    """UNVERIFIED pH estimate: operator-chosen pH 7 A0 voltage + sample slope.
+
+    Uses all seven user-supplied reference readings rather than stale values
+    from AquaCore's November 11 calibration. This does NOT calibrate the
+    particular aquarium electrode, and must not control CO2 or chemical dosing.
+    Buffer temperature table values are *not* applied to aquarium water pH:
+    they describe the chemistry of those calibration solutions specifically.
     """
-    args = (volts, neutral_voltage, v401, v686, p401, p686)
-    if not all(isinstance(v, (int, float)) and math.isfinite(v) for v in args):
-        raise ValueError("Provisional pH requires finite voltages and saved buffer references")
-    if not 0 < volts < 4.096 or not 0.2 <= neutral_voltage <= 3.9:
-        raise ValueError("Invalid A0 or provisional neutral voltage")
-    if not 3.5 <= p401 <= 4.5 or not 6.5 <= p686 <= 7.2:
-        raise ValueError("Invalid saved reference pH values")
-    slope = (v401 - v686) / (p686 - p401)
+    if not all(isinstance(v, (int, float)) and math.isfinite(v)
+               for v in (volts, neutral_voltage)):
+        raise ValueError("Provisional pH requires finite A0 and anchor voltages")
+    if not 0 < volts < 4.096 or not 2.0 <= neutral_voltage <= 3.0:
+        raise ValueError("Invalid A0 voltage or provisional neutral anchor")
+    slope = provisional_reference_ph_slope()
     if not 0.04 <= slope <= 0.35:
-        raise ValueError("Saved buffer voltage slope unsuitable for provisional pH")
+        raise ValueError("Reference table voltage slope unsuitable for provisional pH")
     estimate = 7.0 + (neutral_voltage - volts) / slope
     if not 0 <= estimate <= 14:
         raise ValueError("Provisional pH outside 0-14")
