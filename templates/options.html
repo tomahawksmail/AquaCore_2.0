@@ -508,6 +508,25 @@
           <div class="sensor-live-readout"><span>Live electrode voltage</span><strong id="sensor-live-a0">—</strong><small id="sensor-voltage-error-a0" class="sensor-voltage-error" aria-live="off"></small><small>A0 · refreshed every 0.5 s</small></div>
           <div class="sensor-live-readout"><span>Current pH estimate</span><strong id="sensor-live-ph">—</strong><small>Median of up to 5 recent readings · saved calibration</small></div>
         </div>
+        <div class="sensor-guided-card">
+          <div class="sensor-step-heading">
+            <span class="sensor-step-bubble"><i class="mdi mdi-alert-outline" aria-hidden="true"></i></span>
+            <div><strong>Temporary unverified pH estimate</strong><small>2.40 V corresponds to pH 7 in this provisional display, NOT a buffer calibration</small></div>
+          </div>
+          <label class="sensor-field sensor-auto-temp-label" for="sensor-ph-provisional-enabled">
+            <input id="sensor-ph-provisional-enabled" type="checkbox">
+            <span>Use temporary pH estimate instead of saved three-buffer curve</span>
+          </label>
+          <label class="sensor-field" for="sensor-ph-provisional-neutral">
+            <span>Assumed neutral A0 voltage (V)</span>
+            <input id="sensor-ph-provisional-neutral" type="number" min="2.0" max="3.0" step="0.01" value="2.40" required>
+          </label>
+          <div class="sensor-capture-controls">
+            <button id="sensor-save-ph-provisional" class="outline sensor-capture-button" type="button">Save provisional pH display</button>
+            <span id="sensor-ph-provisional-status" class="sensor-capture-value" role="status">Temporary mode off</span>
+          </div>
+          <p class="sensor-hint">UNVERIFIED: based on your chosen neutral voltage and the slope from earlier buffer readings. This does NOT measure or certify pH. Do not use it to automate CO₂, dosing or water corrections. A new three-buffer calibration automatically disables this override.</p>
+        </div>
         <p id="sensor-ph-atc-status" class="sensor-hint">Live pH temperature compensation: checking A1…</p>
         <div class="sensor-guided-card sensor-temperature-card">
           <div class="sensor-step-heading"><span class="sensor-step-bubble"><i class="mdi mdi-thermometer" aria-hidden="true"></i></span><div><strong>Buffer liquid temperature</strong><small>Choose how to measure each calibration glass</small></div></div>
@@ -566,7 +585,7 @@
     </footer>
   </div>
 </dialog>
-<script defer src="{{ url_for('static', filename='sensor-calibration.js', v='20261112-ntc-db-33v-v10') }}"></script>
+<script defer src="{{ url_for('static', filename='sensor-calibration.js', v='20261114-ph-provisional-v11') }}"></script>
 <script>window.AQUACORE_CSRF = {{ csrf_token()|tojson }};</script>
 <script defer src="{{ url_for('static', filename='controls.js') }}"></script>
 <script defer src="{{ url_for('static', filename='fertilizer-manual2.js', v='20261109-close-after-save-v1') }}"></script>
