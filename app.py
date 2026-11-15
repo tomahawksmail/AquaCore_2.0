@@ -117,6 +117,23 @@ def login():
 @logged_in
 def logout(): session.clear(); return redirect(url_for('login'))
 
+def provisional_ph_status():
+    """Metadata for unverified pH estimates and the historic-mode boundary."""
+    record=query(
+        'SELECT ph_provisional_enabled,ph_provisional_started_at '
+        'FROM sensor_calibration WHERE id=1',one=True) or {}
+    return bool(record.get('ph_provisional_enabled')), record.get('ph_provisional_started_at')
+
+
+def mask_pre_provisional_ph(rows, enabled, started_at, field='Datetime'):
+    """Do not connect historic old-calibration pH to the new provisional curve."""
+    if enabled and started_at is not None:
+        for record in rows:
+            if record.get(field) is not None and record[field] < started_at:
+                record['ph']=None
+    return rows
+
+
 @app.get('/aquarium')
 @logged_in
 def dashboard():
@@ -125,12 +142,16 @@ def dashboard():
     latest=recent[0] if recent else None
     previous=recent[1] if len(recent)>1 else None
     points=query('SELECT Datetime,temp,ph,tds FROM data ORDER BY Datetime DESC, Id DESC LIMIT 48')
+    ph_provisional, ph_started = provisional_ph_status()
+    mask_pre_provisional_ph(recent,ph_provisional,ph_started)
+    mask_pre_provisional_ph(points,ph_provisional,ph_started)
     options=query('SELECT * FROM options LIMIT 1',one=True) or {}
     statuses=query('SELECT * FROM status LIMIT 1',one=True) or {}
     overrides=query('SELECT device,until_at FROM manual_overrides WHERE until_at > NOW()')
     manual={r['device']: r['until_at'] for r in overrides}
     return render_template('dashboard.html', latest=latest, previous=previous, points=list(reversed(points)),
-                           options=options, statuses=statuses, metrics=METRICS, devices=DEVICES, manual=manual)
+                           options=options, statuses=statuses, metrics=METRICS, devices=DEVICES, manual=manual,
+                           ph_provisional=ph_provisional)
 
 # Existing status flags are software requests, NOT verified relay feedback.
 # Automation in the legacy service may subsequently overwrite these flags.
@@ -188,11 +209,14 @@ def set_equipment(field):
 @logged_in
 def readings():
     rows=query('SELECT Id,Datetime,temp,ph,tds FROM data ORDER BY Datetime DESC, Id DESC LIMIT 2')
+    ph_provisional, ph_started = provisional_ph_status()
+    mask_pre_provisional_ph(rows,ph_provisional,ph_started)
     r=rows[0] if rows else None
     prev=rows[1] if len(rows)>1 else None
     if not r: return jsonify({})
     result={k:(v.isoformat() if isinstance(v,datetime) else v) for k,v in r.items() if k!='Id'}
     result['previous']={k:prev[k] for k in ('temp','ph','tds')} if prev else {}
+    result['ph_provisional']=ph_provisional
     return jsonify(result)
 
 @app.get('/api/history')
@@ -218,12 +242,15 @@ def history():
          GROUP BY FLOOR(UNIX_TIMESTAMP(`Datetime`) / %s)
          ORDER BY time ASC
     """, (seconds, seconds, days, seconds))
+    ph_provisional, ph_started = provisional_ph_status()
+    mask_pre_provisional_ph(rows,ph_provisional,ph_started,field='time')
     # Use the existing options row as the source of acceptable ranges.
     settings = query('SELECT min_temp, max_temp, min_ph, max_ph, min_tds, max_tds FROM options LIMIT 1', one=True) or {}
     limits = {key: (float(settings[key]) if settings.get(key) is not None else None)
               for key in ('min_temp', 'max_temp', 'min_ph', 'max_ph', 'min_tds', 'max_tds')}
     response = jsonify({
         'period': period,
+        'ph_provisional': ph_provisional,
         'limits': limits,
         'points': [{'time': r['time'].isoformat() if r['time'] else None,
                     'temp': float(r['temp']) if r['temp'] is not None else None,

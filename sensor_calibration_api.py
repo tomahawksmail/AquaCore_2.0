@@ -8,7 +8,7 @@ from datetime import datetime
 
 from flask import Blueprint, abort, jsonify, request, session
 from sensor_conversion import (ntc_celsius, calibrated_ph, calibrated_ph_three_points,
-                               temperature_compensated_ph_three_points,
+                               temperature_compensated_ph_three_points, provisional_ph_neutral_anchor,
                                validate_ph_three_points, buffer_reference_ph)
 from sensorstest import estimate_tds_ppm
 from sensorstest import adc_read
@@ -75,6 +75,7 @@ def status():
     with _db() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT ntc_enabled,ntc_supply_v,temp_offset_c,temp_updated_at,ph7_voltage,ph4_voltage,tds_factor,ph_factor,temp_factor, "
+                        "ph_provisional_enabled,ph_provisional_neutral_v,ph_provisional_started_at, "
                         "ph401_voltage,ph686_voltage,ph918_voltage, "
                         "ph401_reference,ph686_reference,ph918_reference, "
                         "ph401_temp_c,ph686_temp_c,ph918_temp_c "
@@ -82,6 +83,50 @@ def status():
             row = cur.fetchone()
     resp = jsonify(row or {})
     resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@bp.post("/ph-provisional")
+def save_ph_provisional():
+    """Explicit opt-in/out of unverified display, preserving buffer references."""
+    _admin()
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict) or set(body) != {"enabled", "neutral_voltage"}:
+        return jsonify(error="Provide enabled (bool) and neutral_voltage (V)"), 400
+    if type(body["enabled"]) is not bool or type(body["neutral_voltage"]) is bool:
+        return jsonify(error="Invalid provisional pH settings"), 400
+    try:
+        neutral = float(body["neutral_voltage"])
+        if not math.isfinite(neutral) or not 2.0 <= neutral <= 3.0:
+            raise ValueError("Neutral pH estimate voltage must be 2.0-3.0 V")
+        if body["enabled"]:
+            with _db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT ph401_voltage,ph686_voltage,"
+                                "ph401_reference,ph686_reference "
+                                "FROM sensor_calibration WHERE id=1")
+                    row = cur.fetchone() or {}
+                    provisional_ph_neutral_anchor(
+                        neutral, neutral, *(float(row[k]) for k in (
+                            "ph401_voltage", "ph686_voltage",
+                            "ph401_reference", "ph686_reference")))
+        with _db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE sensor_calibration SET "
+                    "ph_provisional_started_at=CASE "
+                    "WHEN %s=0 THEN NULL "
+                    "WHEN ph_provisional_enabled=0 OR ph_provisional_neutral_v<>%s "
+                    "THEN NOW() ELSE ph_provisional_started_at END, "
+                    "ph_provisional_enabled=%s,ph_provisional_neutral_v=%s "
+                    "WHERE id=1",
+                    (int(body["enabled"]),neutral,int(body["enabled"]),neutral))
+            conn.commit()
+    except (TypeError, ValueError, KeyError, OverflowError) as exc:
+        return jsonify(error=str(exc)), 400
+    resp = jsonify(ok=True, enabled=body["enabled"], neutral_voltage=neutral,
+                   warning="UNVERIFIED pH estimate; not suitable for CO2/dosing decisions")
+    resp.headers["Cache-Control"]="no-store"
     return resp
 
 
@@ -243,7 +288,8 @@ def save():
                         "ph401_voltage=%s,ph686_voltage=%s,ph918_voltage=%s, "
                         "ph401_reference=%s,ph686_reference=%s,ph918_reference=%s, "
                         "ph401_temp_c=%s,ph686_temp_c=%s,ph918_temp_c=%s, "
-                        "ph_factor=1.0,ph_updated_at=NOW() WHERE id=1",
+                        "ph_factor=1.0,ph_provisional_enabled=0,"
+                        "ph_provisional_started_at=NULL,ph_updated_at=NOW() WHERE id=1",
                         (v401,v686,v918,p401,p686,p918,t401,t686,t918))
                     cur.execute("SELECT id FROM sensor_calibration WHERE id=1")
                     if cur.fetchone() is None:
@@ -265,6 +311,7 @@ def save():
             with _db() as conn:
                 with conn.cursor() as cur:
                     cur.execute("UPDATE sensor_calibration SET ph7_voltage=%s,ph4_voltage=%s,"
+                                "ph_provisional_enabled=0,ph_provisional_started_at=NULL,"
                                 "ph_updated_at=NOW() WHERE id=1", (v7, v4))
                 conn.commit()
             session.pop("sensor_reference_ph7", None)
@@ -335,6 +382,7 @@ def live():
                     cur.execute(
                         "SELECT ntc_enabled,ntc_supply_v,temp_offset_c,temp_updated_at,ph7_voltage,ph4_voltage,"
                         "tds_factor,ph_factor,temp_factor,"
+                        "ph_provisional_enabled,ph_provisional_neutral_v,"
                         "ph401_voltage,ph686_voltage,ph918_voltage,"
                         "ph401_temp_c,ph686_temp_c,ph918_temp_c,"
                         "ph401_reference,ph686_reference,ph918_reference "
@@ -385,6 +433,7 @@ def live():
 
     raw_ph = None
     ph_error = errors.get("a0")
+    provisional_on = bool(int(config.get("ph_provisional_enabled") or 0))
     ph_temperature_c = None
     ph_temperature_compensated = False
     ph_temperature_note = ntc_config_error or "A1 not enabled or calibrated"
@@ -412,7 +461,13 @@ def live():
         temp_keys = ("ph401_temp_c", "ph686_temp_c", "ph918_temp_c")
         try:
             has_three = all(config.get(key) is not None for key in new_keys)
-            if has_three and ph_temperature_c is not None and (
+            if provisional_on:
+                raw_ph = provisional_ph_neutral_anchor(
+                    readings["a0"], float(config.get("ph_provisional_neutral_v") or 2.40),
+                    *(float(config[k]) for k in ("ph401_voltage", "ph686_voltage",
+                                                "ph401_reference", "ph686_reference")))
+                ph_temperature_note = "Provisional pH estimate; NOT temperature compensated"
+            elif has_three and ph_temperature_c is not None and (
                     config.get("temp_updated_at") is not None) and all(
                     config.get(key) is not None for key in temp_keys):
                 raw_ph = temperature_compensated_ph_three_points(
@@ -438,6 +493,8 @@ def live():
         calibration_db_error=config_error,
         ph_raw=raw_ph,
         ph_error=ph_error,
+        ph_provisional=provisional_on,
+        ph_provisional_neutral_v=float(config.get("ph_provisional_neutral_v") or 2.40),
         ph_temperature_c=ph_temperature_c,
         ph_temperature_compensated=ph_temperature_compensated,
         ph_temperature_note=ph_temperature_note,

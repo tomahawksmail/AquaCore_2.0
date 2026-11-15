@@ -169,3 +169,27 @@ def temperature_compensated_ph_three_points(volts, v401, v686, v918,
     if not 0 <= ph <= 14:
         raise ValueError("Temperature-compensated pH outside physical 0-14 range")
     return ph
+
+
+def provisional_ph_neutral_anchor(volts, neutral_voltage, v401, v686, p401, p686):
+    """UNVERIFIED pH estimate: force neutral at an operator-chosen A0 voltage.
+
+    The *slope only* comes from previously captured pH 4.01 and 6.86
+    buffers. Their original voltage and pH pairs remain unchanged in DB.
+    Re-anchoring cannot repair electrode/reference offset drift and must
+    never be treated as a valid fresh-buffer calibration.
+    """
+    args = (volts, neutral_voltage, v401, v686, p401, p686)
+    if not all(isinstance(v, (int, float)) and math.isfinite(v) for v in args):
+        raise ValueError("Provisional pH requires finite voltages and saved buffer references")
+    if not 0 < volts < 4.096 or not 0.2 <= neutral_voltage <= 3.9:
+        raise ValueError("Invalid A0 or provisional neutral voltage")
+    if not 3.5 <= p401 <= 4.5 or not 6.5 <= p686 <= 7.2:
+        raise ValueError("Invalid saved reference pH values")
+    slope = (v401 - v686) / (p686 - p401)
+    if not 0.04 <= slope <= 0.35:
+        raise ValueError("Saved buffer voltage slope unsuitable for provisional pH")
+    estimate = 7.0 + (neutral_voltage - volts) / slope
+    if not 0 <= estimate <= 14:
+        raise ValueError("Provisional pH outside 0-14")
+    return estimate
