@@ -40,7 +40,7 @@
         </div>
     </div>
     <div id="chart-message" role="status" class="dim">Loading measurements…</div>
-    {% if ph_provisional %}<p class="dim">pH uses a temporary unverified voltage estimate (2.40 V ≈ 7). Earlier pH data from the old calibration are hidden, not deleted. Do not use this value for CO₂ or chemical dosing.</p>{% endif %}
+    {% if ph_provisional %}<p class="dim">pH uses a temporary unverified estimate (operator-selected neutral voltage and slope from external reference samples). Earlier pH data from the old calibration are hidden, not deleted. Do not use this value for CO₂ or chemical dosing.</p>{% endif %}
     <div class="chart-grid" id="chart-grid" hidden>
         <div class="chart-panel">
             <div class="chart-panel-head"><h3>Temperature</h3><span>°C</span></div>
