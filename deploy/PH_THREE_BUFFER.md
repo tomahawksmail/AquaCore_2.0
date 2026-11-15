@@ -262,12 +262,25 @@ For the explicitly requested temporary behavior, the migration
 - `ph_provisional_neutral_v=2.40`
 - `ph_provisional_started_at=NOW()`
 
-The conversion preserves the **slope** from the existing pH 4.01/6.86
-voltage difference (about 0.1045 V per pH in this installation), and
-**reanchors only the provisional display** so that **2.40 V ≈ pH 7**.
-Consequently the observed A0 **2.44638 V ≈ pH 6.56** as an *estimate*.
-This is a chosen offset, not proof of actual water pH; the 2.5 V
-shorted-BNC voltage also does not by itself establish buffer pH accuracy.
+The temporary estimator uses all **seven reference voltage pairs**
+in the user-provided image, **not** the slope of the old AquaCore
+three-buffer readings. The pH 6.86 readings are 2.40, 2.47, 2.47, 2.47,
+2.40, 2.49, 2.46 V (average **2.45143 V**); the pH 4.00 readings are
+3.05, 3.05, 3.06, 3.05, 3.06, 3.05, 3.05 V (average **3.05286 V**).
+The resulting reference slope is approximately **0.21029 V per pH unit**.
+In provisional mode only, the operator-selected neutral anchor remains
+**2.40 V ≈ pH 7**, and observed A0 **2.44638 V ≈ pH 6.78**.
+These measurements are from an *external example*, not this electrode.
+This is a chosen offset and approximate slope, **not proof of actual
+aquarium pH**. The 2.5 V shorted-BNC result cannot prove pH either.
+
+A separate image provides a temperature chart for **pH 4.00, pH 7.00
+and pH 10.00 buffer families** over 10–40°C. AquaCore stores those
+figures in `PH_400_700_1000_TABLE` and displays them as a reference.
+The existing pH **4.01/6.86/9.18** calibration keeps its own matching
+buffer temperature table. Do not apply the 7.00/10.00 chart to 6.86/9.18
+solutions, and do not reinterpret the aquarium's true pH using these
+buffer-specific chemistry tables.
 
 Both calibration dialog and new collector writes use this provisional
 conversion; dashboard and chart label it unverified. Historic values
