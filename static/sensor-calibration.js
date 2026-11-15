@@ -175,7 +175,8 @@
          '. Enter the buffer temperature manually.');
       byId('sensor-ph-atc-status').textContent =
         snapshot.ph_provisional ?
-          'UNVERIFIED pH estimate: 2.40 V is assumed to be near pH 7. Temperature compensation OFF.' :
+          ('UNVERIFIED pH estimate: ' + Number(snapshot.ph_provisional_neutral_v ?? 2.40).toFixed(2) +
+           ' V assumed to be pH 7; slope from 7 external reference samples. ATC OFF.') :
         snapshot.ph_temperature_compensated ?
           ('Live pH: electrode-slope compensation ON at ' + t + ' (A1).') :
           ('Live pH: uncompensated electrode slope. ' +
@@ -256,7 +257,7 @@
     byId('sensor-ph-provisional-neutral').value =
       Number(settings.ph_provisional_neutral_v ?? 2.40).toFixed(2);
     byId('sensor-ph-provisional-status').textContent = provisional ?
-      'ON · UNVERIFIED pH estimate, not safe for dosing' :
+      'ON · UNVERIFIED external-reference estimate; no dosing' :
       'OFF · saved buffer calibration';
     const ntcEnabled = Boolean(Number(settings.ntc_enabled ?? 0));
     byId('sensor-ntc-enabled').checked = ntcEnabled;
