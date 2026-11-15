@@ -100,16 +100,9 @@ def save_ph_provisional():
         if not math.isfinite(neutral) or not 2.0 <= neutral <= 3.0:
             raise ValueError("Neutral pH estimate voltage must be 2.0-3.0 V")
         if body["enabled"]:
-            with _db() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("SELECT ph401_voltage,ph686_voltage,"
-                                "ph401_reference,ph686_reference "
-                                "FROM sensor_calibration WHERE id=1")
-                    row = cur.fetchone() or {}
-                    provisional_ph_neutral_anchor(
-                        neutral, neutral, *(float(row[k]) for k in (
-                            "ph401_voltage", "ph686_voltage",
-                            "ph401_reference", "ph686_reference")))
+            # Temporary estimate uses the user's supplied voltage table;
+            # no dependence on the old/possibly invalid saved pH buffer curve.
+            provisional_ph_neutral_anchor(neutral, neutral)
         with _db() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -463,9 +456,7 @@ def live():
             has_three = all(config.get(key) is not None for key in new_keys)
             if provisional_on:
                 raw_ph = provisional_ph_neutral_anchor(
-                    readings["a0"], float(config.get("ph_provisional_neutral_v") or 2.40),
-                    *(float(config[k]) for k in ("ph401_voltage", "ph686_voltage",
-                                                "ph401_reference", "ph686_reference")))
+                    readings["a0"], float(config.get("ph_provisional_neutral_v") or 2.40))
                 ph_temperature_note = "Provisional pH estimate; NOT temperature compensated"
             elif has_three and ph_temperature_c is not None and (
                     config.get("temp_updated_at") is not None) and all(
