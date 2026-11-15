@@ -44,7 +44,7 @@ class ThreeBufferTests(unittest.TestCase):
             with self.subTest(temp=temp),self.assertRaises(ValueError):
                 buffer_reference_ph("ph686",temp)
         with self.assertRaises(ValueError):
-            buffer_reference_ph("ph700",22)
+            buffer_reference_ph("ph_unknown",22)
 
     def test_collector_reads_three_buffer_model(self):
         code = (ROOT / "tds_collector.py").read_text()
