@@ -576,6 +576,7 @@ input:focus {
     vertical-align:middle;
     color:#5eead4
 }
+.trend[hidden] { display:none !important; }
 .trend {
     display:inline-flex;
     align-items:center;
