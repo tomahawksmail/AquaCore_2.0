@@ -248,6 +248,53 @@ and pressing Capture; otherwise leave the checkbox off and enter the
 glass thermometer temperature manually. The pH preview shows ATC ON/OFF
 and the currently measured temperature when available.
 
+## Temporary operator-requested neutral pH estimate (UNVERIFIED)
+
+If the Nov 11 three-buffer reference curve is clearly inconsistent with
+the aquarium's separate pH test, AquaCore can display an **unverified**
+neutral-voltage approximation. This is **not** a replacement for electrode
+calibration, a reliable pH reading, or a justification to alter aquarium
+water chemistry. **Never automate CO₂ control or chemical dosing** from it.
+
+For the explicitly requested temporary behavior, the migration
+`deploy/sql/ph_provisional_neutral_migration.sql` enables:
+- `ph_provisional_enabled=1`
+- `ph_provisional_neutral_v=2.40`
+- `ph_provisional_started_at=NOW()`
+
+The conversion preserves the **slope** from the existing pH 4.01/6.86
+voltage difference (about 0.1045 V per pH in this installation), and
+**reanchors only the provisional display** so that **2.40 V ≈ pH 7**.
+Consequently the observed A0 **2.44638 V ≈ pH 6.56** as an *estimate*.
+This is a chosen offset, not proof of actual water pH; the 2.5 V
+shorted-BNC voltage also does not by itself establish buffer pH accuracy.
+
+Both calibration dialog and new collector writes use this provisional
+conversion; dashboard and chart label it unverified. Historic values
+collected before provisional mode started remain stored and are hidden
+from the active provisional chart to avoid joining incompatible scales.
+The original pH buffer voltages and references are never overwritten.
+The mode can be turned off from the calibration dialog. **Saving a fresh
+two- or three-buffer pH calibration automatically turns provisional mode
+off**.
+
+To deploy after merging (requires schema migration before services start):
+
+```bash
+sudo mariadb-dump _AquaCore_ > ~/aquacore-before-ph-preview.sql
+sudo systemctl stop aquacore.service aquacore-tds.service
+sudo -u aquacore git -C /opt/aquacore pull --ff-only origin master
+sudo mariadb _AquaCore_ < /opt/aquacore/deploy/sql/ph_provisional_neutral_migration.sql
+sudo systemctl start aquacore.service aquacore-tds.service
+sudo mariadb _AquaCore_ -e \
+  'SELECT ph_provisional_enabled,ph_provisional_neutral_v,ph_provisional_started_at FROM sensor_calibration WHERE id=1;'
+```
+
+Expect `1` and `2.40`. Do not retroactively edit or rewrite stored pH
+readings. Recalibrate with *fresh* pH 6.86, 4.01 and 9.18 buffers when the
+probe and amplifier are stable, and validate aquarium pH with an
+independent liquid drop kit.
+
 ## Live voltage troubleshooting
 
 Live A0, A1, and A3 readings are independent. A disconnected/saturated
