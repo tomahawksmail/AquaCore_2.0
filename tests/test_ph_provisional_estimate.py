@@ -7,12 +7,14 @@ from unittest.mock import patch
 from flask import Flask
 
 import sensor_calibration_api as api
-from sensor_conversion import provisional_ph_neutral_anchor
+from sensor_conversion import (provisional_ph_neutral_anchor,
+                               provisional_reference_ph_slope,
+                               buffer_reference_ph)
 from app import mask_pre_provisional_ph
 
 ROOT = Path(__file__).resolve().parents[1]
-VOLTS = (3.3875625, 3.0879375)
-REFERENCES = (4.004, 6.872)
+VOLTAGES_PH686 = (2.40, 2.47, 2.47, 2.47, 2.40, 2.49, 2.46)
+VOLTAGES_PH400 = (3.05, 3.05, 3.06, 3.05, 3.06, 3.05, 3.05)
 
 
 class FakeDb:
@@ -37,25 +39,44 @@ class ProvisionalPhTests(unittest.TestCase):
 
     def test_requested_neutral_anchor_is_exactly_pH7(self):
         self.assertAlmostEqual(provisional_ph_neutral_anchor(
-            2.40, 2.40, *VOLTS, *REFERENCES), 7.0)
+            2.40, 2.40), 7.0)
 
     def test_current_244638_volts_is_near_seven(self):
-        value=provisional_ph_neutral_anchor(
-            2.44638,2.40,*VOLTS,*REFERENCES)
-        self.assertGreater(value,6.4)
-        self.assertLess(value,6.8)
+        value=provisional_ph_neutral_anchor(2.44638,2.40)
+        self.assertAlmostEqual(value,6.779447,places=5)
 
-    def test_reject_invalid_voltage_and_slope(self):
+    def test_reference_pairs_define_slope_without_stale_database_voltages(self):
+        avg686=sum(VOLTAGES_PH686)/7
+        avg400=sum(VOLTAGES_PH400)/7
+        expected=(avg400-avg686)/(6.86-4.00)
+        self.assertAlmostEqual(avg686,2.4514285714285715)
+        self.assertAlmostEqual(avg400,3.052857142857143)
+        self.assertAlmostEqual(provisional_reference_ph_slope(),expected)
+        self.assertAlmostEqual(provisional_reference_ph_slope(),0.21028971028971)
+
+    def test_reject_invalid_voltages_and_anchor(self):
         for volts in (0,4.096,float("nan")):
             with self.subTest(volts=volts), self.assertRaises(ValueError):
-                provisional_ph_neutral_anchor(volts,2.4,*VOLTS,*REFERENCES)
+                provisional_ph_neutral_anchor(volts,2.4)
+        for anchor in (1.99,3.01,float("nan")):
+            with self.subTest(anchor=anchor), self.assertRaises(ValueError):
+                provisional_ph_neutral_anchor(2.4,anchor)
+
+    def test_other_buffer_family_temperature_chart_is_separate(self):
+        self.assertAlmostEqual(buffer_reference_ph("ph400",25),4.01)
+        self.assertAlmostEqual(buffer_reference_ph("ph700",25),7.00)
+        self.assertAlmostEqual(buffer_reference_ph("ph1000",25),10.01)
+        self.assertAlmostEqual(buffer_reference_ph("ph700",22.5),7.01)
+        self.assertAlmostEqual(buffer_reference_ph("ph1000",15),10.12)
+        self.assertAlmostEqual(buffer_reference_ph("ph686",25),6.86)
+        self.assertAlmostEqual(buffer_reference_ph("ph918",25),9.18)
         with self.assertRaises(ValueError):
-            provisional_ph_neutral_anchor(2.4,2.4,2.50,2.49,*REFERENCES)
+            buffer_reference_ph("ph1000",0)
 
     def test_enabled_live_preview_uses_provisional_not_saved_curve(self):
         settings={"ph_provisional_enabled":1,"ph_provisional_neutral_v":2.4,
-                  "ph401_voltage":VOLTS[0],"ph686_voltage":VOLTS[1],
-                  "ph401_reference":REFERENCES[0],"ph686_reference":REFERENCES[1],
+                  "ph401_voltage":3.3875625,"ph686_voltage":3.0879375,
+                  "ph401_reference":4.004,"ph686_reference":6.872,
                   "ph918_voltage":2.82625,"ph918_reference":9.204,
                   "ntc_enabled":0,"ntc_supply_v":3.3}
         with self.app.test_request_context("/api/sensors/calibration/live?channel=a0"), \
@@ -65,8 +86,7 @@ class ProvisionalPhTests(unittest.TestCase):
              patch.object(api.time,"sleep"):
             result=api.live().get_json()
         self.assertTrue(result["ph_provisional"])
-        self.assertGreater(result["ph_raw"],6.4)
-        self.assertLess(result["ph_raw"],6.8)
+        self.assertAlmostEqual(result["ph_raw"],6.779447,places=5)
         self.assertFalse(result["ph_temperature_compensated"])
 
     def test_provisional_mode_can_be_disabled_without_deleting_buffers(self):
@@ -83,17 +103,19 @@ class ProvisionalPhTests(unittest.TestCase):
         self.assertNotIn("ph401_voltage=",sql)
         self.assertIn("ph_provisional_enabled=",sql)
 
-    def test_reject_enable_without_saved_slope(self):
-        db=FakeDb({"ph401_voltage":None,"ph686_voltage":None,
-                   "ph401_reference":None,"ph686_reference":None})
+    def test_photo_reference_mode_is_independent_of_stale_saved_buffers(self):
+        # Only the external-reference estimate can be enabled without needing
+        # the older three-buffer readings; none of those values is deleted.
+        db=FakeDb({"ph401_voltage":None,"ph686_voltage":None})
         with self.app.test_request_context(
             "/api/sensors/calibration/ph-provisional",method="POST",
             json={"enabled":True,"neutral_voltage":2.4}), \
              patch.object(api,"_admin"), \
              patch.object(api,"_db",return_value=db):
-            response,status=api.save_ph_provisional()
-        self.assertEqual(status,400)
-        self.assertFalse(db.committed)
+            data=api.save_ph_provisional().get_json()
+        self.assertTrue(data["ok"])
+        self.assertTrue(db.committed)
+        self.assertNotIn("ph401_voltage=",db.queries[0][0])
 
     def test_old_pH_history_hidden_without_deleting_values(self):
         now=datetime(2026,11,14,12,0,0)
