@@ -9,6 +9,7 @@
     {% set current = latest[field] if latest and latest[field] is not none else none %}
     {% set prior = previous[field] if previous and previous[field] is not none else none %}
     {% set delta = (current - prior) if current is not none and prior is not none else none %}
+    {% set shown_delta = (delta|round(1)) if delta is not none else none %}
     <article class="card metric live-spark-card" id="card-{{ field }}">
         <div class="metric-name"><i
                 class="mdi {{ {'temp':'mdi-thermometer','ph':'mdi-water-outline','tds':'mdi-water-check-outline'}.get(field, 'mdi-chart-line') }}"
@@ -16,12 +17,11 @@
         </div>
         <strong id="m-{{ field }}">{{ '%.1f'|format(current) if current is not none else '—' }} <small>{{ unit
             }}</small></strong>
-        <span id="trend-{{ field }}"
-              class="trend {{ 'up' if delta is not none and delta > 0 else ('down' if delta is not none and delta < 0 else 'flat') }}">
-      {% if delta is none %}<i class="mdi mdi-minus-circle-outline"></i> No previous reading
-      {% elif delta > 0 %}<i class="mdi mdi-trending-up"></i> +{{ '%.1f'|format(delta) }} {{ unit }} vs previous
-      {% elif delta < 0 %}<i class="mdi mdi-trending-down"></i> {{ '%.1f'|format(delta) }} {{ unit }} vs previous
-      {% else %}<i class="mdi mdi-trending-neutral"></i> No change{% endif %}
+        <span id="trend-{{ field }}" {% if shown_delta == 0 %}hidden{% endif %}
+              class="trend {{ 'up' if shown_delta is not none and shown_delta > 0 else ('down' if shown_delta is not none and shown_delta < 0 else 'flat') }}">
+      {% if shown_delta is none %}<i class="mdi mdi-minus-circle-outline"></i> No previous reading
+      {% elif shown_delta > 0 %}<i class="mdi mdi-trending-up"></i> +{{ '%.1f'|format(shown_delta) }} {{ unit }} vs previous
+      {% elif shown_delta < 0 %}<i class="mdi mdi-trending-down"></i> {{ '%.1f'|format(shown_delta) }} {{ unit }} vs previous{% endif %}
     </span>
         <div class="live-spark-chart" data-live-field="{{field}}" aria-label="{{label}} recent trend"></div>
     </article>
@@ -71,16 +71,34 @@
           const unit = key === 'temp' ? '°C' : (key === 'tds' ? 'ppm' : '');
           const el = document.getElementById('m-' + key);
           const trend = document.getElementById('trend-' + key);
-          if (value == null) { el.firstChild.textContent = '— '; continue; }
+          if (value == null) {
+            el.firstChild.textContent = '— ';
+            trend.hidden = true;
+            trend.replaceChildren();
+            continue;
+          }
           el.firstChild.textContent = Number(value).toFixed(1) + ' ';
           const previous = data.previous?.[key];
           let cls='flat', icon='mdi-minus-circle-outline', label='No previous reading';
           if (previous != null) {
             const diff = Number(value) - Number(previous);
-            if (Math.abs(diff) < 0.00001) { icon='mdi-trending-neutral'; label='No change'; }
-            else if (diff > 0) { cls='up'; icon='mdi-trending-up'; label='+'+diff.toFixed(1)+' '+unit+' vs previous'; }
-            else { cls='down'; icon='mdi-trending-down'; label=diff.toFixed(1)+' '+unit+' vs previous'; }
+            const shownDiff = Number(diff.toFixed(1));
+            // No trend for zero at the displayed one-decimal precision.
+            // Do not show "+0.0" or "No change".
+            if (shownDiff === 0) {
+              trend.hidden = true;
+              trend.replaceChildren();
+              continue;
+            }
+            if (shownDiff > 0) {
+              cls='up'; icon='mdi-trending-up';
+              label='+'+shownDiff.toFixed(1)+' '+unit+' vs previous';
+            } else {
+              cls='down'; icon='mdi-trending-down';
+              label=shownDiff.toFixed(1)+' '+unit+' vs previous';
+            }
           }
+          trend.hidden = false;
           trend.className='trend '+cls;
           trend.innerHTML='<i class="mdi '+icon+'" aria-hidden="true"></i> ';
           trend.append(document.createTextNode(label));
