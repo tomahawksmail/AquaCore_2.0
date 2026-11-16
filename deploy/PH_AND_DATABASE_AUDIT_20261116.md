@@ -34,11 +34,15 @@ using pH for any automated CO₂/dosing decisions.
    calibration history, and drops 11 unused calibration columns. It
    preserves the A1 enable flag, NTC offset/factor, TDS factor and real
    temperature/TDS history.
-5. Start the updated web + sensor collector and inspect
+5. Install the updated systemd collector unit: `sudo cp
+   /opt/aquacore/deploy/systemd/aquacore-tds.service /etc/systemd/system/`;
+   run `sudo systemctl daemon-reload`. The legacy `--temperature 22`
+   flag is no longer supported.
+6. Start the updated web + sensor collector and inspect
    `sudo journalctl -u aquacore-tds.service -n 30 --no-pager`.
    New log mode is `TWO_BUFFER_A1_ATC`. Confirm pH near 6.86 at A0
    2.54 V when water is around the assumed calibration temperature.
-6. Only after validating new code and backups, consider the **optional**
+7. Only after validating new code and backups, consider the **optional**
    `deploy/sql/cleanup_unused_db_fields.sql`. It clears obsolete old
    pH cells, fake all-zero outage records and eight unused host metric
    columns only if they contain no nonzero values. This file never runs
