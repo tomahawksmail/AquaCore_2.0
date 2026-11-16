@@ -134,6 +134,24 @@ def mask_pre_provisional_ph(rows, enabled, started_at, field='Datetime'):
     return rows
 
 
+def mask_stale_sensor_reading(row, current_time=None, max_age_seconds=90):
+    """Never present a stopped collector's last measurement as live water data.
+
+    Historical samples are retained. Missing, future or old timestamps cause
+    the three live readings to become NULL, not fabricated zeros.
+    """
+    if row is None:
+        return None, True
+    stamp = row.get('Datetime')
+    if current_time is None:
+        current_time = datetime.now(stamp.tzinfo) if isinstance(stamp, datetime) and stamp.tzinfo else datetime.now()
+    age = (current_time - stamp).total_seconds() if isinstance(stamp, datetime) else None
+    stale = age is None or not 0 <= age <= max_age_seconds
+    if stale:
+        return {**row, 'temp': None, 'ph': None, 'tds': None}, True
+    return row, False
+
+
 @app.get('/aquarium')
 @logged_in
 def dashboard():
@@ -145,13 +163,14 @@ def dashboard():
     ph_provisional, ph_started = provisional_ph_status()
     mask_pre_provisional_ph(recent,ph_provisional,ph_started)
     mask_pre_provisional_ph(points,ph_provisional,ph_started)
+    latest, sensor_stale = mask_stale_sensor_reading(latest)
     options=query('SELECT * FROM options LIMIT 1',one=True) or {}
     statuses=query('SELECT * FROM status LIMIT 1',one=True) or {}
     overrides=query('SELECT device,until_at FROM manual_overrides WHERE until_at > NOW()')
     manual={r['device']: r['until_at'] for r in overrides}
     return render_template('dashboard.html', latest=latest, previous=previous, points=list(reversed(points)),
                            options=options, statuses=statuses, metrics=METRICS, devices=DEVICES, manual=manual,
-                           ph_provisional=ph_provisional)
+                           ph_provisional=ph_provisional, sensor_stale=sensor_stale)
 
 # Existing status flags are software requests, NOT verified relay feedback.
 # Automation in the legacy service may subsequently overwrite these flags.
@@ -213,9 +232,13 @@ def readings():
     mask_pre_provisional_ph(rows,ph_provisional,ph_started)
     r=rows[0] if rows else None
     prev=rows[1] if len(rows)>1 else None
-    if not r: return jsonify({})
+    if not r:
+        return jsonify(temp=None, ph=None, tds=None, previous={}, stale=True,
+                       ph_provisional=ph_provisional)
+    r, stale = mask_stale_sensor_reading(r)
     result={k:(v.isoformat() if isinstance(v,datetime) else v) for k,v in r.items() if k!='Id'}
-    result['previous']={k:prev[k] for k in ('temp','ph','tds')} if prev else {}
+    result['previous']={k:prev[k] for k in ('temp','ph','tds')} if prev and not stale else {}
+    result['stale']=stale
     result['ph_provisional']=ph_provisional
     return jsonify(result)
 
@@ -239,6 +262,7 @@ def history():
           FROM data
          WHERE `Datetime` >= NOW() - INTERVAL %s DAY
            AND `Datetime` <= NOW()
+           AND NOT (`temp` <=> 0 AND `ph` <=> 0 AND `tds` <=> 0)
          GROUP BY FLOOR(UNIX_TIMESTAMP(`Datetime`) / %s)
          ORDER BY time ASC
     """, (seconds, seconds, days, seconds))
