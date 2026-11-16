@@ -208,7 +208,12 @@ def read_aqua():
             row = cur.fetchone()
     if row is None:
         return metric_header("🐠 AQUARIUM METRICS", None, now) + "No readings available."
-    zero = all(row.get(k) == 0 for k in ("temp","ph","tds"))
+    stamp = row.get("Datetime")
+    stale = not isinstance(stamp, datetime) or not 0 <= (now-stamp).total_seconds() <= 90
+    if stale:
+        # As on the web, do not present old water values as if currently live.
+        row = {**row, "temp":None, "ph":None, "tds":None}
+    zero = stale or all(row.get(k) == 0 for k in ("temp","ph","tds"))
     return (metric_header("🐠 AQUARIUM METRICS", row.get("Datetime"), now, all_zero=zero)
             + "💧 WATER QUALITY\n"
             + f"🌡 Temperature: {fmt(row['temp'])} °C\n"
@@ -411,7 +416,7 @@ def chart_image(which):
                     solid_capstyle="round")
             ax.grid(alpha=0.16)
         axes[-1].set_xlim(datetime.now()-timedelta(hours=24), datetime.now())
-        axes[-1].xaxis.set_major_locator(HourLocator(interval=3))
+        axes[-1].xaxis.set_major_locator(HourLocator(byhour=range(0, 24, 3)))
     else:
         from telegram_system_trends import split_system_samples, trailing_mean
         segments = split_system_samples(rows, max_gap_seconds=1200)
@@ -461,7 +466,8 @@ def chart_image(which):
         # Keep 24h time scale, matching the System Metrics web view.
         axes[-1].set_xlim(datetime.now() - timedelta(hours=24), datetime.now())
 
-    axes[-1].xaxis.set_major_locator(AutoDateLocator(maxticks=7))
+    if which == "system":
+        axes[-1].xaxis.set_major_locator(AutoDateLocator(maxticks=7))
     axes[-1].xaxis.set_major_formatter(DateFormatter("%H:%M"))
     fig.suptitle("AquaCore · Water quality · Last 24 hours" if which == "aqua" else "AquaCore · System metrics", color="white")
     fig.autofmt_xdate()
