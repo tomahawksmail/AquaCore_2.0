@@ -242,37 +242,41 @@ sudo systemctl restart aquacore.service aquacore-telegram.service aquacore-sched
 ## Testing criteria
 Verify SSH, MariaDB connectivity/schema, login and CSRF, scheduler mode, Telegram owner and additional users, relay input polarity, relay behavior during DB outage, Tailscale certificate/access, reboot persistence and power-loss/recovery **before connecting mains equipment**.
 
-## ADS1115 TDS database collector (provisional ppm)
+## ADS1115 water sensor collector (A0 pH / A1 NTC / A3 TDS)
 
-The ADS1115 ADC has been detected at **I2C bus 2, address 0x48**, with the analog TDS transmitter connected to **A3**. `tds_collector.py` samples A3, applies the same temperature-compensated DFRobot-style polynomial as `sensorstest.py`, and multiplies by the **provisional 0.2626 factor** derived by assuming boiled Primo water was 13 ppm. **This is not a true calibration.** Default water temperature is **22 C**, manually estimated; change `--temperature` when water temperature changes.
+The `aquacore-tds.service` process samples ADS1115 0x48 on I²C bus 2,
+writes calibrated pH and TDS using measured A1 temperature, and stores
+missing values as NULL (no fixed 22°C estimate). It normally writes one
+real sample every 30 seconds. The scheduler no longer writes fake zero
+water measurements during sensor outages.
 
-Only `data.tds` receives a measured value; `data.temp` and `data.ph` are inserted as `NULL`, because those probes have not been configured. One row is written every 30 seconds, using MariaDB `NOW()`; errors do not insert fake TDS readings. The scheduler's missing-data zero fallback still applies after 60s without any rows.
+**Prerequisites:** install the 3.3V A1 NTC divider; enable and calibrate A1
+in MariaDB; then deploy the two-buffer schema migration and new collector
+code together. Existing pH voltages become 2.54 V = 6.86 and 3.04 V = 4.01,
+with both reference temperatures initially assumed 25°C. Verify and
+recapture both buffers with actual liquid temperatures before trusting pH.
 
-### One-time test before enabling service
+Read-only A0/A1/A3 hardware inspection:
+
 ```bash
-sudo -u aquacore git -C /opt/aquacore pull --ff-only origin master
-sudo usermod -aG i2c aquacore
-sudo bash -c '
-set -a
-. /etc/aquacore/web.env
-set +a
-cd /opt/aquacore
-exec runuser -u aquacore -- .venv/bin/python tds_collector.py --bus 2 --temperature 22 --once
-'
-sudo mariadb _AquaCore_ -e 'SELECT Id,Datetime,temp,ph,tds FROM data ORDER BY Id DESC LIMIT 3;'
+sudo -u aquacore -g i2c /opt/aquacore/.venv/bin/python \
+  /opt/aquacore/sensorstest.py --bus 2 --all-channels --ntc --once
 ```
 
-### Enable native service
+**Service launch changed:** remove the legacy `--temperature 22` flag.
+After updating source, copy the replacement unit and reload systemd
+before starting the collector:
+
 ```bash
 sudo cp /opt/aquacore/deploy/systemd/aquacore-tds.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now aquacore-tds.service
+sudo systemctl restart aquacore-tds.service
 sudo journalctl -u aquacore-tds.service -n 30 --no-pager
 ```
 
-If I2C is denied, verify `getent group i2c`, `ls -l /dev/i2c-2` and the service's `SupplementaryGroups=i2c`. Do not start an additional copy of the collector manually while the service runs.
-
-**Electrical caution:** The ADC was earlier powered at 5 V while its I2C pins directly connected to the Orange Pi's 3.3 V GPIO. Use a proper level shifter or power ADS1115 at 3.3 V with analog voltage in range before running continuously. The TDS transmitter can remain at 5 V if its actual analog output stays within the ADC supply and input limits.
+See [sensor and database migration guide](PH_AND_DATABASE_AUDIT_20261116.md).
+The 0.2626 TDS multiplier remains operator-provisional until independently
+checked with a certified conductivity standard.
 
 ## Fertilizer pump — once-daily timed pulse
 
@@ -434,69 +438,41 @@ network and use a suitable bidirectional I²C level shifter if needed.
 **Never allow 5 V on Orange Pi 3.3 V GPIO.** The current ADC PGA is ±4.096 V;
 an A1/A0/A3 input can saturate above +4.096 V despite the ADC's 5 V VDD.
 
-### Temperature data and three-buffer pH calibration
+### Water temperature and two-buffer pH calibration
 
-The `aquacore-tds.service` collector writes TDS, optional NTC water
-temperature, and calibrated pH into the existing `data` table. pH uses
-saved 4.01 / 6.86 / 9.18 reference voltages and, only after temperature
-calibration, optional Nernst slope compensation from A1. When A1 is disabled
-or disconnected, it does not invent a temperature from the TDS fallback.
-The existing TDS multiplier is provisional until checked with a standard.
+The current A1 NTC setup uses a fixed 10k resistor from **3.3 V** to
+ADS1115 A1, plus a 10k B3950 NTC from A1 to ground. It is configured
+and calibrated in MariaDB; do not use legacy NTC environment flags.
 
-**NTC configuration is stored in the `sensor_calibration` MariaDB table.**
-Do not set `NTC_ENABLED` or `NTC_SUPPLY_V` in the web service environment.
+**A0 calibration references:** 2.54 V = pH 6.86 and 3.04 V = pH 4.01.
+The reference temperatures are provisionally assumed to be **25°C**
+until the user recaptures both buffers with measured buffer-liquid temperatures.
+A1 must be enabled and calibrated to calculate real pH and TDS in the
+running collector: no fixed-water-temperature substitute is used.
 
-New and existing installations must add the DB columns before deploying
-the matching web and collector changes:
+Before deploying the new sensor code on an existing installation, take
+a verified backup, secure relay states and stop services. Apply the
+**one-time** `deploy/sql/ph_two_buffer_ntc_migration.sql` before restart;
+it removes obsolete temporary and three-buffer calibration columns.
+Do NOT run the clean-install SQL on existing data.
 
-```bash
-sudo mariadb-dump _AquaCore_ > ~/aquacore-before-ntc-db.sql
-sudo systemctl stop aquacore.service aquacore-tds.service
-sudo -u aquacore git -C /opt/aquacore pull --ff-only origin master
-sudo mariadb _AquaCore_ < /opt/aquacore/deploy/sql/ntc_settings_migration.sql
-sudo mariadb _AquaCore_ < /opt/aquacore/deploy/sql/ntc_33v_divider_migration.sql
-sudo systemctl start aquacore.service aquacore-tds.service
-sudo mariadb _AquaCore_ -e \
-  'SELECT ntc_enabled,ntc_supply_v FROM sensor_calibration WHERE id=1;'
-```
-
-The migration is non-destructive. `ntc_enabled=0` (OFF) and
-`ntc_supply_v=3.3` (V) are the defaults. When your NTC and fixed resistor
-arrive, wire them with power disconnected, then go to **Settings →
-Sensor Calibration → Temperature**, select **Enable A1 NTC**, confirm
-**3.30 V**, and click **Save A1 hardware settings**. Calibrate A1 against
-a separate thermometer before trusting its readings.
-
-The temperature sensor can also be used while calibrating pH **only if
-the pH and temperature probes are immersed together in the same buffer**.
-Otherwise enter each buffer's measured temperature manually.
-
-Read-only ADC check after wiring:
+Read-only wiring check:
 
 ```bash
 sudo -u aquacore -g i2c /opt/aquacore/.venv/bin/python \
-  /opt/aquacore/sensorstest.py --bus 2 --all-channels --ntc --ntc-supply 3.3 --once
+  /opt/aquacore/sensorstest.py --bus 2 --all-channels --ntc --once
 ```
 
-See [the complete three-buffer calibration and wiring guide](PH_THREE_BUFFER.md)
-for the workflow and temperature safety constraints.
+See [the calibration and database migration guide](PH_AND_DATABASE_AUDIT_20261116.md)
+for sample, calibration, MariaDB cleanup and Telegram/web chart consistency.
 
-## Sensor calibration dialog and active-low water leak Telegram alarm (November 2026)
+## Sensor calibration and active-low water leak Telegram alarm (November 2026)
 
-### Apply SQL migration before restarting the sensor collector or web process
-
-```bash
-sudo -u aquacore git -C /opt/aquacore pull --ff-only origin master
-sudo mariadb _AquaCore_ < /opt/aquacore/deploy/sql/sensor_calibration.sql
-sudo mariadb _AquaCore_ -e "SELECT * FROM sensor_calibration;"
-sudo systemctl restart aquacore.service aquacore-tds.service
-```
-
-In **Settings → Sensor calibration → Calibrate sensors**, an admin can capture averaged, stability-checked ADS1115 A1 and A0 readings, then explicitly save. A reading must be captured within 15 minutes before saving; unsteady or ADC-saturated signals are rejected. Pump operations are unaffected.
-
-**Temperature:** The A1 NTC divider uses a **3.3 V fixed 10 kΩ pull-up** and NTC to common ground. Until it is installed, leave `sensor_calibration.ntc_enabled=0`. Enable the 3.3 V divider settings through the Temperature tab after wiring, then capture A1 in the same water as an independent thermometer, enter the measured °C (5–40°C), and save. The offset is bounded to ±5°C and stored in `sensor_calibration.temp_offset_c`.
-
-**pH:** Place the probe in certified pH 7.00 buffer and capture A0 after stabilization, rinse, place in certified pH 4.00 buffer and capture again, check the certification acknowledgement and save. The collector automatically uses the saved `ph7_voltage` and `ph4_voltage` from `sensor_calibration` for new data rows. Drinking water, homemade vinegar dilutions and 5% vinegar are **not** certified calibration buffers. No pH will be reported unless valid reference voltages are stored. The existing pH ADC wiring is not modified in this update. Calibration cannot fix unsafe 5V-to-3.3V I2C pull-up or A0 overvoltage: **check actual signals independently**.
+In Settings → Sensor calibration, calibrate A1 with a glass thermometer.
+Then check the current pH 6.86 / 4.01 pair; recapture it using both probes
+immersed in the *same* pH buffer, or manually enter its actual temperature.
+Raw pH voltage refreshes every 0.5 seconds, and saved readings use a robust
+multi-sample median. Calibrating pH does not energize any relay.
 
 ### Water alarm wiring — physical header pin 35 / PI2 / line 258
 

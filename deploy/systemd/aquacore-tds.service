@@ -1,5 +1,5 @@
 [Unit]
-Description=AquaCore adjusted TDS sensor collector (ADS1115 A3)
+Description=AquaCore A0 pH / A1 NTC / A3 TDS collector (ADS1115)
 Wants=network-online.target
 After=network-online.target mariadb.service
 
@@ -11,7 +11,7 @@ SupplementaryGroups=i2c
 WorkingDirectory=/opt/aquacore
 Environment=PYTHONUNBUFFERED=1
 EnvironmentFile=/etc/aquacore/web.env
-ExecStart=/opt/aquacore/.venv/bin/python /opt/aquacore/tds_collector.py --bus 2 --temperature 22 --interval 30
+ExecStart=/opt/aquacore/.venv/bin/python /opt/aquacore/tds_collector.py --bus 2 --interval 30
 Restart=on-failure
 RestartSec=5
 UMask=0077

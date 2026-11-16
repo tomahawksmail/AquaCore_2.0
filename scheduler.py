@@ -73,97 +73,9 @@ def reconcile():
         except Exception:
             con.rollback();raise
 
-def insert_missing_sensor_zeros():
-    """Write a 0-valued sample once per minute while no sensor rows arrive.
-
-    Existing scheduler process only; never start another watchdog.
-    A fresh real sensor row resets the timeout automatically.
-    """
-    from app import db
-    with db() as con:
-        try:
-            with con.cursor() as cur:
-                # Avoid double inserts if the scheduler is accidentally started twice.
-                cur.execute("SELECT GET_LOCK('aquacore_sensor_sample_60s', 0) AS acquired")
-                if cur.fetchone()['acquired'] != 1:
-                    return
-                try:
-                    cur.execute('SELECT NOW() AS now_time')
-                    now = cur.fetchone()['now_time']
-                    cur.execute('SELECT `Datetime` FROM `data` ORDER BY `Datetime` DESC, `Id` DESC LIMIT 1')
-                    latest = cur.fetchone()
-                    if latest and latest['Datetime'] is not None:
-                        age = (now - latest['Datetime']).total_seconds()
-                        if age < 60 or age < 0:
-                            return
-                    cur.execute('INSERT INTO `data` (`Datetime`,`temp`,`ph`,`tds`) VALUES (%s,0,0,0)', (now,))
-                    con.commit()
-                    logging.info('No sensor data for 60 seconds: inserted temp=0, ph=0, tds=0')
-                finally:
-                    cur.execute("SELECT RELEASE_LOCK('aquacore_sensor_sample_60s')")
-            con.commit()
-        except Exception:
-            con.rollback()
-            raise
-
-def insert_missing_system_zeros():
-    """Insert a zero sample after 60s without new psutil rows.
-
-    Uses the DB clock, a named lock and actual psutil column metadata.
-    Never overwrites real rows or guesses a timestamp when none exists.
-    """
-    from app import db
-    with db() as con:
-        locked=False
-        try:
-            with con.cursor() as cur:
-                cur.execute("SELECT GET_LOCK('aquacore_psutil_zero_60s',0) AS acquired")
-                locked=cur.fetchone()['acquired']==1
-                if not locked:return
-                cur.execute("SHOW COLUMNS FROM `psutil`")
-                columns=cur.fetchall()
-                names={row['Field'] for row in columns}
-                stamp=next((k for k in ('Datetime','datetime','Timestamp','timestamp','created_at','CreatedAt','date_time') if k in names),None)
-                if stamp is None:
-                    logging.warning('psutil has no recognized timestamp column; zero fallback skipped')
-                    return
-                cur.execute("SELECT NOW() AS t")
-                now=cur.fetchone()['t']
-                cur.execute("SELECT `"+stamp+"` AS sample_time FROM `psutil` ORDER BY `"+stamp+"` DESC, `Id` DESC LIMIT 1")
-                latest=cur.fetchone()
-                if latest and latest['sample_time'] is not None:
-                    age=(now-latest['sample_time']).total_seconds()
-                    if age<60 or age<0:return
-                numeric_types=('int','tinyint','smallint','mediumint','bigint','decimal','float','double','real')
-                numerical=[row['Field'] for row in columns
-                           if row['Field']!='Id' and row['Field']!=stamp
-                           and row['Type'].lower().startswith(numeric_types)
-                           and 'auto_increment' not in row.get('Extra','').lower()]
-                required=[row['Field'] for row in columns if row['Field'] not in numerical
-                          and row['Field'] not in (stamp,'Id') and row['Null']=='NO'
-                          and row['Default'] is None and 'auto_increment' not in row.get('Extra','').lower()]
-                if required:
-                    logging.warning('psutil has unsupported required columns: %s; skipping',required)
-                    return
-                if not numerical:
-                    logging.warning('psutil has no numeric metrics to zero')
-                    return
-                fields=[stamp]+numerical
-                placeholders=','.join(['%s']*len(fields))
-                sql='INSERT INTO `psutil` ('+','.join('`'+name+'`' for name in fields)+') VALUES ('+placeholders+')'
-                cur.execute(sql,[now]+[0]*len(numerical))
-                con.commit()
-                logging.info('Missing psutil readings: inserted zero row (%s fields)',len(numerical))
-        except Exception:
-            con.rollback()
-            raise
-        finally:
-            if locked:
-                try:
-                    with con.cursor() as cur:
-                        cur.execute("SELECT RELEASE_LOCK('aquacore_psutil_zero_60s')")
-                except Exception:
-                    logging.exception('Could not release psutil lock')
+# Sensor and system collectors are the only writers of measurement data.
+# Do not insert synthetic 0 readings on collector outages: the dashboard
+# detects stale timestamps and shows unavailable values instead.
 
 
 if __name__=='__main__':
@@ -173,10 +85,4 @@ if __name__=='__main__':
         try:
             reconcile()
         except Exception: logging.exception('Scheduler cycle failed')
-        try:
-            insert_missing_sensor_zeros()
-        except Exception: logging.exception('Sensor zero fallback failed')
-        try:
-            insert_missing_system_zeros()
-        except Exception: logging.exception('System zero fallback failed')
         time.sleep(5)

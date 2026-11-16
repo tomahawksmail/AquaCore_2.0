@@ -31,14 +31,14 @@ class CalibrationDialogLayoutTests(unittest.TestCase):
         self.assertIn('class="sensor-dialog-footer"', self.page)
 
     def test_ph_guided_capture_and_progress(self):
-        for kind in ("ph401", "ph686", "ph918"):
+        for kind in ("ph401", "ph686"):
             for prefix in ("sensor-capture-", "sensor-voltage-", "sensor-buffer-", "sensor-state-"):
                 self.assertIn('id="' + prefix + kind + '"', self.page)
         self.assertIn('id="sensor-ph-liquid-temp"', self.page)
         self.assertIn('id="sensor-ph-progress-bar"', self.page)
         self.assertNotIn('id="sensor-confirm-buffers"', self.page)
         self.assertNotIn('sensor-confirm-buffers', self.js)
-        self.assertIn("count !== 3;", self.js)
+        self.assertIn("count !== 2;", self.js)
         self.assertIn("byId('sensor-ph-progress-bar').value = count", self.js)
         self.assertIn("setCaptureBusy(true)", self.js)
         self.assertIn("setCaptureBusy(false)", self.js)
@@ -46,7 +46,7 @@ class CalibrationDialogLayoutTests(unittest.TestCase):
     def test_live_voltage_failure_is_channel_specific(self):
         api = (ROOT / "sensor_calibration_api.py").read_text(encoding="utf8")
         self.assertIn("voltage_errors=errors", api)
-        self.assertIn("readings[key] = None", api)
+        self.assertIn('readings = {"a0": None, "a1": None, "a3": None}', api)
         self.assertIn("readings[\"a0\"] is not None", api)
         self.assertIn("snapshot.voltage_errors?.[channel]", self.js)
         self.assertIn("api('/live?channel=' + activeChannel)", self.js)
@@ -54,7 +54,9 @@ class CalibrationDialogLayoutTests(unittest.TestCase):
             self.assertIn('id="sensor-voltage-error-' + channel + '"', self.page)
         self.assertIn("Read failed", self.js)
         self.assertIn("value !== null && value !== undefined", self.js)
-        self.assertNotIn("confirmed_buffers", api[api.index('elif kind == "ph3"'):api.index('elif kind == "ph":')])
+        self.assertNotIn("confirmed_buffers", api)
+        self.assertNotIn('id="sensor-ph-provisional-enabled"', self.page)
+        self.assertNotIn('id="sensor-capture-ph918"', self.page)
 
     def test_scrolling_is_vertical_inside_dialog_and_buttons_remain_visible(self):
         self.assertIn(".sensor-dialog-scroll { flex:1 1 auto;", self.css)
@@ -65,8 +67,8 @@ class CalibrationDialogLayoutTests(unittest.TestCase):
         self.assertIn("@media(max-width:630px)", self.css)
 
     def test_only_ui_changes_and_refreshes_stylesheet_assets(self):
-        self.assertIn("20261114-ph-reference-table-v12", self.base)
-        self.assertIn("20261114-ph-reference-table-v12", self.page)
+        self.assertIn("20261116-ph-two-buffer-a1", self.base)
+        self.assertIn("20261116-ph-two-buffer-a1", self.page)
         self.assertIn('id="sensor-ph-auto-temperature"', self.page)
         self.assertIn('id="sensor-ph-atc-status"', self.page)
         self.assertIn('id="sensor-ph-ntc-status"', self.page)
@@ -89,7 +91,7 @@ class CalibrationDialogLayoutTests(unittest.TestCase):
         self.assertIn("refreshLive();", self.js)
         self.assertIn("setInterval(refreshLive, 500)", self.js)
         self.assertIn("captured[name] = data", self.js)
-        self.assertIn("await api('/save', {kind:'ph3'})", self.js)
+        self.assertIn("await api('/save', {kind:'ph2'})", self.js)
 
 
 if __name__ == "__main__":

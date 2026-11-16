@@ -32,7 +32,7 @@
             {% if session.get('role')|int != 1 %}disabled{% endif %}>
       <i class="mdi mdi-tune-variant" aria-hidden="true"></i> Calibrate sensors
     </button>
-    <p class="control-disclaimer">Temperature calibration requires the 10k B3950 thermistor divider on A1. pH requires certified 7.00 and 4.00 buffer solutions on A0.</p>
+    <p class="control-disclaimer">Temperature calibration requires the 10k B3950 thermistor divider on A1. pH uses pH 6.86 and 4.01 buffers on A0.</p>
   </section>
   <section class="card settings-card">
     <div class="settings-section-head">
@@ -502,49 +502,16 @@
       <section class="sensor-tab-panel" id="sensor-panel-ph" role="tabpanel" aria-labelledby="sensor-tab-ph" hidden>
         <div class="sensor-panel-intro">
           <span class="sensor-panel-icon"><i class="mdi mdi-flask-outline" aria-hidden="true"></i></span>
-          <div><h3>Three-buffer pH calibration</h3><p>pH electrode · Channel A0 · 4.01 / 6.86 / 9.18</p></div>
+          <div><h3>Two-buffer pH calibration</h3><p>pH electrode · Channel A0 · 6.86 / 4.01</p></div>
         </div>
         <div class="sensor-readings-grid">
           <div class="sensor-live-readout"><span>Live electrode voltage</span><strong id="sensor-live-a0">—</strong><small id="sensor-voltage-error-a0" class="sensor-voltage-error" aria-live="off"></small><small>A0 · refreshed every 0.5 s</small></div>
-          <div class="sensor-live-readout"><span>Current pH estimate</span><strong id="sensor-live-ph">—</strong><small>Median of up to 5 recent readings · saved calibration</small></div>
+          <div class="sensor-live-readout"><span>Current pH reading</span><strong id="sensor-live-ph">—</strong><small>Median of up to 5 recent readings · saved calibration</small></div>
         </div>
-        <div class="sensor-guided-card">
-          <div class="sensor-step-heading">
-            <span class="sensor-step-bubble"><i class="mdi mdi-alert-outline" aria-hidden="true"></i></span>
-            <div><strong>Temporary unverified pH estimate</strong><small>2.40 V ≈ pH 7 (assumed); slope ≈ 0.2103 V/pH from 7 external reference pairs</small></div>
-          </div>
-          <label class="sensor-field sensor-auto-temp-label" for="sensor-ph-provisional-enabled">
-            <input id="sensor-ph-provisional-enabled" type="checkbox">
-            <span>Use temporary pH estimate instead of saved three-buffer curve</span>
-          </label>
-          <label class="sensor-field" for="sensor-ph-provisional-neutral">
-            <span>Assumed neutral A0 voltage (V)</span>
-            <input id="sensor-ph-provisional-neutral" type="number" min="2.0" max="3.0" step="0.01" value="2.40" required>
-          </label>
-          <div class="sensor-capture-controls">
-            <button id="sensor-save-ph-provisional" class="outline sensor-capture-button" type="button">Save provisional pH display</button>
-            <span id="sensor-ph-provisional-status" class="sensor-capture-value" role="status">Temporary mode off</span>
-          </div>
-          <p class="sensor-hint">UNVERIFIED: slope derived from seven external pH 6.86 / pH 4.00 voltage pairs (averages 2.45143 V / 3.05286 V). The neutral anchor is your assumption; this is NOT calibration of your probe. Do not use for CO₂, dosing or water changes. Saving a fresh three-buffer calibration disables this override.</p>
-        </div>
-        <details class="sensor-guided-card">
-          <summary><strong>Reference chart: pH 4.00 / 7.00 / 10.00 at different temperatures</strong></summary>
-          <p class="sensor-hint">Copied from your second chart, for these EXACT buffer families. This is not the reference chart for pH 6.86 or 9.18, and these values must never be substituted for aquarium water pH. AquaCore's 4.01 / 6.86 / 9.18 capture continues to use its matching buffer references.</p>
-          <div class="sensor-table-scroll">
-            <table>
-              <thead><tr><th>°C</th><th>pH 4.00</th><th>pH 7.00</th><th>pH 10.00</th></tr></thead>
-              <tbody>
-                <tr><td>10</td><td>4.00</td><td>7.06</td><td>10.18</td></tr>
-                <tr><td>15</td><td>4.00</td><td>7.04</td><td>10.12</td></tr>
-                <tr><td>20</td><td>4.00</td><td>7.02</td><td>10.06</td></tr>
-                <tr><td>25</td><td>4.01</td><td>7.00</td><td>10.01</td></tr>
-                <tr><td>30</td><td>4.01</td><td>6.99</td><td>9.97</td></tr>
-                <tr><td>35</td><td>4.02</td><td>6.98</td><td>9.93</td></tr>
-                <tr><td>40</td><td>4.03</td><td>6.97</td><td>9.89</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </details>
+        <p class="sensor-hint">Initial two-buffer references: 2.540 V = pH 6.86 and 3.040 V = pH 4.01 at assumed 25°C. Current saved voltages are displayed above when you open calibration.
+          The calibrated A1 sensor supplies actual aquarium temperature for automatic pH compensation.
+          Recalibrate with both probes immersed in the same buffer to capture its actual temperature.
+          Do not use a pH result for automatic CO₂ or dosing before validating it with fresh buffers.</p>
         <p id="sensor-ph-atc-status" class="sensor-hint">Live pH temperature compensation: checking A1…</p>
         <div class="sensor-guided-card sensor-temperature-card">
           <div class="sensor-step-heading"><span class="sensor-step-bubble"><i class="mdi mdi-thermometer" aria-hidden="true"></i></span><div><strong>Buffer liquid temperature</strong><small>Choose how to measure each calibration glass</small></div></div>
@@ -559,10 +526,10 @@
           <p class="sensor-hint">By default, enter the temperature of each calibration glass manually. Only check A1 when the pH electrode and the NTC are immersed together in that glass. A1 must be calibrated first.</p>
         </div>
         <div class="sensor-progress-heading">
-          <div><strong>Capture your three reference buffers</strong><small>Rinse the electrode between each glass. Wait for stable voltage before capture.</small></div>
-          <span id="sensor-ph-progress">0 of 3 captured</span>
+          <div><strong>Capture both reference buffers</strong><small>Rinse the electrode between each glass. Wait for stable voltage before capture.</small></div>
+          <span id="sensor-ph-progress">0 of 2 captured</span>
         </div>
-        <progress id="sensor-ph-progress-bar" class="sensor-ph-progress-bar" value="0" max="3" aria-label="pH buffers captured">0 of 3</progress>
+        <progress id="sensor-ph-progress-bar" class="sensor-ph-progress-bar" value="0" max="2" aria-label="pH buffers captured">0 of 2</progress>
         <div class="sensor-buffer-rows">
           <div class="sensor-buffer-card" id="sensor-buffer-ph686">
             <div class="sensor-buffer-heading"><span class="sensor-step-bubble">01</span><div><strong>pH 6.86 <small>first</small></strong><span>Near-neutral reference buffer</span></div><span class="sensor-buffer-state" id="sensor-state-ph686">Not captured</span></div>
@@ -578,15 +545,8 @@
               <span id="sensor-voltage-ph401" class="sensor-capture-value">— V · waiting for capture</span>
             </div>
           </div>
-          <div class="sensor-buffer-card" id="sensor-buffer-ph918">
-            <div class="sensor-buffer-heading"><span class="sensor-step-bubble">03</span><div><strong>pH 9.18</strong><span>Alkaline reference buffer</span></div><span class="sensor-buffer-state" id="sensor-state-ph918">Not captured</span></div>
-            <div class="sensor-capture-controls">
-              <button type="button" id="sensor-capture-ph918" class="outline sensor-capture-button"><i class="mdi mdi-crosshairs-gps" aria-hidden="true"></i> Capture 9.18</button>
-              <span id="sensor-voltage-ph918" class="sensor-capture-value">— V · waiting for capture</span>
-            </div>
-          </div>
         </div>
-        <p class="sensor-hint"><i class="mdi mdi-shield-check-outline" aria-hidden="true"></i> Capture all three buffers to enable Save. Each reading must be less than 15 minutes old, and failed saves preserve your previous calibration.</p>
+        <p class="sensor-hint"><i class="mdi mdi-shield-check-outline" aria-hidden="true"></i> Capture both buffers to enable Save. Each reading must be less than 15 minutes old, and failed saves preserve your previous calibration.</p>
       </section>
     </div>
 
@@ -603,7 +563,7 @@
     </footer>
   </div>
 </dialog>
-<script defer src="{{ url_for('static', filename='sensor-calibration.js', v='20261114-ph-reference-table-v12') }}"></script>
+<script defer src="{{ url_for('static', filename='sensor-calibration.js', v='20261116-ph-two-buffer-a1') }}"></script>
 <script>window.AQUACORE_CSRF = {{ csrf_token()|tojson }};</script>
 <script defer src="{{ url_for('static', filename='controls.js') }}"></script>
 <script defer src="{{ url_for('static', filename='fertilizer-manual2.js', v='20261109-close-after-save-v1') }}"></script>

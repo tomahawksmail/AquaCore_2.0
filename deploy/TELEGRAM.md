@@ -24,6 +24,21 @@ git pull origin master
 
 In Telegram, open a **private chat** with your bot and send /start. It silently ignores other accounts and group chats. A numeric MyTGaccount is required. Avoid logging token values. Only **one** polling instance should run for the same token.
 
+## Aquarium chart consistency
+
+The Telegram **📈 Aquarium chart** renders the same 24-hour
+time-bucket averages that the web dashboard loads through
+`/api/history?period=24h`: `water_history.history_sql("24h")`
+is called by both. Temperature, pH and TDS colors match the web
+and acceptable min/max ranges appear as shaded areas. Historical pH
+samples recorded before the latest two-buffer recalibration are hidden.
+When A1 temperature or another sensor is unavailable, the image shows
+gaps rather than artificial zero points.
+
+The Telegram picture is a PNG (no browser tooltip); the website
+renders interactive SVG. Restart `aquacore-telegram.service` after updating
+code to change newly generated Telegram charts.
+
 ## System chart consistency
 
 The Telegram **📉 System chart** uses the same 24-hour valid system sample

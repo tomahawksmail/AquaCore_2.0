@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 
 from app import SETTINGS, TIME_FIELDS, db
 from scheduler import SCHEDULE_MAP, next_transition, scheduled_state
+from water_history import history_sql, LIMITS_SQL, serialize_history
 
 load_dotenv(os.getenv("AQUACORE_ENV", os.path.join(os.path.dirname(__file__), ".env")))
 LOG = logging.getLogger("aquacore.telegram")
@@ -198,11 +199,21 @@ def read_aqua():
         with con.cursor() as cur:
             cur.execute("SELECT NOW() AS server_time")
             now = cur.fetchone()["server_time"]
-            cur.execute("SELECT Datetime,temp,ph,tds FROM data ORDER BY Datetime DESC,Id DESC LIMIT 1")
+            cur.execute(
+                "SELECT d.Datetime,d.temp,"
+                "CASE WHEN d.Datetime >= COALESCE("
+                "(SELECT ph_updated_at FROM sensor_calibration WHERE id=1),"
+                "'1000-01-01 00:00:00') THEN d.ph ELSE NULL END AS ph,"
+                "d.tds FROM data d ORDER BY d.Datetime DESC,d.Id DESC LIMIT 1")
             row = cur.fetchone()
     if row is None:
         return metric_header("🐠 AQUARIUM METRICS", None, now) + "No readings available."
-    zero = all(row.get(k) == 0 for k in ("temp","ph","tds"))
+    stamp = row.get("Datetime")
+    stale = not isinstance(stamp, datetime) or not 0 <= (now-stamp).total_seconds() <= 90
+    if stale:
+        # As on the web, do not present old water values as if currently live.
+        row = {**row, "temp":None, "ph":None, "tds":None}
+    zero = stale or all(row.get(k) == 0 for k in ("temp","ph","tds"))
     return (metric_header("🐠 AQUARIUM METRICS", row.get("Datetime"), now, all_zero=zero)
             + "💧 WATER QUALITY\n"
             + f"🌡 Temperature: {fmt(row['temp'])} °C\n"
@@ -328,12 +339,11 @@ def chart_image(which):
     with db() as con:
         with con.cursor() as cur:
             if which == "aqua":
-                cur.execute(
-                    "SELECT Datetime,temp,ph,tds FROM data "
-                    "WHERE Datetime>=NOW()-INTERVAL 24 HOUR "
-                    "ORDER BY Datetime ASC LIMIT 2000"
-                )
+                sql, params = history_sql("24h")
+                cur.execute(sql, params)
                 rows = cur.fetchall()
+                cur.execute(LIMITS_SQL)
+                limits = cur.fetchone() or {}
             elif which == "system":
                 # Match /api/system/history: discard invalid old zero-RAM rows.
                 # Take the latest 1500 valid records within the last 24 hours.
@@ -358,25 +368,55 @@ def chart_image(which):
         ax.grid(alpha=.18)
 
     if which == "aqua":
-        dates = [
-            datetime.fromisoformat(row["Datetime"]) if isinstance(row.get("Datetime"), str)
-            else row.get("Datetime")
-            for row in rows
-        ]
-        if not all(isinstance(date, datetime) for date in dates):
+        from matplotlib.dates import HourLocator
+        from matplotlib.ticker import MultipleLocator
+        data = serialize_history(rows, limits, "24h")
+        records = data["points"]
+        if not records:
             plt.close(fig)
             return None
-        fields = [("temp", "Temperature °C"), ("ph", "pH"), ("tds", "TDS ppm")]
-        for ax, (field, label), color in zip(
-            axes, fields, ("#58dfc0", "#84a7ff", "#f3bc80")
+        for ax, field, title, color in zip(
+            axes,
+            ("temp", "ph", "tds"),
+            ("Temperature (°C)", "pH level", "TDS (ppm)"),
+            ("#5eead4", "#8fa8ff", "#ffc48b"),
         ):
-            ax.plot(
-                dates,
-                [float(row[field]) if row.get(field) is not None else float("nan")
-                 for row in rows],
-                color=color, linewidth=1.6
-            )
-            ax.set_ylabel(label, color="#d7e4ec")
+            # Match the web's valid-range band and palette. No dotted min/max
+            # labels are introduced: the band alone indicates the safe zone.
+            low_limit = limits.get("min_" + field)
+            high_limit = limits.get("max_" + field)
+            low = float(low_limit) if low_limit is not None else None
+            high = float(high_limit) if high_limit is not None else None
+            if low is not None and high is not None and low < high:
+                ax.axhspan(low, high, facecolor="#58e5c4", alpha=0.11, zorder=0)
+            elif field == "tds" and low is None and high is not None and high >= 0:
+                ax.axhspan(0, high, facecolor="#58e5c4", alpha=0.11, zorder=0)
+            ax.set_title(title, loc="left", color="#e8f3fc", fontsize=11)
+            ax.tick_params(colors="#a9c1d1")
+            valid = [(datetime.fromisoformat(p["time"]), p[field]) for p in records
+                     if p["time"] is not None and p[field] is not None]
+            if not valid:
+                ax.text(0.5, 0.5, "No readings in this period",
+                        transform=ax.transAxes, ha="center", va="center", color="#a9c1d1")
+                continue
+            # Same 24h aggregate buckets as the web; don't join missing
+            # measurements or collector outages with an artificial straight line.
+            dates = [datetime.fromisoformat(p["time"]) for p in records if p["time"] is not None]
+            values = [p[field] for p in records if p["time"] is not None]
+            diffs = sorted((b-a).total_seconds() for a,b in zip(dates, dates[1:]) if b>a)
+            typical = diffs[len(diffs)//2] if diffs else 3600
+            segmented_dates, segmented_values = [], []
+            for t, v in zip(dates, values):
+                if segmented_dates and (t-segmented_dates[-1]).total_seconds() > typical*2.5:
+                    segmented_dates.append(t)
+                    segmented_values.append(float("nan"))
+                segmented_dates.append(t)
+                segmented_values.append(float(v) if v is not None else float("nan"))
+            ax.plot(segmented_dates, segmented_values, color=color, linewidth=1.6,
+                    solid_capstyle="round")
+            ax.grid(alpha=0.16)
+        axes[-1].set_xlim(datetime.now()-timedelta(hours=24), datetime.now())
+        axes[-1].xaxis.set_major_locator(HourLocator(byhour=range(0, 24, 3)))
     else:
         from telegram_system_trends import split_system_samples, trailing_mean
         segments = split_system_samples(rows, max_gap_seconds=1200)
@@ -426,9 +466,10 @@ def chart_image(which):
         # Keep 24h time scale, matching the System Metrics web view.
         axes[-1].set_xlim(datetime.now() - timedelta(hours=24), datetime.now())
 
-    axes[-1].xaxis.set_major_locator(AutoDateLocator(maxticks=7))
+    if which == "system":
+        axes[-1].xaxis.set_major_locator(AutoDateLocator(maxticks=7))
     axes[-1].xaxis.set_major_formatter(DateFormatter("%H:%M"))
-    fig.suptitle("AquaCore · " + which.title() + " metrics", color="white")
+    fig.suptitle("AquaCore · Water quality · Last 24 hours" if which == "aqua" else "AquaCore · System metrics", color="white")
     fig.autofmt_xdate()
     fig.tight_layout()
     out = io.BytesIO()

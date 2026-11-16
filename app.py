@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from scheduler import next_transition, scheduled_state, SCHEDULE_MAP
 from fertilizer_math import calibrated_seconds, calibrate_rate, CALIBRATION_SECONDS
 from time_utils import html_time
+from water_history import history_sql, LIMITS_SQL, serialize_history
 
 def pump_enabled(number):
     """Match the relay service's defaults and supported boolean values."""
@@ -117,21 +118,37 @@ def login():
 @logged_in
 def logout(): session.clear(); return redirect(url_for('login'))
 
-def provisional_ph_status():
-    """Metadata for unverified pH estimates and the historic-mode boundary."""
-    record=query(
-        'SELECT ph_provisional_enabled,ph_provisional_started_at '
-        'FROM sensor_calibration WHERE id=1',one=True) or {}
-    return bool(record.get('ph_provisional_enabled')), record.get('ph_provisional_started_at')
+def ph_calibration_started_at():
+    """Saved time of the current pH voltage calibration."""
+    row=query("SELECT ph_updated_at FROM sensor_calibration WHERE id=1",one=True) or {}
+    return row.get("ph_updated_at")
 
 
-def mask_pre_provisional_ph(rows, enabled, started_at, field='Datetime'):
-    """Do not connect historic old-calibration pH to the new provisional curve."""
-    if enabled and started_at is not None:
+def mask_pre_calibration_ph(rows, started_at, field="Datetime"):
+    """Mask old-curve pH values without altering temperature/TDS history."""
+    if started_at is not None:
         for record in rows:
             if record.get(field) is not None and record[field] < started_at:
-                record['ph']=None
+                record["ph"] = None
     return rows
+
+
+def mask_stale_sensor_reading(row, current_time=None, max_age_seconds=90):
+    """Never present a stopped collector's last measurement as live water data.
+
+    Historical samples are retained. Missing, future or old timestamps cause
+    the three live readings to become NULL, not fabricated zeros.
+    """
+    if row is None:
+        return None, True
+    stamp = row.get('Datetime')
+    if current_time is None:
+        current_time = datetime.now(stamp.tzinfo) if isinstance(stamp, datetime) and stamp.tzinfo else datetime.now()
+    age = (current_time - stamp).total_seconds() if isinstance(stamp, datetime) else None
+    stale = age is None or not 0 <= age <= max_age_seconds
+    if stale:
+        return {**row, 'temp': None, 'ph': None, 'tds': None}, True
+    return row, False
 
 
 @app.get('/aquarium')
@@ -142,16 +159,17 @@ def dashboard():
     latest=recent[0] if recent else None
     previous=recent[1] if len(recent)>1 else None
     points=query('SELECT Datetime,temp,ph,tds FROM data ORDER BY Datetime DESC, Id DESC LIMIT 48')
-    ph_provisional, ph_started = provisional_ph_status()
-    mask_pre_provisional_ph(recent,ph_provisional,ph_started)
-    mask_pre_provisional_ph(points,ph_provisional,ph_started)
+    ph_started = ph_calibration_started_at()
+    mask_pre_calibration_ph(recent,ph_started)
+    mask_pre_calibration_ph(points,ph_started)
+    latest, sensor_stale = mask_stale_sensor_reading(latest)
     options=query('SELECT * FROM options LIMIT 1',one=True) or {}
     statuses=query('SELECT * FROM status LIMIT 1',one=True) or {}
     overrides=query('SELECT device,until_at FROM manual_overrides WHERE until_at > NOW()')
     manual={r['device']: r['until_at'] for r in overrides}
     return render_template('dashboard.html', latest=latest, previous=previous, points=list(reversed(points)),
                            options=options, statuses=statuses, metrics=METRICS, devices=DEVICES, manual=manual,
-                           ph_provisional=ph_provisional)
+                           sensor_stale=sensor_stale)
 
 # Existing status flags are software requests, NOT verified relay feedback.
 # Automation in the legacy service may subsequently overwrite these flags.
@@ -209,57 +227,33 @@ def set_equipment(field):
 @logged_in
 def readings():
     rows=query('SELECT Id,Datetime,temp,ph,tds FROM data ORDER BY Datetime DESC, Id DESC LIMIT 2')
-    ph_provisional, ph_started = provisional_ph_status()
-    mask_pre_provisional_ph(rows,ph_provisional,ph_started)
+    ph_started = ph_calibration_started_at()
+    mask_pre_calibration_ph(rows,ph_started)
     r=rows[0] if rows else None
     prev=rows[1] if len(rows)>1 else None
-    if not r: return jsonify({})
+    if not r:
+        return jsonify(temp=None, ph=None, tds=None, previous={}, stale=True)
+    r, stale = mask_stale_sensor_reading(r)
     result={k:(v.isoformat() if isinstance(v,datetime) else v) for k,v in r.items() if k!='Id'}
-    result['previous']={k:prev[k] for k in ('temp','ph','tds')} if prev else {}
-    result['ph_provisional']=ph_provisional
+    result['previous']={k:prev[k] for k in ('temp','ph','tds')} if prev and not stale else {}
+    result['stale']=stale
     return jsonify(result)
 
 @app.get('/api/history')
 @logged_in
 def history():
-    """Bounded, aggregated historical measurements for mobile-friendly charts."""
-    periods = {'24h': (1, 300), '7d': (7, 300), '30d': (30, 300), '90d': (90, 300)}
-    period = request.args.get('period', '24h')
-    if period not in periods:
+    """Same aggregated measurements that power Telegram's Aquarium chart."""
+    period=request.args.get('period','24h')
+    try:
+        sql, params=history_sql(period)
+    except ValueError:
         abort(400, description='Invalid history period')
-    days, buckets = periods[period]
-    # Server-side aggregation caps the response at ~300 points, even for large databases.
-    seconds = max(60, days * 86400 // buckets)
-    rows = query("""
-        SELECT FROM_UNIXTIME(FLOOR(UNIX_TIMESTAMP(`Datetime`) / %s) * %s) AS time,
-               ROUND(AVG(temp), 2) AS temp,
-               ROUND(AVG(ph), 3) AS ph,
-               ROUND(AVG(tds), 2) AS tds,
-               COUNT(*) AS samples
-          FROM data
-         WHERE `Datetime` >= NOW() - INTERVAL %s DAY
-           AND `Datetime` <= NOW()
-         GROUP BY FLOOR(UNIX_TIMESTAMP(`Datetime`) / %s)
-         ORDER BY time ASC
-    """, (seconds, seconds, days, seconds))
-    ph_provisional, ph_started = provisional_ph_status()
-    mask_pre_provisional_ph(rows,ph_provisional,ph_started,field='time')
-    # Use the existing options row as the source of acceptable ranges.
-    settings = query('SELECT min_temp, max_temp, min_ph, max_ph, min_tds, max_tds FROM options LIMIT 1', one=True) or {}
-    limits = {key: (float(settings[key]) if settings.get(key) is not None else None)
-              for key in ('min_temp', 'max_temp', 'min_ph', 'max_ph', 'min_tds', 'max_tds')}
-    response = jsonify({
-        'period': period,
-        'ph_provisional': ph_provisional,
-        'limits': limits,
-        'points': [{'time': r['time'].isoformat() if r['time'] else None,
-                    'temp': float(r['temp']) if r['temp'] is not None else None,
-                    'ph': float(r['ph']) if r['ph'] is not None else None,
-                    'tds': float(r['tds']) if r['tds'] is not None else None,
-                    'samples': r['samples']} for r in rows]
-    })
-    response.headers['Cache-Control'] = 'no-store'
+    rows=query(sql,params)
+    limits=query(LIMITS_SQL,one=True) or {}
+    response=jsonify(serialize_history(rows,limits,period))
+    response.headers['Cache-Control']='no-store'
     return response
+
 
 @app.post('/api/fertilizer/schedule/days')
 @logged_in

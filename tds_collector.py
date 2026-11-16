@@ -2,8 +2,8 @@
 """Collect ADS1115 TDS, optional NTC water temperature and calibrated pH.
 
 A1 NTC requires a 10k B3950 probe with 10k pull-up to 3.3V.
-A0 pH uses measured 4.01/6.86/9.18 voltages when present, or legacy 7/4.
-Unconfigured or invalid measurements are stored as NULL, never invented.
+A0 pH uses saved 6.86 (2.54 V) and 4.01 (3.04 V) buffer references.
+A1 must be enabled and calibrated: no fixed 22 C temperature estimate.
 TDS factor 0.2626 is a provisional estimate, not certified calibration.
 """
 import argparse
@@ -16,8 +16,7 @@ import time
 import pymysql
 from dotenv import load_dotenv
 from sensorstest import adc_read, estimate_tds_ppm, DEFAULT_TDS_FACTOR
-from sensor_conversion import (calibrated_ph, calibrated_ph_three_points,
-                               temperature_compensated_ph_three_points, provisional_ph_neutral_anchor, ntc_celsius)
+from sensor_conversion import ntc_celsius, temperature_compensated_ph_two_points
 
 LOG = logging.getLogger("aquacore.tds")
 
@@ -50,7 +49,7 @@ def median_ph_voltage(bus, address, count=5, spacing_s=1.0, *,
     return statistics.median(values)
 
 
-def save_sample(ppm, temp=None, ph=None):
+def save_sample(ppm=None, temp=None, ph=None):
     connection = pymysql.connect(
         host=os.getenv("DB_HOST") or "localhost",
         port=int(os.getenv("DB_PORT", "3306")),
@@ -68,7 +67,7 @@ def save_sample(ppm, temp=None, ph=None):
                 "VALUES (NOW(), %s, %s, %s)",
                 (round(temp, 2) if temp is not None else None,
                  round(ph, 3) if ph is not None else None,
-                 round(ppm, 2))
+                 round(ppm, 2) if ppm is not None else None)
             )
     finally:
         connection.close()
@@ -81,143 +80,99 @@ def calibration_settings():
         user=os.getenv("DB_USER") or "aquacore_web",
         password=os.getenv("DB_PASSWORD", ""),
         database=os.getenv("DB_NAME") or "_AquaCore_",
-        connect_timeout=5,
-        autocommit=True,
-        cursorclass=pymysql.cursors.DictCursor,
-    )
+        connect_timeout=5, autocommit=True,
+        cursorclass=pymysql.cursors.DictCursor)
     try:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT ntc_enabled,ntc_supply_v,temp_offset_c,temp_updated_at,ph7_voltage,ph4_voltage,tds_factor,ph_factor,temp_factor,"
-                           "ph401_voltage,ph686_voltage,ph918_voltage,"
-                           "ph401_temp_c,ph686_temp_c,ph918_temp_c,"
-                           "ph401_reference,ph686_reference,ph918_reference,"
-                           "ph_provisional_enabled,ph_provisional_neutral_v "
-                           "FROM sensor_calibration WHERE id=1")
+            cursor.execute(
+                "SELECT ntc_enabled,ntc_supply_v,temp_offset_c,temp_updated_at,"
+                "tds_factor,temp_factor,ph686_voltage,ph401_voltage,"
+                "ph686_temp_c,ph401_temp_c FROM sensor_calibration WHERE id=1")
             return cursor.fetchone() or {}
     finally:
         connection.close()
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Provisional TDS to AquaCore MariaDB")
+    parser = argparse.ArgumentParser(description="AquaCore calibrated A1/A0/A3 sensor collector")
     parser.add_argument("--bus", type=int, default=int(os.getenv("TDS_I2C_BUS", "2")))
     parser.add_argument("--address", type=lambda s: int(s, 0), default=0x48)
-    parser.add_argument("--temperature", type=float, default=float(os.getenv("TDS_WATER_TEMP_C", "22")))
-    parser.add_argument("--tds-factor", type=float, default=DEFAULT_TDS_FACTOR)
-    parser.add_argument("--ph7-voltage", type=float, default=float(os.environ["PH7_V"]) if os.getenv("PH7_V") else None)
-    parser.add_argument("--ph4-voltage", type=float, default=float(os.environ["PH4_V"]) if os.getenv("PH4_V") else None)
     parser.add_argument("--interval", type=float, default=30)
     parser.add_argument("--samples", type=int, default=5)
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args()
     if args.bus < 0 or args.interval < 1 or not 1 <= args.samples <= 30:
         parser.error("Invalid bus, interval or sample count")
-    if not -2 <= args.temperature <= 55 or not 0 < args.tds_factor <= 10:
-        parser.error("Invalid temperature or provisional factor")
-    if (args.ph7_voltage is None) != (args.ph4_voltage is None):
-        parser.error("Provide both pH buffer voltages or neither")
-    if args.ph7_voltage is not None:
-        try:
-            calibrated_ph(args.ph7_voltage, args.ph7_voltage, args.ph4_voltage)
-        except ValueError as exc:
-            parser.error(str(exc))
     load_dotenv(os.getenv("AQUACORE_ENV", os.path.join(os.path.dirname(__file__), ".env")))
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    LOG.warning("TDS remains PROVISIONAL; NTC enabled and supply are read from MariaDB each cycle; "
-                "pH CLI calibrated=%s, fallback TDS temp %.1f C",
-                args.ph7_voltage is not None, args.temperature)
     while True:
         try:
-            calibration = calibration_settings()
-            ntc_enabled = bool(int(calibration.get('ntc_enabled') or 0))
-            ntc_supply_v = float(calibration.get('ntc_supply_v') if
-                                 calibration.get('ntc_supply_v') is not None else 3.3)
-            if not math.isfinite(ntc_supply_v) or not 3.0 <= ntc_supply_v <= 3.6:
-                if ntc_enabled:
-                    LOG.warning("Invalid NTC divider supply in MariaDB; A1 disabled for this sample")
-                ntc_enabled = False
-            readings = []
-            for _ in range(args.samples):
-                raw, voltage = adc_read(args.bus, args.address, 3)
-                readings.append(voltage)
-                time.sleep(0.1)
-            volts = statistics.median(readings)
+            config = calibration_settings()
             water_temp = None
-            if ntc_enabled and calibration.get('temp_updated_at') is None:
-                LOG.warning("A1 enabled but temperature calibration has not been saved; "
-                            "leaving temp NULL and pH ATC OFF")
-            if ntc_enabled and calibration.get('temp_updated_at') is not None:
-                try:
-                    ntc_samples = [adc_read(args.bus, args.address, 1) for _ in range(args.samples)]
-                    if any(raw >= 32767 for raw, _ in ntc_samples):
-                        raise ValueError("ADS1115 A1 saturated")
-                    temp_raw = ntc_celsius(statistics.median(v for _, v in ntc_samples),
-                                             supply_v=ntc_supply_v)
-                    water_temp = temp_raw * float(calibration.get('temp_factor') if calibration.get('temp_factor') is not None else 1.0) + float(calibration.get('temp_offset_c') or 0)
-                    if not -2 <= water_temp <= 55:
-                        raise ValueError('Calibrated water temperature outside supported range')
-                except (OSError, ValueError) as exc:
-                    LOG.warning("NTC measurement unavailable: %s", exc)
             ph = None
-            ph_atc = False
-            v7 = calibration.get('ph7_voltage') if calibration.get('ph7_voltage') is not None else args.ph7_voltage
-            v4 = calibration.get('ph4_voltage') if calibration.get('ph4_voltage') is not None else args.ph4_voltage
-            three_keys = ('ph401_voltage','ph686_voltage','ph918_voltage',
-                          'ph401_reference','ph686_reference','ph918_reference')
-            has_three = all(calibration.get(key) is not None for key in three_keys)
-            provisional_on = bool(int(calibration.get('ph_provisional_enabled') or 0))
-            if provisional_on or has_three or (v7 is not None and v4 is not None):
+            ppm = None
+            ph_voltage = None
+            ph_mode = "A1_UNAVAILABLE"
+            try:
+                if not bool(int(config.get("ntc_enabled") or 0)):
+                    raise ValueError("A1 NTC not enabled")
+                if config.get("temp_updated_at") is None:
+                    raise ValueError("A1 NTC not calibrated")
+                supply = float(config.get("ntc_supply_v") if config.get("ntc_supply_v") is not None else 3.3)
+                if not 3.0 <= supply <= 3.6:
+                    raise ValueError("Invalid A1 divider voltage")
+                values = [adc_read(args.bus, args.address, 1) for _ in range(args.samples)]
+                if any(raw >= 32767 or raw <= -32768 for raw, _ in values):
+                    raise ValueError("A1 ADC saturated")
+                raw_temp = ntc_celsius(statistics.median(v for _, v in values), supply_v=supply)
+                factor = float(config.get("temp_factor") if config.get("temp_factor") is not None else 1.0)
+                water_temp = raw_temp * factor + float(config.get("temp_offset_c") or 0)
+                if not math.isfinite(water_temp) or not 0 <= water_temp <= 50:
+                    raise ValueError("Calibrated A1 temperature outside 0-50 C")
+            except (TypeError, ValueError, OSError, OverflowError) as exc:
+                LOG.warning("Calibrated A1 unavailable: %s. pH/TDS NULL", exc)
+
+            if water_temp is not None:
                 try:
-                    # A0 is sampled across multiple seconds rather than
-                    # taking five nearly simultaneous reads. This rejects
-                    # isolated spikes before pH conversion and DB storage.
                     ph_voltage = median_ph_voltage(
                         args.bus, args.address, count=args.samples, spacing_s=1.0)
-                    temp_keys = ('ph401_temp_c', 'ph686_temp_c', 'ph918_temp_c')
-                    # Never silently use the collector's fallback temperature
-                    # as measured water temperature. ATC needs a real NTC
-                    # reading and a completed temperature calibration.
-                    ph_atc = bool(has_three and water_temp is not None
-                                 and calibration.get('temp_updated_at') is not None
-                                 and all(calibration.get(k) is not None for k in temp_keys)
-                                 and 0 <= water_temp <= 50)
-                    if provisional_on:
-                        ph_atc = False
-                        # Explicit temporary estimate: use the reference-image
-                        # voltage/pH slope, not the stale three-buffer slope.
-                        ph_raw = provisional_ph_neutral_anchor(
-                            ph_voltage, float(calibration.get('ph_provisional_neutral_v') or 2.40))
-                    elif ph_atc:
-                        ph_raw = temperature_compensated_ph_three_points(
-                            ph_voltage,
-                            *(float(calibration[k]) for k in three_keys),
-                            *(float(calibration[k]) for k in temp_keys),
-                            water_temp)
-                    elif has_three:
-                        ph_raw = calibrated_ph_three_points(
-                            ph_voltage, *(float(calibration[key]) for key in three_keys))
-                    else:
-                        ph_raw = calibrated_ph(ph_voltage, float(v7), float(v4))
-                    ph = 7.0 + (ph_raw - 7.0) * float(
-                        calibration.get('ph_factor') if calibration.get('ph_factor') is not None else 1.0)
-                    if not 0 <= ph <= 14:
-                        raise ValueError("Corrected pH outside 0-14")
-                except (OSError, ValueError) as exc:
-                    LOG.warning("pH measurement unavailable: %s", exc)
-            temperature = water_temp if water_temp is not None else args.temperature
-            tds_factor = float(calibration.get('tds_factor') if calibration.get('tds_factor') is not None else args.tds_factor)
-            if not 0.001 <= tds_factor <= 10:
-                raise ValueError("Invalid database TDS factor")
-            ppm = estimate_tds_ppm(volts, temperature) * tds_factor
-            save_sample(ppm, water_temp, ph)
-            LOG.info("Saved temp=%s C pH=%s TDS=%.2f ppm (pH mode=%s; pH ATC=%s; A3 %.5f V; TDS factor %.4f; TDS temp %.1f C)",
+                    keys = ("ph686_voltage","ph401_voltage","ph686_temp_c","ph401_temp_c")
+                    if not all(config.get(k) is not None for k in keys):
+                        raise ValueError("Two-point pH calibration missing")
+                    ph = temperature_compensated_ph_two_points(
+                        ph_voltage,
+                        float(config["ph686_voltage"]), float(config["ph401_voltage"]),
+                        float(config["ph686_temp_c"]), float(config["ph401_temp_c"]),
+                        water_temp)
+                    ph_mode = "TWO_BUFFER_A1_ATC"
+                except (TypeError, ValueError, OSError, OverflowError) as exc:
+                    ph_mode = "TWO_BUFFER_INVALID"
+                    LOG.warning("pH unavailable: %s (A0=%s V)", exc, ph_voltage)
+
+                try:
+                    samples = [adc_read(args.bus, args.address, 3) for _ in range(args.samples)]
+                    if any(raw >= 32767 or raw <= -32768 for raw, _ in samples):
+                        raise ValueError("A3 TDS ADC saturated")
+                    vtds = statistics.median(v for _, v in samples)
+                    tds_factor = float(config.get("tds_factor") if config.get("tds_factor") is not None else DEFAULT_TDS_FACTOR)
+                    if not math.isfinite(tds_factor) or not 0.001 <= tds_factor <= 10:
+                        raise ValueError("Invalid TDS factor")
+                    ppm = estimate_tds_ppm(vtds, water_temp) * tds_factor
+                except (OSError, ValueError, TypeError, OverflowError) as exc:
+                    LOG.warning("TDS unavailable: %s", exc)
+
+            if all(value is None for value in (ppm, water_temp, ph)):
+                LOG.warning("No valid A1/A0/A3 readings: skipping empty database row")
+            else:
+                save_sample(ppm, water_temp, ph)
+            LOG.info("Collected temp=%s C pH=%s TDS=%s ppm (mode=%s A0=%s V; A1 ATC=%s)",
                      f"{water_temp:.2f}" if water_temp is not None else "NULL",
                      f"{ph:.2f}" if ph is not None else "NULL",
-                     "PROVISIONAL_UNVERIFIED" if provisional_on else "CALIBRATED",
-                     "ON" if ph_atc else "OFF",
-                     ppm, volts, tds_factor, temperature)
-        except (OSError, ValueError, pymysql.MySQLError) as exc:
-            LOG.exception("TDS reading not saved: %s", exc)
+                     f"{ppm:.2f}" if ppm is not None else "NULL",
+                     ph_mode, f"{ph_voltage:.5f}" if ph_voltage is not None else "NULL",
+                     "ON" if water_temp is not None else "OFF")
+        except (OSError, ValueError, TypeError, pymysql.MySQLError):
+            LOG.exception("Sensor reading not saved")
             if args.once:
                 return 1
         if args.once:

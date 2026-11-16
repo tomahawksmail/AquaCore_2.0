@@ -7,8 +7,8 @@
   const byId = id => document.getElementById(id);
   const status = byId('sensor-calibration-status');
   const existing = byId('sensor-existing');
-  const bufferNames = ['ph918', 'ph401', 'ph686'];
-  const bufferLabels = {ph918:'9.18', ph401:'4.01', ph686:'6.86'};
+  const bufferNames = ['ph686', 'ph401'];
+  const bufferLabels = {ph401:'4.01', ph686:'6.86'};
   const tabs = ['tds', 'temp', 'ph'];
   let timer = null, inFlight = false, captureBusy = false;
   let snapshot = null, settings = null, activeTab = 'tds';
@@ -93,7 +93,7 @@
     }
     const scroller = modal.querySelector('.sensor-dialog-scroll');
     if (scroller) scroller.scrollTop = 0;
-    setStatus(tab === 'ph' ? 'Start with pH 6.86, then 4.01 and 9.18.' :
+    setStatus(tab === 'ph' ? 'Capture pH 6.86, then 4.01 with measured buffer temperature.' :
       tab === 'temp' ? 'Capture A1, then enter your glass thermometer reading.' :
       'View the live TDS estimate and adjust the factor if needed.');
     render();
@@ -125,13 +125,13 @@
 
   const updatePhSave = () => {
     const count = bufferNames.filter(name => Boolean(captured[name])).length;
-    byId('sensor-ph-progress').textContent = count + ' of 3 captured';
+    byId('sensor-ph-progress').textContent = count + ' of 2 captured';
     byId('sensor-ph-progress-bar').value = count;
     for (const name of bufferNames) {
       byId('sensor-buffer-' + name).classList.toggle('is-captured', Boolean(captured[name]));
       byId('sensor-state-' + name).textContent = captured[name] ? '✓ Captured' : 'Not captured';
     }
-    byId('sensor-save-ph').disabled = captureBusy || count !== 3;
+    byId('sensor-save-ph').disabled = captureBusy || count !== 2;
   };
 
   const render = () => {
@@ -148,9 +148,7 @@
       el.title = error;
       byId('sensor-voltage-error-' + channel).textContent = error;
     }
-    const tempFactor = Number(settings?.temp_factor ?? 1);
-    const calibratedTemp = snapshot.temp_raw == null ? null :
-      snapshot.temp_raw * tempFactor + Number(settings?.temp_offset_c ?? snapshot.temp_offset_c ?? 0);
+    const calibratedTemp = snapshot.ph_temperature_c;
     byId('sensor-live-temp').textContent = calibratedTemp == null ||
       !Number.isFinite(calibratedTemp) ?
       (snapshot.ntc_enabled ? 'A1 unavailable' : 'NTC disabled') :
@@ -158,8 +156,7 @@
 
     const ph = livePhWindow.length ? median(livePhWindow) : null;
     byId('sensor-live-ph').textContent = ph == null || !Number.isFinite(ph) ?
-      'Not calibrated' : ph.toFixed(2) + ' pH' +
-      (snapshot.ph_provisional ? ' (unverified)' : '');
+      'Unavailable (A1 required)' : ph.toFixed(2) + ' pH';
     if (activeTab === 'ph') {
       const a1Ready = Boolean(snapshot.ntc_enabled && settings?.temp_updated_at &&
         snapshot.ph_temperature_c != null && Number.isFinite(Number(snapshot.ph_temperature_c)));
@@ -174,20 +171,19 @@
         ('A1 not ready: ' + (snapshot.ph_temperature_note || 'calibrate A1 first') +
          '. Enter the buffer temperature manually.');
       byId('sensor-ph-atc-status').textContent =
-        snapshot.ph_provisional ?
-          ('UNVERIFIED pH estimate: ' + Number(snapshot.ph_provisional_neutral_v ?? 2.40).toFixed(2) +
-           ' V assumed to be pH 7; slope from 7 external reference samples. ATC OFF.') :
         snapshot.ph_temperature_compensated ?
-          ('Live pH: electrode-slope compensation ON at ' + t + ' (A1).') :
-          ('Live pH: uncompensated electrode slope. ' +
-           (snapshot.ph_temperature_note || 'Enable and calibrate A1 to activate.'));
+          ('Two-buffer pH: automatic A1 compensation ON at ' + t + '.') :
+          ('Two-buffer pH unavailable until A1 temperature is calibrated. ' +
+           (snapshot.ph_temperature_note || ''));
+
     }
 
     const factorField = byId('sensor-factor-tds_factor');
     const factor = factorField.value.trim() ? Number(factorField.value) : NaN;
-    const tdsTemp = calibratedTemp != null && Number.isFinite(calibratedTemp) ?
-      calibratedTemp : snapshot.fallback_temperature_c;
-    if (!valid(volts.a3)) {
+    const tdsTemp = snapshot.ph_temperature_c;
+    if (!valid(tdsTemp)) {
+      byId('sensor-live-tds').textContent = 'Calibrated A1 temperature required';
+    } else if (!valid(volts.a3)) {
       byId('sensor-live-tds').textContent = 'TDS voltage unavailable';
     } else {
       const normalized = Math.max(0, Number(volts.a3)) / (1 + 0.02 * (tdsTemp - 25));
@@ -212,8 +208,7 @@
       snapshot = result;
       if (activeChannel === 'a0') {
         const rawPh = Number(result.ph_raw);
-        const factor = Number(settings?.ph_factor ?? 1);
-        const ph = result.ph_raw == null ? NaN : 7 + (rawPh - 7) * factor;
+        const ph = result.ph_raw == null ? NaN : rawPh;
         if (Number.isFinite(ph) && ph >= 0 && ph <= 14) {
           livePhWindow.push(ph);
           if (livePhWindow.length > 5) livePhWindow.shift();
@@ -252,13 +247,6 @@
 
   const present = async () => {
     settings = await api('');
-    const provisional = Boolean(Number(settings.ph_provisional_enabled ?? 0));
-    byId('sensor-ph-provisional-enabled').checked = provisional;
-    byId('sensor-ph-provisional-neutral').value =
-      Number(settings.ph_provisional_neutral_v ?? 2.40).toFixed(2);
-    byId('sensor-ph-provisional-status').textContent = provisional ?
-      'ON · UNVERIFIED external-reference estimate; no dosing' :
-      'OFF · saved buffer calibration';
     const ntcEnabled = Boolean(Number(settings.ntc_enabled ?? 0));
     byId('sensor-ntc-enabled').checked = ntcEnabled;
     byId('sensor-ntc-supply').value =
@@ -269,14 +257,12 @@
     updateTempSave();
     byId('sensor-factor-tds_factor').value =
       Number(settings.tds_factor ?? 0.2626).toString();
-    const calibrated3 = bufferNames.every(name => settings[name + '_voltage'] != null);
-    const legacy = settings.ph7_voltage != null && settings.ph4_voltage != null;
-    existing.textContent = 'pH: ' + (provisional ?
-      'UNVERIFIED temporary neutral-voltage estimate' :
-      calibrated3 ? 'three-buffer calibrated' :
-      legacy ? 'legacy 7.00/4.00 calibrated' : 'not calibrated') +
-      ' · Temperature offset: ' + Number(settings.temp_offset_c ?? 0).toFixed(2) +
-      ' °C · TDS factor: ' + Number(settings.tds_factor ?? 0.2626);
+    const calibrated2 = bufferNames.every(name => settings[name + '_voltage'] != null);
+    existing.textContent = 'pH: ' + (calibrated2 ?
+      'two-buffer 6.86 / 4.01, A1 temperature compensated' : 'not calibrated') +
+      ' · A0: 6.86=' + Number(settings.ph686_voltage ?? 2.54).toFixed(3) +
+      ' V; 4.01=' + Number(settings.ph401_voltage ?? 3.04).toFixed(3) +
+      ' V · TDS factor: ' + Number(settings.tds_factor ?? 0.2626);
     for (const name of bufferNames) {
       if (captured[name]) continue;
       const volts = settings[name + '_voltage'];
@@ -387,32 +373,6 @@
     } finally { button.disabled = false; }
   });
 
-  byId('sensor-save-ph-provisional').addEventListener('click', async () => {
-    const input = byId('sensor-ph-provisional-neutral');
-    const enabled = byId('sensor-ph-provisional-enabled').checked;
-    const neutral_voltage = Number(input.value);
-    if (!input.value.trim() || !Number.isFinite(neutral_voltage) ||
-        neutral_voltage < 2.0 || neutral_voltage > 3.0) {
-      input.reportValidity();
-      setStatus('Enter a provisional neutral voltage from 2.0 to 3.0 V.', 'error');
-      return;
-    }
-    const button = byId('sensor-save-ph-provisional');
-    button.disabled = true;
-    try {
-      const result = await api('/ph-provisional', {enabled, neutral_voltage});
-      livePhWindow.length = 0;
-      await present();
-      setStatus(enabled ?
-        ('Temporary UNVERIFIED pH estimate enabled: ' + neutral_voltage.toFixed(2) +
-         ' V ≈ pH 7. Not suitable for CO₂ or dosing controls.') :
-        'Temporary pH estimate disabled; saved calibration restored.', 'saved');
-      void refreshLive();
-    } catch (error) {
-      setStatus('Provisional pH settings NOT saved: ' + error.message, 'error');
-    } finally { button.disabled = false; }
-  });
-
   byId('sensor-capture-temp').addEventListener('click', async () => {
     const button = byId('sensor-capture-temp');
     temperatureCaptured = false;
@@ -487,21 +447,20 @@
 
   byId('sensor-save-ph').addEventListener('click', async () => {
     if (bufferNames.some(name => !captured[name])) {
-      setStatus('Capture all three buffers before saving.');
+      setStatus('Capture both buffers before saving.');
       return;
     }
     const button = byId('sensor-save-ph'); button.disabled = true;
     setCaptureBusy(true);
-    setStatus('Saving three-point pH calibration…', 'saving');
+    setStatus('Saving two-point pH calibration…', 'saving');
     try {
-      const data = await api('/save', {kind:'ph3'});
+      const data = await api('/save', {kind:'ph2'});
       captured = {};
       livePhWindow.length = 0;
       setStatus('pH calibration saved: ' +
-        '4.01 = ' + data.ph401_voltage.toFixed(5) + ' V; ' +
         '6.86 = ' + data.ph686_voltage.toFixed(5) + ' V; ' +
-        '9.18 = ' + data.ph918_voltage.toFixed(5) +
-        ' V. The collector will use the new curve on its next sample.', 'saved');
+        '4.01 = ' + data.ph401_voltage.toFixed(5) +
+        ' V. The collector will use A1 temperature compensation on its next sample.', 'saved');
       await present().catch(error => {
         setStatus('Saved, but details could not be refreshed: ' + error.message, 'saved');
       });
