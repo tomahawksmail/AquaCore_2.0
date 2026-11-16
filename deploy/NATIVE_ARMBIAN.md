@@ -242,37 +242,41 @@ sudo systemctl restart aquacore.service aquacore-telegram.service aquacore-sched
 ## Testing criteria
 Verify SSH, MariaDB connectivity/schema, login and CSRF, scheduler mode, Telegram owner and additional users, relay input polarity, relay behavior during DB outage, Tailscale certificate/access, reboot persistence and power-loss/recovery **before connecting mains equipment**.
 
-## ADS1115 TDS database collector (provisional ppm)
+## ADS1115 water sensor collector (A0 pH / A1 NTC / A3 TDS)
 
-The ADS1115 ADC has been detected at **I2C bus 2, address 0x48**, with the analog TDS transmitter connected to **A3**. `tds_collector.py` samples A3, applies the same temperature-compensated DFRobot-style polynomial as `sensorstest.py`, and multiplies by the **provisional 0.2626 factor** derived by assuming boiled Primo water was 13 ppm. **This is not a true calibration.** Default water temperature is **22 C**, manually estimated; change `--temperature` when water temperature changes.
+The `aquacore-tds.service` process samples ADS1115 0x48 on I²C bus 2,
+writes calibrated pH and TDS using measured A1 temperature, and stores
+missing values as NULL (no fixed 22°C estimate). It normally writes one
+real sample every 30 seconds. The scheduler no longer writes fake zero
+water measurements during sensor outages.
 
-Only `data.tds` receives a measured value; `data.temp` and `data.ph` are inserted as `NULL`, because those probes have not been configured. One row is written every 30 seconds, using MariaDB `NOW()`; errors do not insert fake TDS readings. The scheduler's missing-data zero fallback still applies after 60s without any rows.
+**Prerequisites:** install the 3.3V A1 NTC divider; enable and calibrate A1
+in MariaDB; then deploy the two-buffer schema migration and new collector
+code together. Existing pH voltages become 2.54 V = 6.86 and 3.04 V = 4.01,
+with both reference temperatures initially assumed 25°C. Verify and
+recapture both buffers with actual liquid temperatures before trusting pH.
 
-### One-time test before enabling service
+Read-only A0/A1/A3 hardware inspection:
+
 ```bash
-sudo -u aquacore git -C /opt/aquacore pull --ff-only origin master
-sudo usermod -aG i2c aquacore
-sudo bash -c '
-set -a
-. /etc/aquacore/web.env
-set +a
-cd /opt/aquacore
-exec runuser -u aquacore -- .venv/bin/python tds_collector.py --bus 2 --temperature 22 --once
-'
-sudo mariadb _AquaCore_ -e 'SELECT Id,Datetime,temp,ph,tds FROM data ORDER BY Id DESC LIMIT 3;'
+sudo -u aquacore -g i2c /opt/aquacore/.venv/bin/python \
+  /opt/aquacore/sensorstest.py --bus 2 --all-channels --ntc --once
 ```
 
-### Enable native service
+**Service launch changed:** remove the legacy `--temperature 22` flag.
+After updating source, copy the replacement unit and reload systemd
+before starting the collector:
+
 ```bash
 sudo cp /opt/aquacore/deploy/systemd/aquacore-tds.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now aquacore-tds.service
+sudo systemctl restart aquacore-tds.service
 sudo journalctl -u aquacore-tds.service -n 30 --no-pager
 ```
 
-If I2C is denied, verify `getent group i2c`, `ls -l /dev/i2c-2` and the service's `SupplementaryGroups=i2c`. Do not start an additional copy of the collector manually while the service runs.
-
-**Electrical caution:** The ADC was earlier powered at 5 V while its I2C pins directly connected to the Orange Pi's 3.3 V GPIO. Use a proper level shifter or power ADS1115 at 3.3 V with analog voltage in range before running continuously. The TDS transmitter can remain at 5 V if its actual analog output stays within the ADC supply and input limits.
+See [sensor and database migration guide](PH_AND_DATABASE_AUDIT_20261116.md).
+The 0.2626 TDS multiplier remains operator-provisional until independently
+checked with a certified conductivity standard.
 
 ## Fertilizer pump — once-daily timed pulse
 
