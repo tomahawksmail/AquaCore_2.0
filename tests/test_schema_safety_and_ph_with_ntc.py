@@ -80,6 +80,12 @@ class SchemaTests(unittest.TestCase):
             self.assertEqual(tds_collector.main(),0)
         self.assertEqual(events,[])  # Do not write an all-NULL sensor row
 
+    def test_service_has_no_obsolete_fixed_water_temp_argument(self):
+        unit=(ROOT/"deploy/systemd/aquacore-tds.service").read_text()
+        self.assertIn("tds_collector.py --bus 2 --interval 30",unit)
+        self.assertNotIn("--temperature",unit)
+        self.assertNotIn("--temperature", (ROOT/"tds_collector.py").read_text())
+
     def test_collector_temperature_compensates_neutral(self):
         config={"ntc_enabled":1,"ntc_supply_v":3.3,"temp_updated_at":"saved",
                 "temp_factor":1.0,"temp_offset_c":0.0,"tds_factor":0.2626,
