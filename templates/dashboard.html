@@ -16,7 +16,7 @@
     <article class="card metric live-spark-card" id="card-{{ field }}">
         <div class="metric-name"><i
                 class="mdi {{ {'temp':'mdi-thermometer','ph':'mdi-water-outline','tds':'mdi-water-check-outline'}.get(field, 'mdi-chart-line') }}"
-                aria-hidden="true"></i> {{ label }}{% if field == 'ph' and ph_provisional %} (unverified estimate){% endif %}
+                aria-hidden="true"></i> {{ label }}
         </div>
         <strong id="m-{{ field }}">{{ '%.1f'|format(current) if current is not none else '—' }} <small>{{ unit
             }}</small></strong>
@@ -43,14 +43,14 @@
         </div>
     </div>
     <div id="chart-message" role="status" class="dim">Loading measurements…</div>
-    {% if ph_provisional %}<p class="dim">pH uses a temporary unverified estimate (operator-selected neutral voltage and slope from external reference samples). Earlier pH data from the old calibration are hidden, not deleted. Do not use this value for CO₂ or chemical dosing.</p>{% endif %}
+
     <div class="chart-grid" id="chart-grid" hidden>
         <div class="chart-panel">
             <div class="chart-panel-head"><h3>Temperature</h3><span>°C</span></div>
             <div class="chart-canvas" data-field="temp"></div>
         </div>
         <div class="chart-panel">
-            <div class="chart-panel-head"><h3 id="ph-chart-heading">pH level{% if ph_provisional %} (unverified estimate){% endif %}</h3><span>pH</span></div>
+            <div class="chart-panel-head"><h3 id="ph-chart-heading">pH level</h3><span>pH</span></div>
             <div class="chart-canvas" data-field="ph"></div>
         </div>
         <div class="chart-panel">
@@ -59,7 +59,7 @@
         </div>
     </div>
     <p class="dim chart-footnote">Shaded teal zones show configured acceptable limits.
-        Missing sensor values appear as gaps; charts use time-bucket averages. Provisional pH estimates are not verified measurements.</p>
+        Missing sensor values appear as gaps; charts use time-bucket averages. pH history before the latest calibration is excluded.</p>
 </section>
 <script defer src="{{ url_for('static', filename='charts.js', v='20261102-clean-limit-band') }}"></script>
 <script defer src="{{ url_for('static', filename='live-spark.js', v='20261022-thin-spark') }}"></script>
