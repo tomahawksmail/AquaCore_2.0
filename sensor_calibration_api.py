@@ -258,11 +258,10 @@ def live():
         return jsonify(error="Invalid ADC channel"), 400
     config = {}
     config_error = None
-    if selected != "a3":
-        try:
-            config = _settings()
-        except pymysql.MySQLError as exc:
-            config_error = str(exc)
+    try:
+        config = _settings()
+    except pymysql.MySQLError as exc:
+        config_error = str(exc)
     readings = {"a0": None, "a1": None, "a3": None}
     errors = {}
     ntc_error = None
@@ -273,6 +272,7 @@ def live():
         ntc_error = str(exc)
     channels = ((0, 1, 3) if selected == "all" else
                 (0, 1) if selected == "a0" and ntc_enabled else
+                (1, 3) if selected == "a3" and ntc_enabled else
                 (int(selected[1]),))
     bus = int(os.getenv("TDS_I2C_BUS", "2"))
     for channel in channels:
