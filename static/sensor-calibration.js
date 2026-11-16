@@ -148,9 +148,7 @@
       el.title = error;
       byId('sensor-voltage-error-' + channel).textContent = error;
     }
-    const tempFactor = Number(settings?.temp_factor ?? 1);
-    const calibratedTemp = snapshot.temp_raw == null ? null :
-      snapshot.temp_raw * tempFactor + Number(settings?.temp_offset_c ?? snapshot.temp_offset_c ?? 0);
+    const calibratedTemp = snapshot.ph_temperature_c;
     byId('sensor-live-temp').textContent = calibratedTemp == null ||
       !Number.isFinite(calibratedTemp) ?
       (snapshot.ntc_enabled ? 'A1 unavailable' : 'NTC disabled') :
