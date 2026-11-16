@@ -4,6 +4,9 @@
         <h1>LIVE MONITORING</h1>
     </div>
 </div>
+<p id="sensor-stale-alert" class="dim" role="status" {% if not sensor_stale %}hidden{% endif %}>
+    No fresh sensor readings in the last 90 seconds. Live values are unavailable; historical data are preserved.
+</p>
 <section class="metrics live-spark-grid">
     {% for field,label,unit in metrics %}
     {% set current = latest[field] if latest and latest[field] is not none else none %}
@@ -66,6 +69,8 @@
         const response = await fetch('/api/readings', {cache:'no-store'});
         if (!response.ok) return;
         const data = await response.json();
+        const staleNotice = document.getElementById('sensor-stale-alert');
+        if (staleNotice) staleNotice.hidden = !data.stale;
         for (const key of ['temp','ph','tds']) {
           const value = data[key];
           const unit = key === 'temp' ? '°C' : (key === 'tds' ? 'ppm' : '');
