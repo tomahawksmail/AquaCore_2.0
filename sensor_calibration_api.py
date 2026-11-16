@@ -1,19 +1,24 @@
-"""Opt-in sensor calibration API; samples ADC without driving equipment GPIO."""
+"""Sensor calibration endpoints. No simulated temperature or provisional pH mode."""
 import math
 import os
 import pymysql
 import statistics
 import time
-from datetime import datetime
 
 from flask import Blueprint, abort, jsonify, request, session
-from sensor_conversion import (ntc_celsius, calibrated_ph, calibrated_ph_three_points,
-                               temperature_compensated_ph_three_points, provisional_ph_neutral_anchor,
-                               validate_ph_three_points, buffer_reference_ph)
-from sensorstest import estimate_tds_ppm
+from sensor_conversion import (
+    ntc_celsius, buffer_reference_ph, calibrated_ph_from_points,
+    temperature_compensated_ph_two_points,
+)
 from sensorstest import adc_read
 
 bp = Blueprint("sensor_calibration", __name__, url_prefix="/api/sensors/calibration")
+
+CALIBRATION_FIELDS = (
+    "ntc_enabled,ntc_supply_v,temp_offset_c,temp_updated_at,"
+    "tds_factor,temp_factor,ph686_voltage,ph401_voltage,"
+    "ph686_temp_c,ph401_temp_c,ph_updated_at"
+)
 
 
 def _admin():
@@ -28,136 +33,81 @@ def _db():
     return db()
 
 
+def _settings():
+    with _db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT " + CALIBRATION_FIELDS + " FROM sensor_calibration WHERE id=1")
+            return cur.fetchone() or {}
+
+
 def _sample(channel):
     bus = int(os.getenv("TDS_I2C_BUS", "2"))
-    vals = []
+    readings = []
     for _ in range(12):
-        raw, volts = adc_read(bus, 0x48, channel)
-        if raw == 32767:
-            raise ValueError("ADC saturated: check safe voltage/wiring")
-        if not 0 < volts < 4.096:
-            raise ValueError("Invalid ADC voltage")
-        vals.append(volts)
+        raw, voltage = adc_read(bus, 0x48, channel)
+        if raw >= 32767 or raw <= -32768 or not math.isfinite(voltage) or not 0 < voltage < 4.096:
+            raise ValueError("Invalid ADS1115 voltage: check supply and wiring")
+        readings.append(voltage)
         time.sleep(0.07)
-    if max(vals) - min(vals) > 0.08:
-        raise ValueError("Reading unstable; allow probe to settle and try again")
-    return statistics.median(vals)
+    if max(readings)-min(readings) > 0.08:
+        raise ValueError("Reading unstable; allow probe to settle")
+    return statistics.median(readings)
 
 
 def _ntc_settings(config):
-    """MariaDB is the sole authority for A1 enable state and 5V divider voltage."""
     enabled = bool(int(config.get("ntc_enabled") or 0))
-    supply_v = float(config.get("ntc_supply_v") if config.get("ntc_supply_v") is not None else 3.3)
-    if not math.isfinite(supply_v) or not 3.0 <= supply_v <= 3.6:
-        raise ValueError("NTC divider voltage in DB must be 3.0-3.6 V")
-    return enabled, supply_v
+    supply = float(config.get("ntc_supply_v") if config.get("ntc_supply_v") is not None else 3.3)
+    if not math.isfinite(supply) or not 3.0 <= supply <= 3.6:
+        raise ValueError("NTC supply must be between 3.0 and 3.6 V")
+    return enabled, supply
 
 
-def _calibrated_ntc_temperature(voltage, calibration):
-    """Require completed A1 calibration before using it for pH corrections."""
-    enabled, supply_v = _ntc_settings(calibration)
-    if not enabled:
-        raise ValueError("NTC is disabled in MariaDB settings")
-    if calibration.get("temp_updated_at") is None:
-        raise ValueError("Calibrate the A1 temperature sensor against a thermometer first")
-    raw = ntc_celsius(voltage, supply_v=supply_v)
-    factor = float(calibration.get("temp_factor") or 1.0)
-    offset = float(calibration.get("temp_offset_c") or 0.0)
-    temperature = raw * factor + offset
+def _calibrated_ntc_temperature(voltage, config):
+    enabled, supply = _ntc_settings(config)
+    if not enabled or config.get("temp_updated_at") is None:
+        raise ValueError("A1 NTC must be enabled and calibrated")
+    raw = ntc_celsius(voltage, supply_v=supply)
+    temperature = raw * float(config.get("temp_factor") if config.get("temp_factor") is not None else 1) + float(config.get("temp_offset_c") or 0)
     if not math.isfinite(temperature) or not 0 <= temperature <= 50:
-        raise ValueError("Calibrated A1 temperature outside 0-50 C")
+        raise ValueError("A1 temperature outside supported 0-50 C range")
     return temperature
 
 
 @bp.get("")
 def status():
     _admin()
-    with _db() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT ntc_enabled,ntc_supply_v,temp_offset_c,temp_updated_at,ph7_voltage,ph4_voltage,tds_factor,ph_factor,temp_factor, "
-                        "ph_provisional_enabled,ph_provisional_neutral_v,ph_provisional_started_at, "
-                        "ph401_voltage,ph686_voltage,ph918_voltage, "
-                        "ph401_reference,ph686_reference,ph918_reference, "
-                        "ph401_temp_c,ph686_temp_c,ph918_temp_c "
-                        "FROM sensor_calibration WHERE id=1")
-            row = cur.fetchone()
-    resp = jsonify(row or {})
-    resp.headers["Cache-Control"] = "no-store"
-    return resp
-
-
-@bp.post("/ph-provisional")
-def save_ph_provisional():
-    """Explicit opt-in/out of unverified display, preserving buffer references."""
-    _admin()
-    body = request.get_json(silent=True)
-    if not isinstance(body, dict) or set(body) != {"enabled", "neutral_voltage"}:
-        return jsonify(error="Provide enabled (bool) and neutral_voltage (V)"), 400
-    if type(body["enabled"]) is not bool or type(body["neutral_voltage"]) is bool:
-        return jsonify(error="Invalid provisional pH settings"), 400
-    try:
-        neutral = float(body["neutral_voltage"])
-        if not math.isfinite(neutral) or not 2.0 <= neutral <= 3.0:
-            raise ValueError("Neutral pH estimate voltage must be 2.0-3.0 V")
-        if body["enabled"]:
-            # Temporary estimate uses the user's supplied voltage table;
-            # no dependence on the old/possibly invalid saved pH buffer curve.
-            provisional_ph_neutral_anchor(neutral, neutral)
-        with _db() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "UPDATE sensor_calibration SET "
-                    "ph_provisional_started_at=CASE "
-                    "WHEN %s=0 THEN NULL "
-                    "WHEN ph_provisional_enabled=0 OR ph_provisional_neutral_v<>%s "
-                    "THEN NOW() ELSE ph_provisional_started_at END, "
-                    "ph_provisional_enabled=%s,ph_provisional_neutral_v=%s "
-                    "WHERE id=1",
-                    (int(body["enabled"]),neutral,int(body["enabled"]),neutral))
-            conn.commit()
-    except (TypeError, ValueError, KeyError, OverflowError) as exc:
-        return jsonify(error=str(exc)), 400
-    resp = jsonify(ok=True, enabled=body["enabled"], neutral_voltage=neutral,
-                   warning="UNVERIFIED pH estimate; not suitable for CO2/dosing decisions")
-    resp.headers["Cache-Control"]="no-store"
-    return resp
+    response = jsonify(_settings())
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @bp.post("/ntc-settings")
 def save_ntc_settings():
-    """Store A1 hardware state in MariaDB, never in service environment."""
     _admin()
     body = request.get_json(silent=True)
     if not isinstance(body, dict) or set(body) != {"enabled", "supply_v"}:
-        return jsonify(error="Supply enabled (boolean) and supply_v (volts)"), 400
-    if type(body["enabled"]) is not bool or type(body["supply_v"]) is bool:
-        return jsonify(error="enabled must be true/false and supply_v a number"), 400
+        return jsonify(error="Expected enabled and supply_v"), 400
+    if type(body["enabled"]) is not bool or isinstance(body["supply_v"], bool):
+        return jsonify(error="Invalid NTC settings"), 400
     try:
-        volts = float(body["supply_v"])
-        if not math.isfinite(volts) or not 3.0 <= volts <= 3.6:
-            raise ValueError("Supply voltage must be 3.0 to 3.6 V (3.3 V nominal)")
+        supply = float(body["supply_v"])
+        if not math.isfinite(supply) or not 3.0 <= supply <= 3.6:
+            raise ValueError("Supply must be between 3.0 and 3.6 V")
     except (ValueError, TypeError, OverflowError) as exc:
         return jsonify(error=str(exc)), 400
-
     with _db() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "UPDATE sensor_calibration SET "
-                "temp_updated_at=CASE WHEN ntc_enabled<>%s OR ntc_supply_v<>%s "
-                "THEN NULL ELSE temp_updated_at END, "
-                "temp_offset_c=CASE WHEN ntc_enabled<>%s OR ntc_supply_v<>%s "
-                "THEN 0 ELSE temp_offset_c END, "
+                "temp_updated_at=CASE WHEN ntc_enabled<>%s OR ntc_supply_v<>%s THEN NULL ELSE temp_updated_at END,"
+                "temp_offset_c=CASE WHEN ntc_enabled<>%s OR ntc_supply_v<>%s THEN 0 ELSE temp_offset_c END,"
                 "ntc_enabled=%s,ntc_supply_v=%s WHERE id=1",
-                (int(body["enabled"]), volts, int(body["enabled"]), volts,
-                 int(body["enabled"]), volts))
-            if cur.rowcount == 0:
-                cur.execute("SELECT id FROM sensor_calibration WHERE id=1")
-                if cur.fetchone() is None:
-                    return jsonify(error="Missing sensor_calibration id=1 row"), 409
+                (int(body["enabled"]), supply, int(body["enabled"]), supply,
+                 int(body["enabled"]), supply))
         conn.commit()
-    resp = jsonify(ok=True, ntc_enabled=bool(body["enabled"]), ntc_supply_v=volts)
-    resp.headers["Cache-Control"] = "no-store"
-    return resp
+    response = jsonify(ok=True, ntc_enabled=body["enabled"], ntc_supply_v=supply)
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @bp.post("/sample")
@@ -165,61 +115,47 @@ def sample():
     _admin()
     body = request.get_json(silent=True) or {}
     kind = body.get("kind")
-    if kind not in ("temp", "ph7", "ph4", "ph401", "ph686", "ph918"):
-        return jsonify(error="Invalid reference"), 400
+    if kind not in ("temp", "ph686", "ph401"):
+        return jsonify(error="Unsupported calibration buffer"), 400
     try:
-        temperature = None
-        temperature_source = None
+        buffer_temp = None
+        buffer_source = None
         reference_ph = None
-        ntc_config = None
-        if kind in ("ph401", "ph686", "ph918"):
-            temperature_source = body.get("temperature_source", "manual")
-            if temperature_source == "ntc":
-                # Only use A1 if the operator confirms it is in the SAME
-                # buffer as A0. Never infer a calibration-glass temperature
-                # from an NTC still installed in the aquarium.
-                with _db() as conn:
-                    with conn.cursor() as cur:
-                        cur.execute(
-                            "SELECT ntc_enabled,ntc_supply_v,"
-                            "temp_updated_at,temp_factor,temp_offset_c "
-                            "FROM sensor_calibration WHERE id=1")
-                        ntc_config = cur.fetchone() or {}
-                if not _ntc_settings(ntc_config)[0]:
-                    raise ValueError("Enable A1 NTC in Sensor Calibration after wiring the probe")
-                temperature = _calibrated_ntc_temperature(_sample(1), ntc_config)
-            elif temperature_source == "manual":
-                raw_temp = body.get("temperature_c")
-                if isinstance(raw_temp, bool) or raw_temp is None:
-                    raise ValueError("Enter the actual buffer temperature from a thermometer")
-                temperature = float(raw_temp)
+        config = None
+        if kind in ("ph686", "ph401"):
+            buffer_source = body.get("temperature_source", "manual")
+            if buffer_source == "ntc":
+                # Operator must put the NTC and pH probe in the *same* buffer.
+                config = _settings()
+                buffer_temp = _calibrated_ntc_temperature(_sample(1), config)
+            elif buffer_source == "manual":
+                supplied = body.get("temperature_c")
+                if supplied is None or isinstance(supplied, bool):
+                    raise ValueError("Enter actual buffer liquid temperature")
+                buffer_temp = float(supplied)
             else:
                 raise ValueError("temperature_source must be manual or ntc")
-            reference_ph = buffer_reference_ph(kind, temperature)
+            reference_ph = buffer_reference_ph(kind, buffer_temp)
         if kind == "temp":
-            with _db() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("SELECT ntc_enabled,ntc_supply_v "
-                                "FROM sensor_calibration WHERE id=1")
-                    ntc_config = cur.fetchone() or {}
-            enabled, supply_v = _ntc_settings(ntc_config)
+            config = _settings()
+            enabled, supply = _ntc_settings(config)
             if not enabled:
-                raise ValueError("Install the probe and enable A1 NTC in sensor settings first")
-        volts = _sample(1 if kind == "temp" else 0)
-        base = ntc_celsius(volts, supply_v=supply_v) if kind == "temp" else None
-    except (OSError, ValueError, TypeError) as exc:
+                raise ValueError("Enable the installed A1 NTC first")
+        voltage = _sample(1 if kind == "temp" else 0)
+        raw_temp = ntc_celsius(voltage, supply_v=supply) if kind == "temp" else None
+    except (OSError, ValueError, TypeError, OverflowError) as exc:
         return jsonify(error=str(exc)), 409
     session["sensor_reference_" + kind] = {
-        "volts": volts, "ts": time.time(),
-        "temperature_c": temperature, "temperature_source": temperature_source,
-        "reference_ph": reference_ph,
+        "volts": voltage, "ts": time.time(), "temperature_c": buffer_temp,
+        "temperature_source": buffer_source, "reference_ph": reference_ph,
     }
-    resp = jsonify(kind=kind, voltage=round(volts, 5),
-                   temperature_c=temperature, temperature_source=temperature_source,
-                   reference_ph=reference_ph,
-                   temperature_uncalibrated=round(base, 2) if base is not None else None)
-    resp.headers["Cache-Control"] = "no-store"
-    return resp
+    response = jsonify(
+        kind=kind, voltage=round(voltage, 5),
+        temperature_c=buffer_temp, temperature_source=buffer_source,
+        reference_ph=reference_ph,
+        temperature_uncalibrated=round(raw_temp, 2) if raw_temp is not None else None)
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @bp.post("/save")
@@ -228,274 +164,167 @@ def save():
     body = request.get_json(silent=True) or {}
     kind = body.get("kind")
 
-    def previous(name):
-        value = session.get("sensor_reference_" + name)
-        if not isinstance(value, dict) or time.time() - float(value.get("ts", 0)) > 900:
-            raise ValueError("Capture a fresh reference reading first (within 15 minutes)")
-        return float(value["volts"])
+    def captured(name):
+        item = session.get("sensor_reference_" + name)
+        if not isinstance(item, dict) or time.time() - float(item.get("ts", 0)) > 900:
+            raise ValueError("Capture a stable reference within 15 minutes")
+        return item, float(item["volts"])
 
     try:
         if kind == "temp":
-            volts = previous("temp")
-            reference = float(body.get("reference_c"))
-            if not math.isfinite(reference) or not 5 <= reference <= 40:
-                raise ValueError("Temperature reference must be between 5 and 40 °C")
-            with _db() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("SELECT ntc_enabled,ntc_supply_v,temp_factor "
-                                "FROM sensor_calibration WHERE id=1")
-                    temp_settings = cur.fetchone() or {}
-            enabled, supply_v = _ntc_settings(temp_settings)
+            _, voltage = captured("temp")
+            ref = float(body.get("reference_c"))
+            if not math.isfinite(ref) or not 5 <= ref <= 40:
+                raise ValueError("Reference temperature must be 5-40 C")
+            settings = _settings()
+            enabled, supply = _ntc_settings(settings)
             if not enabled:
-                raise ValueError("NTC is disabled in sensor settings")
-            raw_temperature = ntc_celsius(volts, supply_v=supply_v)
-            multiplier = float(temp_settings.get("temp_factor") or 1.0)
-            offset = reference - raw_temperature * multiplier
+                raise ValueError("A1 is disabled")
+            factor = float(settings.get("temp_factor") if settings.get("temp_factor") is not None else 1)
+            offset = ref - ntc_celsius(voltage, supply_v=supply) * factor
             if abs(offset) > 5:
-                raise ValueError("Temperature offset exceeds 5 °C; check NTC probe and resistor")
+                raise ValueError("NTC offset exceeds 5 C; check wiring")
             with _db() as conn:
                 with conn.cursor() as cur:
-                    cur.execute("UPDATE sensor_calibration SET temp_offset_c=%s,temp_updated_at=NOW() WHERE id=1",
-                                (offset,))
+                    cur.execute("UPDATE sensor_calibration SET temp_offset_c=%s,temp_updated_at=NOW() WHERE id=1", (offset,))
                 conn.commit()
             session.pop("sensor_reference_temp", None)
-            result = {"ok": True, "temp_offset_c": round(offset, 3)}
-        elif kind == "ph3":
-            # Three fresh, independently captured buffers are required.
-            # No confirmation checkbox/flag: the server verifies the samples.
-            captures = []
-            for name in ("ph401", "ph686", "ph918"):
-                record = session.get("sensor_reference_" + name)
-                if not isinstance(record, dict):
-                    raise ValueError("Capture all three buffers before saving")
-                voltage = previous(name)
-                temperature = float(record["temperature_c"])
-                ref = buffer_reference_ph(name, temperature)
-                captures.append((voltage, ref, temperature))
-            (v401, p401, t401), (v686, p686, t686), (v918, p918, t918) = captures
-            validate_ph_three_points(v401, v686, v918, p401, p686, p918)
+            result = dict(ok=True, temp_offset_c=round(offset, 3))
+        elif kind == "ph2":
+            ref686, v686 = captured("ph686")
+            ref401, v401 = captured("ph401")
+            t686 = float(ref686["temperature_c"])
+            t401 = float(ref401["temperature_c"])
+            p686 = buffer_reference_ph("ph686", t686)
+            p401 = buffer_reference_ph("ph401", t401)
+            calibrated_ph_from_points(v686, p686, v686, p401, v401)
+            # Only these two verified captures override the operator's supplied
+            # 2.54 / 3.04 reference voltages.
             with _db() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        "UPDATE sensor_calibration SET "
-                        "ph401_voltage=%s,ph686_voltage=%s,ph918_voltage=%s, "
-                        "ph401_reference=%s,ph686_reference=%s,ph918_reference=%s, "
-                        "ph401_temp_c=%s,ph686_temp_c=%s,ph918_temp_c=%s, "
-                        "ph_factor=1.0,ph_provisional_enabled=0,"
-                        "ph_provisional_started_at=NULL,ph_updated_at=NOW() WHERE id=1",
-                        (v401,v686,v918,p401,p686,p918,t401,t686,t918))
-                    cur.execute("SELECT id FROM sensor_calibration WHERE id=1")
-                    if cur.fetchone() is None:
-                        raise ValueError("Missing sensor_calibration id=1 row")
+                        "UPDATE sensor_calibration SET ph686_voltage=%s,ph401_voltage=%s,"
+                        "ph686_temp_c=%s,ph401_temp_c=%s,ph_updated_at=NOW() WHERE id=1",
+                        (v686, v401, t686, t401))
                 conn.commit()
-            for name in ("ph401", "ph686", "ph918"):
-                session.pop("sensor_reference_" + name, None)
-            result = {"ok": True, "ph401_voltage": round(v401, 5),
-                      "ph686_voltage": round(v686, 5),
-                      "ph918_voltage": round(v918, 5),
-                      "references": {"ph401": round(p401, 4),
-                                     "ph686": round(p686, 4),
-                                     "ph918": round(p918, 4)}}
-        elif kind == "ph":
-            if body.get("confirmed_buffers") is not True:
-                raise ValueError("Confirm certified pH 7.00 and pH 4.00 buffer solutions")
-            v7, v4 = previous("ph7"), previous("ph4")
-            calibrated_ph(v7, v7, v4)  # validates distinct voltages
-            with _db() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("UPDATE sensor_calibration SET ph7_voltage=%s,ph4_voltage=%s,"
-                                "ph_provisional_enabled=0,ph_provisional_started_at=NULL,"
-                                "ph_updated_at=NOW() WHERE id=1", (v7, v4))
-                conn.commit()
-            session.pop("sensor_reference_ph7", None)
-            session.pop("sensor_reference_ph4", None)
-            result = {"ok": True, "ph7_voltage": round(v7, 5), "ph4_voltage": round(v4, 5)}
+            session.pop("sensor_reference_ph686", None)
+            session.pop("sensor_reference_ph401", None)
+            result = dict(ok=True, ph686_voltage=round(v686, 5), ph401_voltage=round(v401, 5),
+                          ph686_temp_c=t686, ph401_temp_c=t401)
         else:
-            raise ValueError("Unknown calibration kind")
-    except (ValueError, TypeError, OverflowError) as exc:
+            raise ValueError("Unsupported calibration action")
+    except (ValueError, TypeError, KeyError, OverflowError) as exc:
         return jsonify(error=str(exc)), 400
-    resp = jsonify(result)
-    resp.headers["Cache-Control"] = "no-store"
-    return resp
+    response = jsonify(result)
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @bp.post("/factors")
 def save_factors():
-    """Save bounded, finite calibration multipliers for the sensor collector."""
     _admin()
     body = request.get_json(silent=True)
-    if not isinstance(body, dict):
-        return jsonify(error="Expected JSON object"), 400
-    limits = {"tds_factor": (0.001, 10.0),
-              "ph_factor": (0.5, 1.5),
-              "temp_factor": (0.8, 1.2)}
-    if not body or not set(body).issubset(limits):
-        return jsonify(error="Provide one or more supported calibration multipliers"), 400
-    values = {}
+    limits = {"tds_factor": (0.001, 10), "temp_factor": (0.8, 1.2)}
+    if not isinstance(body, dict) or not body or not set(body).issubset(limits):
+        return jsonify(error="Unsupported calibration multiplier"), 400
     try:
-        for field in body:
-            low, high = limits[field]
-            if isinstance(body[field], bool):
-                raise ValueError(field + " must be a number")
-            value = float(body[field])
-            if not math.isfinite(value) or not low <= value <= high:
-                raise ValueError(f"{field} must be between {low} and {high}")
-            values[field] = value
+        values = {}
+        for field, value in body.items():
+            if isinstance(value, bool):
+                raise ValueError("Invalid multiplier")
+            number = float(value)
+            if not math.isfinite(number) or not limits[field][0] <= number <= limits[field][1]:
+                raise ValueError(field + " outside allowed range")
+            values[field] = number
     except (ValueError, TypeError, OverflowError) as exc:
         return jsonify(error=str(exc)), 400
     with _db() as conn:
         with conn.cursor() as cur:
-            fields = tuple(values)
-            sql = "UPDATE sensor_calibration SET " + ", ".join(
-                field + "=%s" for field in fields) + " WHERE id=1"
-            cur.execute(sql, tuple(values[field] for field in fields))
+            cur.execute("UPDATE sensor_calibration SET " +
+                        ",".join(field+"=%s" for field in values)+" WHERE id=1",
+                        tuple(values.values()))
         conn.commit()
-    result = jsonify(ok=True, **values)
-    result.headers["Cache-Control"] = "no-store"
-    return result
+    response = jsonify(ok=True, **values)
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @bp.get("/live")
 def live():
-    """Read each ADS1115 channel independently; failed A1/A3 must not hide pH A0."""
+    """Read requested ADS1115 channels; A1 failure cannot hide A0 raw volts."""
     _admin()
-    # Poll the currently active input without waiting for other channels.
-    # TDS live voltage uses no calibration DB values; skip the database
-    # completely for a3 so a slow/missing calibration row cannot block A3.
-    selected = request.args.get("channel", "all")
+    selected = request.args.get("channel", "all").lower()
     if selected not in ("all", "a0", "a1", "a3"):
-        return jsonify(error="channel must be a0, a1 or a3"), 400
-
+        return jsonify(error="Invalid ADC channel"), 400
     config = {}
     config_error = None
     if selected != "a3":
         try:
-            with _db() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        "SELECT ntc_enabled,ntc_supply_v,temp_offset_c,temp_updated_at,ph7_voltage,ph4_voltage,"
-                        "tds_factor,ph_factor,temp_factor,"
-                        "ph_provisional_enabled,ph_provisional_neutral_v,"
-                        "ph401_voltage,ph686_voltage,ph918_voltage,"
-                        "ph401_temp_c,ph686_temp_c,ph918_temp_c,"
-                        "ph401_reference,ph686_reference,ph918_reference "
-                        "FROM sensor_calibration WHERE id=1"
-                    )
-                    config = cur.fetchone() or {}
+            config = _settings()
         except pymysql.MySQLError as exc:
-            # Raw volts can still be shown despite calibration DB errors.
             config_error = str(exc)
     readings = {"a0": None, "a1": None, "a3": None}
     errors = {}
-    bus = int(os.getenv("TDS_I2C_BUS", "2"))
-    ntc_config_error = None
+    ntc_error = None
     try:
-        enabled_ntc, ntc_supply_v = _ntc_settings(config)
-    except (ValueError, TypeError, OverflowError) as exc:
-        enabled_ntc, ntc_supply_v = False, None
-        ntc_config_error = str(exc)
-    # When the pH tab is active, read A1 as well as A0 so the same
-    # temperature-aware pH value appears in the calibration preview.
+        ntc_enabled, ntc_supply_v = _ntc_settings(config)
+    except (TypeError, ValueError, OverflowError) as exc:
+        ntc_enabled, ntc_supply_v = False, None
+        ntc_error = str(exc)
     channels = ((0, 1, 3) if selected == "all" else
-                (0, 1) if selected == "a0" and enabled_ntc else
+                (0, 1) if selected == "a0" and ntc_enabled else
                 (int(selected[1]),))
+    bus = int(os.getenv("TDS_I2C_BUS", "2"))
     for channel in channels:
-        key = f"a{channel}"
+        key = "a"+str(channel)
         try:
             samples = []
             for _ in range(2):
-                raw, volts = adc_read(bus, 0x48, channel)
-                if raw >= 32767:
-                    raise ValueError(f"ADS1115 {key.upper()} saturated")
-                if not math.isfinite(volts) or not 0 <= volts < 4.096:
-                    raise ValueError(f"Invalid {key.upper()} voltage")
-                samples.append(volts)
-                time.sleep(0.010)
+                raw, voltage = adc_read(bus, 0x48, channel)
+                if raw >= 32767 or raw <= -32768 or not math.isfinite(voltage) or not 0 <= voltage < 4.096:
+                    raise ValueError("Invalid or saturated ADS1115 "+key.upper())
+                samples.append(voltage)
+                time.sleep(0.01)
             readings[key] = round(statistics.median(samples), 6)
         except (OSError, ValueError) as exc:
-            readings[key] = None
             errors[key] = str(exc)
 
-    raw_temp = None
+    raw_temp, ph_temp, ph_raw = None, None, None
     temp_error = errors.get("a1")
-    if enabled_ntc and readings["a1"] is not None:
+    ph_error = errors.get("a0")
+    note = ntc_error or "Calibrated A1 temperature required for pH"
+    if ntc_enabled and readings["a1"] is not None:
         try:
             raw_temp = ntc_celsius(readings["a1"], supply_v=ntc_supply_v)
+            if config.get("temp_updated_at") is not None:
+                ph_temp = _calibrated_ntc_temperature(readings["a1"], config)
+                note = "A1 calibrated; temperature-compensated two-buffer pH"
+            else:
+                note = "Calibrate A1 first"
         except ValueError as exc:
             temp_error = str(exc)
-
-    raw_ph = None
-    ph_error = errors.get("a0")
-    provisional_on = bool(int(config.get("ph_provisional_enabled") or 0))
-    ph_temperature_c = None
-    ph_temperature_compensated = False
-    ph_temperature_note = ntc_config_error or "A1 not enabled or calibrated"
-    if enabled_ntc and raw_temp is not None:
-        try:
-            ph_temperature_c = (raw_temp * float(config.get("temp_factor") or 1.0)
-                + float(config.get("temp_offset_c") or 0.0))
-            if not math.isfinite(ph_temperature_c) or not 0 <= ph_temperature_c <= 50:
-                ph_temperature_c = None
-                ph_temperature_note = "A1 temperature outside supported range"
-            elif config.get("temp_updated_at") is None:
-                ph_temperature_note = "Calibrate A1 temperature before pH ATC"
-            else:
-                ph_temperature_note = "A1 calibrated and available"
-        except (ValueError, TypeError):
-            ph_temperature_c = None
-            ph_temperature_note = "Invalid A1 temperature configuration"
-    elif enabled_ntc:
-        ph_temperature_note = temp_error or "A1 temperature unavailable"
+            note = temp_error
 
     if readings["a0"] is not None:
-        v7, v4 = config.get("ph7_voltage"), config.get("ph4_voltage")
-        new_keys = ("ph401_voltage", "ph686_voltage", "ph918_voltage",
-                    "ph401_reference", "ph686_reference", "ph918_reference")
-        temp_keys = ("ph401_temp_c", "ph686_temp_c", "ph918_temp_c")
         try:
-            has_three = all(config.get(key) is not None for key in new_keys)
-            if provisional_on:
-                raw_ph = provisional_ph_neutral_anchor(
-                    readings["a0"], float(config.get("ph_provisional_neutral_v") or 2.40))
-                ph_temperature_note = "Provisional pH estimate; NOT temperature compensated"
-            elif has_three and ph_temperature_c is not None and (
-                    config.get("temp_updated_at") is not None) and all(
-                    config.get(key) is not None for key in temp_keys):
-                raw_ph = temperature_compensated_ph_three_points(
-                    readings["a0"], *(float(config[key]) for key in new_keys),
-                    *(float(config[key]) for key in temp_keys), ph_temperature_c)
-                ph_temperature_compensated = True
-                ph_temperature_note = "Nernst slope compensated with measured A1 temperature"
-            elif has_three:
-                raw_ph = calibrated_ph_three_points(
-                    readings["a0"], *(float(config[key]) for key in new_keys))
-                if ph_temperature_c is not None and config.get("temp_updated_at") is not None:
-                    ph_temperature_note = "Saved pH calibration has no buffer temperatures"
-            elif v7 is not None and v4 is not None:
-                raw_ph = calibrated_ph(readings["a0"], float(v7), float(v4))
-                ph_temperature_note = "Legacy pH 7/4 curve: recalibrate with three buffers for ATC"
-        except ValueError as exc:
+            keys = ("ph686_voltage","ph401_voltage","ph686_temp_c","ph401_temp_c")
+            if ph_temp is None:
+                ph_error = "Calibrated A1 temperature unavailable"
+            elif not all(config.get(k) is not None for k in keys):
+                ph_error = "Two-buffer pH references missing"
+            else:
+                ph_raw = temperature_compensated_ph_two_points(
+                    readings["a0"], float(config["ph686_voltage"]), float(config["ph401_voltage"]),
+                    float(config["ph686_temp_c"]), float(config["ph401_temp_c"]), ph_temp)
+        except (TypeError, ValueError) as exc:
             ph_error = str(exc)
-
     response = jsonify(
-        volts=readings,
-        requested_channel=selected,
-        voltage_errors=errors,
-        calibration_db_error=config_error,
-        ph_raw=raw_ph,
-        ph_error=ph_error,
-        ph_provisional=provisional_on,
-        ph_provisional_neutral_v=float(config.get("ph_provisional_neutral_v") or 2.40),
-        ph_temperature_c=ph_temperature_c,
-        ph_temperature_compensated=ph_temperature_compensated,
-        ph_temperature_note=ph_temperature_note,
-        temp_raw=raw_temp,
-        temp_error=temp_error,
-        ntc_enabled=enabled_ntc,
-        ntc_supply_v=ntc_supply_v,
+        volts=readings, requested_channel=selected, voltage_errors=errors,
+        calibration_db_error=config_error, ph_raw=ph_raw, ph_error=ph_error,
+        ph_temperature_c=ph_temp, ph_temperature_compensated=ph_raw is not None,
+        ph_temperature_note=note, temp_raw=raw_temp, temp_error=temp_error,
+        ntc_enabled=ntc_enabled, ntc_supply_v=ntc_supply_v,
         temp_offset_c=float(config.get("temp_offset_c") or 0),
-        fallback_temperature_c=float(os.getenv("TDS_WATER_TEMP_C", "22")),
-        tds_voltage=readings["a3"],
         captured_at=time.strftime("%Y-%m-%d %H:%M:%S"))
     response.headers["Cache-Control"] = "no-store"
     return response
