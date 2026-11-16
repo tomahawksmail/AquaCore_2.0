@@ -1,126 +1,90 @@
-# pH 9.87 after A1 temperature wiring — diagnostics and safe DB cleanup
+# AquaCore 2.0 — Two-buffer pH and A1 temperature (November 16, 2026)
 
-This change set targets the Orange Pi Zero 2W / ADS1115 (I²C-2, 0x48):
-A0=pH, A1=3.3 V NTC divider, A3=TDS. The working A1 sensor is not
-evidence of an accurate pH calibration.
+## Hardware and conversion
 
-## Why an unexpected pH value appears
+- ADS1115 I²C bus 2, address 0x48.
+- A0: pH electrode interface output. A1: 10k NTC B3950 and 10k fixed
+  pull-up from **3.3 V** to A1, NTC from A1 to common GND.
+- A3: TDS sensor. The A1 thermistor must be configured **and calibrated**
+  before AquaCore writes pH or temperature-corrected TDS.
+- pH electrode reference pairs: 2.540 V → pH 6.86, 3.040 V → pH 4.01.
+  Reference liquid temperatures are **assumed to be 25.0°C** because
+  their actual recorded temperatures were not supplied. If they differ,
+  recapture both buffers in the calibration dialog with A1 and A0 in the
+  same solution, or use a reference thermometer in the manual field.
 
-The collector's precedence is:
-1. `ph_provisional_enabled=1`: **unverified** operator anchor
-   A0=2.40 V → pH≈7; saved three-buffer curve and Nernst compensation ignored.
-2. Otherwise, valid three-buffer references plus A1 temperature + calibration
-   buffer temperatures → 3-point Nernst slope correction.
-3. Otherwise, valid three-buffer references → uncompensated 3-point curve.
-4. Otherwise, a valid legacy pH 7/4 pair → legacy curve.
+At 25°C: `pH = 6.86 + (V_A0 - 2.54) × (4.01-6.86)/(3.04-2.54)`.
+For A0=2.40 V, this predicts pH approximately **7.658** at 25°C.
+This is a *two-buffer calibration model*, not confirmation of aquarium pH.
+The saved buffer temperatures and A1 water temperature correct the slope
+in Kelvin using the Nernst approximation; they never transform aquarium
+chemistry into a fictional fixed temperature. Verify independently before
+using pH for any automated CO₂/dosing decisions.
 
-The old 3-point references may have been captured at different cable/amplifier
-conditions from today's A0 voltage. Switching on A1 allows path 2 to activate;
-that does not make an outdated pH electrode calibration trustworthy.
-A reported pH 9.87 alone cannot establish the actual aquarium pH.
+## Existing installation, exact order
 
-**Do not use provisional pH to drive CO₂, acid/base dosing, or safety actions.**
+1. Ensure physical pumps/relays/CO₂ are in a safe OFF state. Back up your
+   running MariaDB database and verify the backup can be read.
+2. Stop writers and web services. Do not stop electrical safety controls
+   unless you have a verified independent cooling/protection arrangement.
+3. Update the repository to this PR's code **without starting services**.
+4. Run the one-time schema migration from the updated checkout:
+   `sudo mariadb < deploy/sql/ph_two_buffer_ntc_migration.sql`.
+   It seeds the two voltages above, labels earlier pH readings as old
+   calibration history, and drops 11 unused calibration columns. It
+   preserves the A1 enable flag, NTC offset/factor, TDS factor and real
+   temperature/TDS history.
+5. Start the updated web + sensor collector and inspect
+   `sudo journalctl -u aquacore-tds.service -n 30 --no-pager`.
+   New log mode is `TWO_BUFFER_A1_ATC`. Confirm pH near 6.86 at A0
+   2.54 V when water is around the assumed calibration temperature.
+6. Only after validating new code and backups, consider the **optional**
+   `deploy/sql/cleanup_unused_db_fields.sql`. It clears obsolete old
+   pH cells, fake all-zero outage records and eight unused host metric
+   columns only if they contain no nonzero values. This file never runs
+   automatically. Review candidate counts before executing.
 
-### Verify the running Orange Pi (read-only)
-
-```bash
-cd /opt/aquacore
-git rev-parse --short HEAD
-sudo mariadb _AquaCore_ -e "
-SELECT ph_provisional_enabled, ph_provisional_neutral_v, ph_factor,
-       ph401_voltage,ph686_voltage,ph918_voltage,
-       ph401_reference,ph686_reference,ph918_reference,
-       ph401_temp_c,ph686_temp_c,ph918_temp_c,
-       ntc_enabled,ntc_supply_v,temp_updated_at,temp_factor,temp_offset_c
-FROM sensor_calibration WHERE id=1\G"
-sudo journalctl -u aquacore-tds.service -n 30 --no-pager
-```
-
-Look for `pH mode=PROVISIONAL_UNVERIFIED`, `THREE_BUFFER_ATC`,
-`THREE_BUFFER_NO_ATC`, or `LEGACY_TWO_BUFFER`, as well as raw A0 voltage.
-These modes appear in collector logs after this change is deployed.
-
-If `ph_provisional_enabled=0`, the current collector intentionally uses
-saved buffer calibration. That can explain a large discrepancy after A1
-becomes active.
-
-### Restore the operator-requested 2.40 V → pH 7 temporary display
-
-Prefer **Options → Sensor calibration → pH → Temporary unverified pH
-estimate**, enable it, enter `2.40` and save. The same change can be made
-explicitly in the running MariaDB database:
-
-```sql
-UPDATE sensor_calibration
-SET ph_provisional_enabled=1,
-    ph_provisional_neutral_v=2.40,
-    ph_provisional_started_at=NOW()
-WHERE id=1 AND
-      (ph_provisional_enabled<>1
-       OR ph_provisional_neutral_v<>2.40
-       OR ph_provisional_started_at IS NULL);
-```
-
-This does not erase saved calibration points. The collector loads settings
-once per sampling cycle (normally every 30 seconds). With A0 about 2.40 V,
-the output should be about 7.0 regardless of A1 temperature. **It is an
-unverified estimate, not a confirmed water pH.** Use freshly prepared buffer
-solutions and stable A0 measurements for a proper three-buffer calibration.
-
-## Database audit
-
-The current `data`, `sensor_calibration`, `options`,
-`fertilizer_pump2`, `status` and `psutil` tables are still required.
-The `WiFi` and legacy fields are retained pending confirmation that no
-external setup scripts depend on them; pH 7/4 fields are still read by the
-legacy calibration fallback. Do **not** delete them.
-
-Two fresh-install schemas were missing the modern NTC/three-buffer/provisional
-columns: `deploy/sql/clean_install.sql` and
-`deploy/sql/aquacore_empty_bootstrap.sql`. They now match
-`deploy/sql/sensor_calibration.sql`.
-
-Eight legacy `psutil` columns are not written by `system_collector.py`
-or read by the dashboard/Telegram integration:
-
-```text
-scpufreq_min, scpufreq_max, cpu_thermal_high, cpu_thermal_crit,
-gpu_thermal_cur, gpu_thermal_high, gpu_thermal_crit, ve_thermal_cur
-```
-
-They are omitted from *new* installations. On an *existing* installation,
-the optional maintenance SQL `deploy/sql/cleanup_unused_db_fields.sql`
-drops an allowlisted column only when all existing values are NULL/zero.
-If it contains any nonzero data it is left alone for investigation.
-
-The old scheduler wrote fake `temp=0,ph=0,tds=0` and all-zero `psutil`
-rows when collectors were offline. This change stops generating those
-rows. The dashboard marks live metrics unavailable after a 90-second gap,
-preserves genuine history and excludes all-zero sensor samples from new
-history responses.
-
-### Optional cleanup of an existing database
-
-**Never run the fresh-install SQL files on a live tank.** Review the
-cleanup SQL carefully; it deletes legacy synthetic zero rows and conditionally
-drops the eight unused metrics. It does not delete real sensor readings,
-pH calibration values, schedules or pump state.
-
-After ensuring equipment stays in a safe state, stop web and writers,
-and take a verified backup before the cleanup:
+Example backup (run in a protected folder; no secrets in the repo):
 
 ```bash
-sudo systemctl stop aquacore.service aquacore-scheduler.service \
-  aquacore-tds.service aquacore-system.service
 sudo mariadb-dump --single-transaction --routines --triggers _AquaCore_ \
-  > ~/aquacore-before-cleanup-$(date +%Y%m%d-%H%M%S).sql
-
-# Inspect and verify the backup before applying any destructive SQL.
-less deploy/sql/cleanup_unused_db_fields.sql
-sudo mariadb < deploy/sql/cleanup_unused_db_fields.sql
+  > ~/aquacore-backup-$(date +%Y%m%d-%H%M%S).sql
 ```
 
-After any new code is installed and the schema changes are reviewed, start
-the same services and confirm correct system/temperature/TDS metrics and
-the pH mode reported in the collector journal. Verify existing hardware
-relay state separately; DB entries do not prove electrical OFF.
+**Do not import `clean_install.sql` or `aquacore_empty_bootstrap.sql`
+on an existing database.** They are solely fresh-install schemas.
+
+## Calibration dialog
+
+Settings → Sensor calibration → Temperature: enable A1, confirm the
+divider uses 3.3 V and save a glass thermometer reference.
+
+Settings → Sensor calibration → pH: current saved two-buffer voltages
+are displayed. To recapture, place both A0 and A1 probes together in
+pH 6.86 buffer, select “Use A1 NTC temperature”, wait for stable voltage,
+Capture 6.86, then rinse and repeat for pH 4.01. Save both buffers.
+If A1 remains in the aquarium, instead manually enter the **actual**
+calibration-liquid temperatures; do not use aquarium water temperature
+to label a separate calibration glass.
+
+## Telegram chart vs web
+
+Web `/api/history?period=24h` and Telegram `📈 Aquarium chart` call
+the same `water_history.history_sql("24h")` aggregation and use the
+same min/max limits, pH calibration cutoff and time buckets.
+Both display lines for temperature/pH/TDS with matching metric colors,
+permitted-range shading and gaps for sensor outages. The web is an
+interactive SVG; Telegram is a 24-hour PNG, so interaction and font
+metrics differ. Telegram System chart retains its separate CPU/RAM
+rendering.
+
+## Database retained
+
+Required live tables: `data`, `sensor_calibration`, `options`,
+`status`, `psutil`, `fertilizer_pump2`, `users`,
+`telegram_users`, `loging`, `manual_overrides`. `WiFi` is retained
+pending an audit of any external Orange Pi AP setup script; deleting a
+table based only on this repo would be unsafe. Active calibration columns
+are precisely the ones in `deploy/sql/sensor_calibration.sql`.
+
+No operations on the live device have been performed in this PR.
