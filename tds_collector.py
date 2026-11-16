@@ -161,8 +161,11 @@ def main():
                 except (OSError, ValueError, TypeError, OverflowError) as exc:
                     LOG.warning("TDS unavailable: %s", exc)
 
-            save_sample(ppm, water_temp, ph)
-            LOG.info("Saved temp=%s C pH=%s TDS=%s ppm (mode=%s A0=%s V; A1 ATC=%s)",
+            if all(value is None for value in (ppm, water_temp, ph)):
+                LOG.warning("No valid A1/A0/A3 readings: skipping empty database row")
+            else:
+                save_sample(ppm, water_temp, ph)
+            LOG.info("Collected temp=%s C pH=%s TDS=%s ppm (mode=%s A0=%s V; A1 ATC=%s)",
                      f"{water_temp:.2f}" if water_temp is not None else "NULL",
                      f"{ph:.2f}" if ph is not None else "NULL",
                      f"{ppm:.2f}" if ppm is not None else "NULL",
