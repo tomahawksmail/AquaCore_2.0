@@ -137,13 +137,13 @@ class NTCDBSettingsTests(unittest.TestCase):
                 response, status = calibration.save_ntc_settings()
                 self.assertEqual(status, 400)
 
-    def test_collector_reads_ntc_db_settings_not_environment(self):
-        code = (ROOT / "tds_collector.py").read_text()
-        self.assertIn("ntc_enabled = bool(int(calibration.get('ntc_enabled') or 0))", code)
-        self.assertIn("ntc_supply_v", code)
-        self.assertNotIn("os.getenv(\"NTC_ENABLED\"", code)
-        self.assertNotIn("os.getenv(\"NTC_SUPPLY_V\"", code)
-        self.assertIn("calibration.get('temp_updated_at') is not None", code)
+    def test_collector_requires_calibrated_a1_for_ph_and_tds(self):
+        source = (ROOT / "tds_collector.py").read_text()
+        self.assertIn('config.get("ntc_enabled")', source)
+        self.assertIn('config.get("temp_updated_at") is None', source)
+        self.assertIn("water_temp is not None", source)
+        self.assertNotIn('os.getenv("NTC_ENABLED"', source)
+        self.assertNotIn("TDS_WATER_TEMP_C", source)
 
     def test_ui_has_ntc_configuration_controls(self):
         html = (ROOT / "templates/options.html").read_text()
