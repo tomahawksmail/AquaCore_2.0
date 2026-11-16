@@ -78,7 +78,7 @@ class SchemaTests(unittest.TestCase):
              patch.object(tds_collector,"save_sample",side_effect=lambda *v:events.append(v)), \
              patch.object(tds_collector,"adc_read",side_effect=AssertionError("No sensor reads without A1")):
             self.assertEqual(tds_collector.main(),0)
-        self.assertEqual(events,[(None,None,None)])
+        self.assertEqual(events,[])  # Do not write an all-NULL sensor row
 
     def test_collector_temperature_compensates_neutral(self):
         config={"ntc_enabled":1,"ntc_supply_v":3.3,"temp_updated_at":"saved",
