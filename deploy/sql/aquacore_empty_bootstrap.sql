@@ -61,8 +61,6 @@ CREATE TABLE IF NOT EXISTS `psutil` (
   `Id` int(10) unsigned NOT NULL AUTO_INCREMENT,
   `Datetime` datetime DEFAULT NULL,
   `scpufreq_cur` int(11) unsigned DEFAULT NULL,
-  `scpufreq_min` int(11) unsigned DEFAULT NULL,
-  `scpufreq_max` int(11) unsigned DEFAULT NULL,
   `cpus_percent_0` int(11) unsigned DEFAULT NULL,
   `cpus_percent_1` int(11) unsigned DEFAULT NULL,
   `cpus_percent_2` int(11) unsigned DEFAULT NULL,
@@ -79,12 +77,6 @@ CREATE TABLE IF NOT EXISTS `psutil` (
   `RAM_shared` int(11) unsigned DEFAULT NULL,
   `RAM_slab` int(11) unsigned DEFAULT NULL,
   `cpu_thermal_cur` int(11) unsigned DEFAULT NULL,
-  `cpu_thermal_high` int(11) unsigned DEFAULT NULL,
-  `cpu_thermal_crit` int(11) unsigned DEFAULT NULL,
-  `gpu_thermal_cur` int(11) unsigned DEFAULT NULL,
-  `gpu_thermal_high` int(11) unsigned DEFAULT NULL,
-  `gpu_thermal_crit` int(11) unsigned DEFAULT NULL,
-  `ve_thermal_cur` int(11) unsigned DEFAULT NULL,
   `ddr_thermal_cur` int(11) unsigned DEFAULT NULL,
   `net_bytes_sent` BIGINT UNSIGNED DEFAULT NULL,
   `net_bytes_recv` BIGINT UNSIGNED DEFAULT NULL,
@@ -195,6 +187,8 @@ CREATE TABLE IF NOT EXISTS `fertilizer_pump2` (
   `fertilizer_pulse_duration_seconds` DECIMAL(6,2) NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 INSERT IGNORE INTO `fertilizer_pump2` (`id`) VALUES (1);
+-- A fresh system has no dosing weekdays until the owner configures them.
+UPDATE `fertilizer_pump2` SET `fertilizer_weekdays`=0 WHERE `id`=1;
 ALTER TABLE `status` ADD COLUMN IF NOT EXISTS `fertilizer_pump2_status`
  VARCHAR(10) NOT NULL DEFAULT 'unchecked';
 
@@ -204,11 +198,25 @@ ALTER TABLE `status` ADD COLUMN IF NOT EXISTS `fertilizer_pump2_status`
 CREATE TABLE IF NOT EXISTS sensor_calibration (
   id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
   temp_offset_c DOUBLE NOT NULL DEFAULT 0,
+  ntc_enabled TINYINT(1) NOT NULL DEFAULT 0,
+  ntc_supply_v DOUBLE NOT NULL DEFAULT 3.3,
   tds_factor DOUBLE NOT NULL DEFAULT 0.2626,
   ph_factor DOUBLE NOT NULL DEFAULT 1.0,
+  ph_provisional_enabled TINYINT(1) NOT NULL DEFAULT 0,
+  ph_provisional_neutral_v DOUBLE NOT NULL DEFAULT 2.40,
+  ph_provisional_started_at DATETIME NULL,
   temp_factor DOUBLE NOT NULL DEFAULT 1.0,
   ph7_voltage DOUBLE NULL,
   ph4_voltage DOUBLE NULL,
+  ph401_voltage DOUBLE NULL,
+  ph686_voltage DOUBLE NULL,
+  ph918_voltage DOUBLE NULL,
+  ph401_reference DOUBLE NULL,
+  ph686_reference DOUBLE NULL,
+  ph918_reference DOUBLE NULL,
+  ph401_temp_c DOUBLE NULL,
+  ph686_temp_c DOUBLE NULL,
+  ph918_temp_c DOUBLE NULL,
   temp_updated_at DATETIME NULL,
   ph_updated_at DATETIME NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -225,7 +233,7 @@ ALTER TABLE `options`
 
 -- Safe, minimal configuration rows (idempotent on the intended new database).
 -- Leave all equipment ON/OFF times NULL: scheduler will not activate an unset schedule.
-INSERT INTO `options` (`history`) SELECT 30 WHERE NOT EXISTS (SELECT 1 FROM `options`);
+INSERT INTO `options` (`history`,`fertilizer_weekdays`) SELECT 30,0 WHERE NOT EXISTS (SELECT 1 FROM `options`);
 INSERT INTO `status`
  (`co2_status`,`o2_status`,`UV_status`,`heater_status`,`MasterL_status`,`PlantL_status`,`Backlight_status`,`fertilizer_pump_status`,`fertilizer_pump2_status`)
  SELECT 'unchecked','unchecked','unchecked','unchecked','unchecked','unchecked','unchecked','unchecked','unchecked'
