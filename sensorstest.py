@@ -10,7 +10,7 @@ import glob
 import os
 import sys
 import time
-from sensor_conversion import calibrated_ph, calibrated_ph_from_points, ntc_celsius
+from sensor_conversion import calibrated_ph_from_points, temperature_compensated_ph_two_points, ntc_celsius
 
 
 def adc_read(bus, address, channel, pga=4.096):
@@ -85,43 +85,27 @@ def main():
                    help="Lower reference buffer pH (default 4.01)")
     p.add_argument("--ph-low-voltage", type=float, default=3.04,
                    help="Voltage measured in lower pH buffer (default 3.04 V)")
-    p.add_argument("--ph7-voltage", type=float, default=None,
-                   help="A0 volts measured in pH 7.00 buffer")
-    p.add_argument("--ph4-voltage", type=float, default=None,
-                   help="A0 volts measured in pH 4.00 buffer")
     p.add_argument("--tds-factor", type=float, default=DEFAULT_TDS_FACTOR,
                    help="Provisional multiplier (default 0.2626); use 1 for unadjusted")
-    p.add_argument("--temperature", type=float, default=25.0,
-                   help="Measured water temperature C for estimate (default 25)")
     args = p.parse_args()
     if args.interval < 0.05 or args.bus is not None and args.bus < 0:
         p.error("Invalid bus or interval")
     if not (0 < args.tds_factor <= 10):
         p.error("--tds-factor must be greater than 0 and at most 10")
-    if (args.ph7_voltage is None) != (args.ph4_voltage is None):
-        p.error('Supply both --ph7-voltage and --ph4-voltage or neither')
     try:
-        if args.ph7_voltage is not None:
-            calibrated_ph(args.ph7_voltage, args.ph7_voltage, args.ph4_voltage)
-        else:
-            calibrated_ph_from_points(args.ph_high_voltage, args.ph_high,
-                                      args.ph_high_voltage, args.ph_low,
-                                      args.ph_low_voltage)
+        calibrated_ph_from_points(args.ph_high_voltage, args.ph_high,
+                                  args.ph_high_voltage, args.ph_low,
+                                  args.ph_low_voltage)
     except ValueError as exc:
         p.error(str(exc))
     if not (3.0 <= args.ntc_supply <= 3.6):
         p.error('--ntc-supply must be 3.0-3.6 V')
-    if not (-2 <= args.temperature <= 55):
-        p.error("--temperature must be between -2 and 55 C")
 
     print("AquaCore SENSOR TEST — read-only, no DB writes or relay changes", flush=True)
-    if args.ph7_voltage is not None:
-        print(f"A0 pH:       legacy buffers pH 7.00={args.ph7_voltage:.3f} V, pH 4.00={args.ph4_voltage:.3f} V")
-    else:
-        print(f"A0 pH:       buffers pH {args.ph_high:.2f}={args.ph_high_voltage:.3f} V, pH {args.ph_low:.2f}={args.ph_low_voltage:.3f} V")
+    print(f"A0 pH:       pH {args.ph_high:.2f}={args.ph_high_voltage:.3f} V, pH {args.ph_low:.2f}={args.ph_low_voltage:.3f} V")
     print(f"ADS1115 PGA: +/-{args.pga:.3f} V (input must not exceed chip supply limits)")
-    print("A1:          NTC B3950 via 10k pull-up to 5.0V" if args.ntc else "A1:          raw voltage only (use --ntc after re-wiring)")
-    print(f"TDS:         ADS1115 A3; temperature {args.temperature:.1f} C; provisional factor {args.tds_factor:.4f} (NOT calibrated)")
+    print("A1:          NTC B3950 via 10k pull-up to 3.3V" if args.ntc else "A1:          raw voltage only (use --ntc for a temperature reading)")
+    print(f"TDS:         ADS1115 A3; A1 temperature required; factor {args.tds_factor:.4f}")
     buses = glob.glob("/dev/i2c-*")
     print("Detected I2C bus devices:", ", ".join(sorted(buses)) or "none")
     if args.bus is None:
@@ -143,7 +127,7 @@ def main():
             try:
                 raw, volts = adc_read(args.bus, args.address, 3, pga=args.pga)
                 prefix = time.strftime('%Y-%m-%d %H:%M:%S')
-                temperature = args.temperature
+                temperature = None
                 if args.all_channels:
                     raw0, voltage0 = adc_read(args.bus, args.address, 0, pga=args.pga)
                     raw1, voltage1 = adc_read(args.bus, args.address, 1, pga=args.pga)
@@ -158,25 +142,26 @@ def main():
                             temperature = ntc_celsius(voltage1, supply_v=args.ntc_supply)
                             channels.append(f"water_temp={temperature:.2f} C (NTC B3950)")
                         except ValueError as exc:
-                            channels.append(f"water_temp=INVALID ({exc}); TDS uses fallback {args.temperature:.1f} C")
+                            channels.append(f"water_temp=INVALID ({exc}); TDS unavailable")
                     try:
                         if raw0 >= 32767:
-                            raise ValueError("ADC saturation")
-                        if args.ph7_voltage is not None:
-                            ph = calibrated_ph(voltage0, args.ph7_voltage, args.ph4_voltage)
-                        else:
-                            ph = calibrated_ph_from_points(
-                                voltage0, args.ph_high, args.ph_high_voltage,
-                                args.ph_low, args.ph_low_voltage)
-                        channels.append(f"pH={ph:.2f} (2-buffer)")
+                            raise ValueError("A0 saturated")
+                        if temperature is None:
+                            raise ValueError("A1 NTC temperature required")
+                        ph = temperature_compensated_ph_two_points(
+                            voltage0, args.ph_high_voltage, args.ph_low_voltage,
+                            25.0, 25.0, temperature)
+                        channels.append(f"pH={ph:.2f} (2-buffer, A1 compensated)")
                     except ValueError as exc:
                         channels.append(f"pH=INVALID ({exc})")
-                    adjusted = estimate_tds_ppm(volts, temperature) * args.tds_factor
-                    print(f"{prefix}  {'  '.join(channels)}  A3 TDS={adjusted:.1f} ppm (PROVISIONAL)", flush=True)
+                    if temperature is not None:
+                        adjusted = estimate_tds_ppm(volts, temperature) * args.tds_factor
+                        channels.append(f"A3 TDS={adjusted:.1f} ppm")
+                    else:
+                        channels.append("A3 TDS unavailable (A1 temperature required)")
+                    print(f"{prefix}  {'  '.join(channels)}", flush=True)
                 else:
-                    ppm = estimate_tds_ppm(volts, temperature)
-                    adjusted = ppm * args.tds_factor
-                    print(f"{prefix}  TDS A3: {volts:.5f} V  raw={raw}  base={ppm:.1f} ppm  adjusted={adjusted:.1f} ppm ({temperature:.1f} C, PROVISIONAL)", flush=True)
+                    print(f"{prefix}  A3={volts:.5f} V (raw={raw}); use --all-channels --ntc for temperature-corrected TDS", flush=True)
             except (OSError, ValueError) as exc:
                 print(f"{time.strftime('%Y-%m-%d %H:%M:%S')}  SENSOR ERROR: {exc}", flush=True)
                 if args.once:
