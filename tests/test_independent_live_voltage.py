@@ -51,38 +51,40 @@ class IndependentVoltageTests(unittest.TestCase):
         self.assertIn("A1 thermistor disconnected", result["voltage_errors"]["a1"])
         self.assertNotIn("a0", result["voltage_errors"])
 
-    def test_a3_raw_volts_do_not_wait_for_database(self):
-        with self.app.test_request_context(
-                "/api/sensors/calibration/live?channel=a3"), \
-             patch.object(calibration, "_admin"), \
-             patch.object(calibration, "_db", side_effect=AssertionError(
-                 "TDS live voltage must not query MariaDB")), \
-             patch.object(calibration, "adc_read", return_value=(6000, 0.8125)), \
-             patch.object(calibration.time, "sleep"):
-            result = calibration.live().get_json()
-        self.assertAlmostEqual(result["volts"]["a3"], 0.8125)
-        self.assertIsNone(result["calibration_db_error"])
-
-    def test_selected_a3_channel_does_not_read_a0_or_a1(self):
+    def test_a3_reads_a1_for_temperature_corrected_preview(self):
         visited = []
-
-        def read(_bus, _address, channel):
+        def adc(_bus, _address, channel):
             visited.append(channel)
-            return (6000, 0.8125)
-
-        with self.app.test_request_context(
-                "/api/sensors/calibration/live?channel=a3"), \
+            return (6000, 1.65 if channel == 1 else 0.8125)
+        with self.app.test_request_context("/api/sensors/calibration/live?channel=a3"), \
              patch.object(calibration, "_admin"), \
              patch.object(calibration, "_db", return_value=FakeDB()), \
-             patch.object(calibration, "adc_read", side_effect=read), \
+             patch.object(calibration, "adc_read", side_effect=adc), \
              patch.object(calibration.time, "sleep"):
             result = calibration.live().get_json()
+        # Default NTC is disabled in FakeDB, so only A3 is sampled.
         self.assertEqual(visited, [3, 3])
-        self.assertEqual(result["requested_channel"], "a3")
         self.assertAlmostEqual(result["volts"]["a3"], 0.8125)
-        self.assertIsNone(result["volts"]["a0"])
-        self.assertIsNone(result["volts"]["a1"])
-        self.assertEqual(result["voltage_errors"], {})
+        self.assertIsNone(result["ph_temperature_c"])
+
+    def test_enabled_a1_is_sampled_for_a3(self):
+        visited = []
+        def adc(_bus, _address, channel):
+            visited.append(channel)
+            return (6000, 1.65 if channel == 1 else 0.8125)
+        db = FakeDB()
+        db.fetchone = lambda: {"ntc_enabled":1, "ntc_supply_v":3.3,
+                               "temp_updated_at":"saved", "temp_factor":1.0,
+                               "temp_offset_c":0.0}
+        with self.app.test_request_context("/api/sensors/calibration/live?channel=a3"), \
+             patch.object(calibration, "_admin"), \
+             patch.object(calibration, "_db", return_value=db), \
+             patch.object(calibration, "adc_read", side_effect=adc), \
+             patch.object(calibration.time, "sleep"):
+            result = calibration.live().get_json()
+        self.assertEqual(visited, [1, 1, 3, 3])
+        self.assertAlmostEqual(result["ph_temperature_c"], 25, places=3)
+        self.assertAlmostEqual(result["volts"]["a3"], 0.8125)
 
     def test_raw_a0_reading_survives_calibration_database_error(self):
         with self.app.test_request_context("/api/sensors/calibration/live"), \
