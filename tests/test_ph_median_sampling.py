@@ -66,7 +66,7 @@ class PhMedianSamplingTests(unittest.TestCase):
         self.assertIn("ph_voltage = median_ph_voltage(", collector)
         self.assertIn("save_sample(ppm, water_temp, ph)", collector)
         self.assertIn("FROM data ORDER BY Datetime DESC, Id DESC LIMIT 2", app)
-        self.assertIn("ROUND(AVG(ph), 3) AS ph", app)
+        self.assertIn("history_sql(period)", app)\n        self.assertIn("ROUND(AVG(CASE", (ROOT / "water_history.py").read_text())
         self.assertIn("livePhWindow.push(ph);", live)
         self.assertIn("livePhWindow.length > 5", live)
         self.assertIn("median(livePhWindow)", live)
