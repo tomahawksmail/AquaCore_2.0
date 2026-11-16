@@ -160,6 +160,8 @@ def main():
                     LOG.warning("NTC measurement unavailable: %s", exc)
             ph = None
             ph_atc = False
+            ph_voltage = None
+            ph_mode = 'UNCONFIGURED'
             v7 = calibration.get('ph7_voltage') if calibration.get('ph7_voltage') is not None else args.ph7_voltage
             v4 = calibration.get('ph4_voltage') if calibration.get('ph4_voltage') is not None else args.ph4_voltage
             three_keys = ('ph401_voltage','ph686_voltage','ph918_voltage',
@@ -182,40 +184,48 @@ def main():
                                  and all(calibration.get(k) is not None for k in temp_keys)
                                  and 0 <= water_temp <= 50)
                     if provisional_on:
+                        ph_mode = 'PROVISIONAL_UNVERIFIED'
                         ph_atc = False
                         # Explicit temporary estimate: use the reference-image
                         # voltage/pH slope, not the stale three-buffer slope.
                         ph_raw = provisional_ph_neutral_anchor(
                             ph_voltage, float(calibration.get('ph_provisional_neutral_v') or 2.40))
                     elif ph_atc:
+                        ph_mode = 'THREE_BUFFER_ATC'
                         ph_raw = temperature_compensated_ph_three_points(
                             ph_voltage,
                             *(float(calibration[k]) for k in three_keys),
                             *(float(calibration[k]) for k in temp_keys),
                             water_temp)
                     elif has_three:
+                        ph_mode = 'THREE_BUFFER_NO_ATC'
                         ph_raw = calibrated_ph_three_points(
                             ph_voltage, *(float(calibration[key]) for key in three_keys))
                     else:
+                        ph_mode = 'LEGACY_TWO_BUFFER'
                         ph_raw = calibrated_ph(ph_voltage, float(v7), float(v4))
                     ph = 7.0 + (ph_raw - 7.0) * float(
                         calibration.get('ph_factor') if calibration.get('ph_factor') is not None else 1.0)
                     if not 0 <= ph <= 14:
                         raise ValueError("Corrected pH outside 0-14")
                 except (OSError, ValueError) as exc:
-                    LOG.warning("pH measurement unavailable: %s", exc)
+                    ph_mode = 'INVALID_' + ph_mode
+                    LOG.warning("pH measurement unavailable (mode=%s, A0=%s V): %s",
+                                ph_mode, ph_voltage, exc)
             temperature = water_temp if water_temp is not None else args.temperature
             tds_factor = float(calibration.get('tds_factor') if calibration.get('tds_factor') is not None else args.tds_factor)
             if not 0.001 <= tds_factor <= 10:
                 raise ValueError("Invalid database TDS factor")
             ppm = estimate_tds_ppm(volts, temperature) * tds_factor
             save_sample(ppm, water_temp, ph)
-            LOG.info("Saved temp=%s C pH=%s TDS=%.2f ppm (pH mode=%s; pH ATC=%s; A3 %.5f V; TDS factor %.4f; TDS temp %.1f C)",
+            LOG.info("Saved temp=%s C pH=%s TDS=%.2f ppm "
+                     "(pH mode=%s; pH ATC=%s; A0=%s V; A3=%.5f V; "
+                     "TDS factor=%.4f; TDS temp=%.1f C)",
                      f"{water_temp:.2f}" if water_temp is not None else "NULL",
                      f"{ph:.2f}" if ph is not None else "NULL",
-                     "PROVISIONAL_UNVERIFIED" if provisional_on else "CALIBRATED",
-                     "ON" if ph_atc else "OFF",
-                     ppm, volts, tds_factor, temperature)
+                     ppm, ph_mode, "ON" if ph_atc else "OFF",
+                     f"{ph_voltage:.5f}" if ph_voltage is not None else "NULL",
+                     volts, tds_factor, temperature)
         except (OSError, ValueError, pymysql.MySQLError) as exc:
             LOG.exception("TDS reading not saved: %s", exc)
             if args.once:
