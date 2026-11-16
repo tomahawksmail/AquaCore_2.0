@@ -1,88 +1,66 @@
-# AquaCore — MariaDB + Modern Web (Phase 1)
+# AquaCore 2.0 — aquarium automation
 
-This is a *parallel* modernization of your original Flask web interface, using the **same table/column names** in your AquaCore SQL dump. It is NOT AquaCore 2.0's new backend and does not start GPIO, sensors, or Telegram. The web shows live MariaDB values, supports admin editing of documented `options` fields, and leaves your old automation in charge of hardware.
+Flask/MariaDB web dashboard and Orange Pi Zero 2W controller with separate
+systemd workers for ADS1115 water sensors, equipment schedules, relay outputs,
+water-leak detection, and Telegram bot. This is a live hardware automation
+project: **do not run production relay workers in a test environment**.
 
-## 1. Create TEST database (MariaDB)
+## Sensor channels
 
-Do **not** import the SQL into your live database without backup. This script creates `_AquaCore_` if absent. To keep old and new separate when working against the same server, create another database name and edit the first 2 SQL lines plus `.env`.
+- A0: analog pH electrode; 2.540 V / pH 6.86 and 3.040 V / pH 4.01.
+- A1: 10k B3950 NTC with 10k fixed resistor to 3.3V.
+- A3: analog TDS probe and user-calibrated TDS multiplier.
+- ADS1115 I²C bus 2, address 0x48; 5-sample median pH collector.
+- Calibrated A1 temperature is required for pH and TDS; there is no
+  provisional pH mode or default 22°C substitute. Temperature correction
+  is a Nernst slope approximation, not proof of aquarium pH accuracy.
+
+The two reference solution temperatures are initially assumed 25°C until
+recaptured with measured buffer temperature. At 25°C A0=2.40V predicts
+pH≈7.66, not exactly pH 7.00.
+
+## Charts
+
+Web dashboard `/api/history?period=24h` and Telegram
+`📈 Aquarium chart` use the same `water_history.history_sql`
+24-hour aggregate, acceptable-range limits, missing-sample gaps and
+pH calibration cutoff. The web visual is interactive SVG; Telegram sends
+a PNG with the same data, series colors and range shading. System metrics
+and pump charts are separate.
+
+## Quick deployment references
+
+- [Native Armbian services and GPIO guidance](deploy/NATIVE_ARMBIAN.md)
+- [Two-buffer sensor conversion, migration and database audit](deploy/PH_AND_DATABASE_AUDIT_20261116.md)
+- [Telegram setup and access control](deploy/TELEGRAM.md)
+- [Fresh MariaDB installation only](deploy/EMPTY_DATABASE_RELEASE.md)
+- [Hardware health checks](deploy/check_health.sh)
+
+### Existing MariaDB installations
+
+Never use `deploy/sql/clean_install.sql` or
+`deploy/sql/aquacore_empty_bootstrap.sql` against a running aquarium.
+They are **fresh-install only**.
+
+For the new two-point model, stop relevant services safely, back up
+`_AquaCore_`, update source and apply
+`deploy/sql/ph_two_buffer_ntc_migration.sql` **once** before restarting
+services. This intentionally replaces legacy provisional/three-buffer
+calibration columns without touching configured A1 calibration offset or
+TDS multiplier. Use `deploy/sql/cleanup_unused_db_fields.sql` only
+after review and a verified backup to remove old-curve pH cells, artificial
+all-zero history rows and eight unused host metric columns.
+
+Fresh installation and live GPIO/I²C verification are not covered by
+the offline GitHub Actions suite. All physical outputs must be verified
+safe before enabling any workers.
+
+## Offline regression checks
 
 ```bash
-mariadb -u root -p < create_test_database.sql
+python -m pip install -r requirements.txt
+python -m unittest discover -s tests -p 'test_*.py' -v
+for file in static/*.js; do node --check "$file"; done
 ```
 
-In MariaDB, create a dedicated account (substitute a long unique password):
-
-```sql
-CREATE USER IF NOT EXISTS 'aquacore_web'@'localhost' IDENTIFIED BY 'REPLACE_WITH_STRONG_DB_PASSWORD';
-GRANT SELECT, INSERT, UPDATE ON `_AquaCore_`.* TO 'aquacore_web'@'localhost';
-```
-
-If using Windows to connect to MariaDB on a separate Orange Pi, use a narrowly scoped host/grant rather than `%`; configure a secured connection or SSH tunnel. If connecting with IP `127.0.0.1`, account host matching varies; create a matching `'aquacore_web'@'127.0.0.1'` or use localhost appropriately.
-
-## 2. PyCharm / Windows test
-
-Copy `.env.example` to `.env`, set `DB_PASSWORD`, `AQUACORE_ADMIN_PASSWORD` and generate `SECRET_KEY` with:
-
-```powershell
-python -c "import secrets; print(secrets.token_hex(32))"
-```
-
-Create a virtual environment and install dependencies:
-
-```powershell
-py -m venv .venv
-.\.venv\Scripts\python -m pip install -r requirements.txt
-.\.venv\Scripts\python -m flask --app app set-password
-.\.venv\Scripts\python app.py
-```
-
-Open `http://127.0.0.1:5001`. PyCharm run configuration: **Script path** = `app.py`; working directory = project root. No relative-package imports.
-
-This web version REQUIRES a modern hashed password; old MD5 hashes from your SQL dump won't log in. Reset using `set-password`. The original app keeps its previous authentication database behavior (do not use an old original app's MD5 login exposed publicly).
-
-## 3. Pages
-
-- `/aquarium`: overview, measurement table, read-only equipment flags, refreshes recent metric cards every 15 s.
-- `/options`: range-validated water thresholds and original scheduling fields. Updates only columns that exist in original SQL.
-- `/core_dashboard`: readings from `psutil` database table.
-- `/loging`: event history.
-
-## 4. Compatibility cautions
-
-- The supplied SQL dump defines `RedL` and `BlueL`; existing `main.py` instead refers to `PlantL` in several settings routes. The redesign displays **RedL and BlueL** based on actual SQL and does not change original controller behavior.
-- Your SQL dump lacks an `a_status` table, despite references in `functions.py` and `main.py`. Therefore this phase does not edit automatic mode flags. Resolve schema differences from the *actual Orange Pi database* before exposing these controls.
-- The app intentionally does NOT expose arbitrary GPIO writes or a terminal. Equipment statuses are database flags, not physical relay verification.
-- The original exported data includes historical logs and legacy password hashes. The clean TEST DB contains only table definitions and default options/status; no legacy users or historical data.
-- Run the web app behind HTTPS/authenticated reverse proxy before exposing beyond your LAN. Use `COOKIE_SECURE=true` only with HTTPS. The app's built-in development server is for local testing.
-- Existing main.py imports GPIO indirectly via its application, so do NOT use it for PyCharm testing. Run this standalone `app.py` instead.
-
-## 5. Next step
-
-Validate against your real MariaDB schema (`SHOW CREATE TABLE options; SHOW CREATE TABLE status; SHOW TABLES;`) before combining the new UI with the old controller. Backup database first. Then we can update the existing project incrementally without replacing its control logic.
-
-## Historical charts (Phase 1.1)
-
-The aquarium overview now includes **temperature, pH and TDS** charts with 24h / 7d / 30d / 90d selectors. Data comes from the existing `data` table via the authenticated `GET /api/history?period=24h` endpoint. MariaDB performs time-bucket aggregation (up to ~300 chart points per series), so it does not need to send the full raw history to a phone. Missing sensor readings are not filled with invented values. Charts update every minute while the tab is visible. They use local SVG/JavaScript (no CDN or additional pip dependencies), and they adapt to screen width.
-
-**Update an existing installation:** replace `app.py`, `templates/dashboard.html`, and `static/style.css`, and add `static/charts.js`. No database migration is needed. Restart Flask. Testing requires a running MariaDB with real measurements.
-
-## Verified Orange Pi relay GPIO mapping (gpiochip1)
-
-AquaCore relay hardware uses active-low outputs. The GPIO assignments verified on
-Orange Pi Zero 2W are:
-
-| Equipment | gpiochip1 line | SoC pin | Physical header pin |
-| --- | ---: | --- | ---: |
-| CO₂ | 228 | PH4 | 18 |
-| Oxygen | 262 | PI6 | 22 |
-| Main light | 229 | PH5 | 24 |
-| Backlight | 272 | PI16 | 37 |
-| Plant light | 76 | PC12 | 36 |
-| UV | 256 | PI0 | 29 |
-| CPU cooler (>70°C ON, <=65°C OFF) | 232 | PH8 | 21 |
-| Fertilizer dosing pump (timed daily pulse) | 233 | PH9 | 26 |
-
-Unassigned GPIO lines: PH6/230, PH7/231.
-
-Fertilizer pump: **all persistent settings, calibration, pulse queues and progress now live in the existing `options` singleton**, using `fertilizer_*` columns. The relay worker writes ON/OFF to `status.fertilizer_pump_status` (`checked` / `unchecked`). No runtime code needs the legacy `fertilizer_pump` table. The Settings page retains a daily mL dose, separate bounded Manual ON/OFF (30s automatic cutoff), and a calibration popup with relay-confirmed progress. Before removing the old table, run `deploy/sql/fertilizer_options.sql`, optionally `fertilizer_options_copy.sql` to preserve your settings, and verify both services with the new schema. See `deploy/NATIVE_ARMBIAN.md` for the migration order.
-See `deploy/NATIVE_ARMBIAN.md` for native systemd deployment.
+Do not commit `.env`, passwords, API tokens, or production database dumps.
