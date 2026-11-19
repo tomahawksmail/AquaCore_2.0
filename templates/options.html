@@ -314,7 +314,8 @@
   <div class="fertilizer-modal-content">
     <div class="fertilizer-modal-heading">
       <div>
-        <h2 id="fertilizer-dialog-title"><i class="mdi mdi-flask-outline" aria-hidden="true"></i> Pump calibration</h2>
+        <p class="fertilizer-modal-eyebrow"><i class="mdi mdi-water-pump" aria-hidden="true"></i> PUMP CALIBRATION</p>
+        <h2 id="fertilizer-dialog-title"><i class="mdi mdi-flask-outline" aria-hidden="true"></i> Pump 1 · Bottle A calibration</h2>
         <p id="fertilizer-calibration-rate" class="control-state">
           {% if fertilizer.ml_per_second %}
             Calibrated: {{'%.3f'|format(fertilizer.ml_per_second|float)}} ml/sec
@@ -330,6 +331,16 @@
       Prime the pump and direct its outlet into a measuring cup, <strong>not the aquarium</strong>.
       Run the test, then enter the collected volume. Never save an uncompleted test.
     </p>
+    <div class="fertilizer-calibration-steps" aria-label="Calibration steps">
+      <div class="fertilizer-calibration-step">
+        <span class="fertilizer-calibration-step-number" aria-hidden="true">1</span>
+        <div><strong>Run a timed test</strong><small>Prime with water, choose the duration and collect the outlet flow in a measuring cup.</small></div>
+      </div>
+      <div class="fertilizer-calibration-step">
+        <span class="fertilizer-calibration-step-number" aria-hidden="true">2</span>
+        <div><strong>Measure and save</strong><small>After the relay confirms completion, enter the collected ml and save the new ml/sec rate.</small></div>
+      </div>
+    </div>
     <div class="fertilizer-modal-inputs">
       <label for="fertilizer-calibration-seconds">
         Test duration (seconds)
@@ -369,6 +380,7 @@
   <div class="fertilizer-modal-content">
     <div class="fertilizer-modal-heading">
       <div>
+        <p class="fertilizer-modal-eyebrow"><i class="mdi mdi-water-pump" aria-hidden="true"></i> PUMP CALIBRATION</p>
         <h2 id="fertilizer2-dialog-title"><i class="mdi mdi-flask-outline" aria-hidden="true"></i> Pump 2 · Bottle B calibration</h2>
         <p id="fertilizer2-calibration-rate" class="control-state">
           {% if fertilizer2.ml_per_second %}
@@ -385,6 +397,16 @@
       Prime the pump and direct its outlet into a measuring cup, <strong>not the aquarium</strong>.
       Run the test, then enter the collected volume. Never save an uncompleted test.
     </p>
+    <div class="fertilizer-calibration-steps" aria-label="Calibration steps">
+      <div class="fertilizer-calibration-step">
+        <span class="fertilizer-calibration-step-number" aria-hidden="true">1</span>
+        <div><strong>Run a timed test</strong><small>Prime with water, choose the duration and collect the outlet flow in a measuring cup.</small></div>
+      </div>
+      <div class="fertilizer-calibration-step">
+        <span class="fertilizer-calibration-step-number" aria-hidden="true">2</span>
+        <div><strong>Measure and save</strong><small>After the relay confirms completion, enter the collected ml and save the new ml/sec rate.</small></div>
+      </div>
+    </div>
     <div class="fertilizer-modal-inputs">
       <label for="fertilizer2-calibration-seconds">
         Test duration (seconds)
@@ -566,9 +588,9 @@
 <script defer src="{{ url_for('static', filename='sensor-calibration.js', v='20261116-ph-two-buffer-a1') }}"></script>
 <script>window.AQUACORE_CSRF = {{ csrf_token()|tojson }};</script>
 <script defer src="{{ url_for('static', filename='controls.js') }}"></script>
-<script defer src="{{ url_for('static', filename='fertilizer-manual2.js', v='20261109-close-after-save-v1') }}"></script>
+<script defer src="{{ url_for('static', filename='fertilizer-manual2.js', v='20261118-pump-calibration-parity-v1') }}"></script>
 <script defer src="{{ url_for('static', filename='fertilizer-weekly2.js', v='20261109-bottle-b-confirm-v1') }}"></script>
 <script defer src="{{ url_for('static', filename='fertilizer-weekly.js', v='20261109-verified-save') }}"></script>
 <script defer src="{{ url_for('static', filename='settings-autosave.js', v='20261104-calibration-modal') }}"></script>
-<script defer src="{{ url_for('static', filename='fertilizer-manual.js', v='20261109-close-after-save-v1') }}"></script>
+<script defer src="{{ url_for('static', filename='fertilizer-manual.js', v='20261118-pump-calibration-parity-v1') }}"></script>
 {% endblock %}
