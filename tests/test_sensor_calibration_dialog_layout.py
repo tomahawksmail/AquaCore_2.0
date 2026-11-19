@@ -67,7 +67,7 @@ class CalibrationDialogLayoutTests(unittest.TestCase):
         self.assertIn("@media(max-width:630px)", self.css)
 
     def test_only_ui_changes_and_refreshes_stylesheet_assets(self):
-        self.assertIn("20261116-ph-two-buffer-a1", self.base)
+        self.assertIn("20261118-pump-dialog-parity-v1", self.base)
         self.assertIn("20261116-ph-two-buffer-a1", self.page)
         self.assertIn('id="sensor-ph-auto-temperature"', self.page)
         self.assertIn('id="sensor-ph-atc-status"', self.page)
