@@ -48,7 +48,7 @@
   }
   function updateUI() {
     const time=timeInput.dataset.saved ?? timeInput.value;
-    const schedule=!hardwareEnabled?'Relay disabled · verify PH7 wiring before enabling Pump 2':
+    const schedule=!hardwareEnabled?'Relay disabled · PUMP2_ENABLED=0':
       !calibrated?'Auto dose needs calibration · Manual pump available':
       !doseValid()?'Scheduled · OFF':
       'Scheduled · '+(time||'--:--')+' · '+valueMl()+' ml';
